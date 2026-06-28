@@ -1,0 +1,535 @@
+<UserControl
+    x:Class="RainExplorer.Controls.SettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <UserControl.Resources>
+        <!-- Section heading -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextFaint}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="4,4,0,8" />
+        </Style>
+        <!-- A glass settings card -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Glass2}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line1}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16,4" />
+        </Style>
+        <Style x:Key="RowTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="RowHint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- Left-nav section item (Sail-style: icon + label, accent wash + bar when selected) -->
+        <Style x:Key="NavItem" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid>
+                            <Border x:Name="bg" Background="Transparent" CornerRadius="9"
+                                    BorderBrush="Transparent" BorderThickness="1" Padding="11,9">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <Border x:Name="bar" Width="3" Height="18" CornerRadius="2"
+                                    HorizontalAlignment="Left" Background="{StaticResource GradientAccent}"
+                                    Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Theme swatch -->
+        <Style x:Key="SwatchItem" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,10,10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="b" Background="{StaticResource Glass2}" CornerRadius="10"
+                                BorderBrush="{StaticResource Line2}" BorderThickness="1" Padding="12,10" Width="118">
+                            <StackPanel>
+                                <Grid>
+                                    <Border Height="34" CornerRadius="8" Background="{Binding Swatch}" />
+                                    <Path x:Name="chk" Style="{StaticResource IconPath}" Width="16" Height="16"
+                                          Data="{StaticResource Ic.check}" Stroke="White" StrokeThickness="2.4"
+                                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
+                                          Visibility="Collapsed" />
+                                </Grid>
+                                <TextBlock Text="{Binding Name}" Margin="2,8,0,0" FontSize="12"
+                                           FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Line3}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentWash}" />
+                                <Setter TargetName="chk" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Semi-transparent backdrop scrim (blurred body shows through) -->
+        <Rectangle Fill="#CC000000" />
+
+        <Grid Margin="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ===== Sticky header (stays pinned while content scrolls) ===== -->
+            <Border Grid.Row="0" Background="#26000000" BorderBrush="{StaticResource Line1}"
+                    BorderThickness="0,0,0,1" Padding="28,18">
+                <Grid MaxWidth="980" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource IconButton}" Width="36" Height="36"
+                                Command="{Binding DataContext.CloseSettingsCommand,
+                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                ToolTip="Back (Esc)">
+                            <Path Style="{StaticResource IconPath}" Width="18" Height="18" Data="{StaticResource Ic.arrow-left}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Path Style="{StaticResource IconPath}" Width="20" Height="20" Data="{StaticResource Ic.settings}"
+                              Stroke="{StaticResource AccentBright}" Margin="14,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Settings" FontSize="22" FontWeight="Bold" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource Text}" />
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource PrimaryButton}"
+                            Padding="18,8" Command="{Binding DataContext.CloseSettingsCommand,
+                            RelativeSource={RelativeSource AncestorType=Window}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.check}"
+                                  Stroke="White" StrokeThickness="2" Margin="0,0,8,0" />
+                            <TextBlock Text="Done" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ===== Body: left nav + scrolling content ===== -->
+            <Grid Grid.Row="1" MaxWidth="980" Margin="20,8,20,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Section nav -->
+                <ListBox x:Name="SectionList" Grid.Column="0" Background="Transparent" BorderThickness="0"
+                         Margin="0,14,8,0" SelectedIndex="0"
+                         ItemContainerStyle="{StaticResource NavItem}"
+                         SelectionChanged="SectionList_SelectionChanged">
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17" Margin="0,0,12,0"
+                                  Data="{StaticResource Ic.palette}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="Appearance" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17" Margin="0,0,12,0"
+                                  Data="{StaticResource Ic.folder-open}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="Browsing" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17" Margin="0,0,12,0"
+                                  Data="{StaticResource Ic.file}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="Files" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17" Margin="0,0,12,0"
+                                  Data="{StaticResource Ic.sliders}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="Advanced" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17" Margin="0,0,12,0"
+                                  Data="{StaticResource Ic.info}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="About" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+
+                <!-- Content panes (one visible at a time) -->
+                <Grid Grid.Column="1">
+                    <!-- APPEARANCE -->
+                    <ScrollViewer x:Name="PaneAppearance" VerticalScrollBarVisibility="Auto" Padding="6,14,12,40">
+                        <StackPanel>
+                            <TextBlock Text="THEME" Style="{StaticResource SectionLabel}" />
+                            <Border Style="{StaticResource Card}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="Color theme" Style="{StaticResource RowTitle}" />
+                                    <TextBlock Text="Drives the accent, surfaces and background for the whole app."
+                                               Style="{StaticResource RowHint}" Margin="0,2,0,12" />
+                                    <ListBox x:Name="ThemeList" Background="Transparent" BorderThickness="0"
+                                             SelectedValuePath="Name" SelectedValue="{Binding Theme, Mode=TwoWay}"
+                                             ItemContainerStyle="{StaticResource SwatchItem}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="DISPLAY" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="File list layout" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Details rows, a compact list, tiles, or a large-icon grid."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="LayoutBox" Width="180" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding ViewLayout, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Row density" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Comfortable spacing, or compact to fit more rows."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="DensityBox" Width="180" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding Density, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Ambient background glow" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="The soft themed orb behind the window."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowAmbientBackground, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="FONT" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Interface font" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Applied across the app. Paths and sizes keep a mono font."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="FontBox" Width="220" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding FontFamily, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- BROWSING -->
+                    <ScrollViewer x:Name="PaneBrowsing" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Padding="6,14,12,40">
+                        <StackPanel>
+                            <TextBlock Text="STARTUP" Style="{StaticResource SectionLabel}" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="300" HorizontalAlignment="Left">
+                                        <TextBlock Text="Default starting folder" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Where new tabs open. Leave blank for Home."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <DockPanel HorizontalAlignment="Right" Width="330" LastChildFill="True">
+                                        <Button DockPanel.Dock="Right" Content="Browse…" Style="{StaticResource DialogButton}"
+                                                MinWidth="0" Padding="14,7" Margin="8,0,0,0" Click="Browse_Click" />
+                                        <TextBox Style="{StaticResource FieldBox}" Height="32"
+                                                 Text="{Binding DefaultFolder, UpdateSourceTrigger=PropertyChanged}"
+                                                 Tag="(Home folder)" />
+                                    </DockPanel>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="EDITING" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Rename &amp; new folder input" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Use a pop-up dialog, or edit inline in the list."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="RenameBox" Width="180" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding RenameMode, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Open folders in a new tab" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Double-clicking a folder opens it in a new tab."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding OpenFoldersInNewTab, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Open items with a single click" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="A single click opens files and folders instead of a double-click."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- FILES -->
+                    <ScrollViewer x:Name="PaneFiles" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Padding="6,14,12,40">
+                        <StackPanel>
+                            <TextBlock Text="VISIBILITY" Style="{StaticResource SectionLabel}" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Show hidden &amp; system files" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Display items the system normally keeps out of view."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Show file extensions" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Display the trailing .ext on file names."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Show item checkboxes" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Add a selection checkbox to each row in Details view."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowCheckboxes, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="BEHAVIOR" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Confirm before deleting" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Ask before sending items to the Recycle Bin."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ConfirmDelete, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Warn when changing a file extension" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Show a warning if a rename changes the .ext."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding WarnOnExtensionChange, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Calculate folder sizes" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Show the total size of folders in the list. Computed in the background; can be slow on big folders."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding CalculateFolderSizes, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Show folders first" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Keep folders grouped above files in every sort."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding FoldersFirst, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="UNITS" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="File size units" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Binary = 1024-based (like Windows); Decimal = 1000-based."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="SizeFormatBox" Width="160" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding SizeFormat, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Count files on the Drives page" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Shows a recursive file count per drive. Resource-intensive on big disks."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowDriveItemCounts, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ADVANCED -->
+                    <ScrollViewer x:Name="PaneAdvanced" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Padding="6,14,12,40">
+                        <StackPanel>
+                            <TextBlock Text="INTERFACE" Style="{StaticResource SectionLabel}" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Show status bar" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="The item-count strip at the bottom of each pane."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="SYSTEM" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Windows shell integration" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Adds “Open in Rain Explorer” to the right-click menu of folders and drives. Current user only; fully reversible."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding RegisterShellIntegration, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Set as default file manager" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Opens folders, drives and Win+E in Rain instead of File Explorer. Windows can't fully replace Explorer, so some places still use it. Current user only; reversible by turning this off."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding SetAsDefaultExplorer, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="CONFIGURATION" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Settings file" Style="{StaticResource RowTitle}" />
+                                        <TextBlock x:Name="ConfigPathText" Style="{StaticResource RowHint}"
+                                                   FontFamily="{StaticResource MonoFont}" />
+                                    </StackPanel>
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            Content="Open folder" Style="{StaticResource DialogButton}"
+                                            MinWidth="0" Padding="14,7" Click="OpenConfigFolder_Click" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ABOUT -->
+                    <ScrollViewer x:Name="PaneAbout" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Padding="6,14,12,40">
+                        <StackPanel>
+                            <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}" />
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Orientation="Horizontal" Margin="0,16" VerticalAlignment="Center">
+                                    <Image Source="pack://application:,,,/Assets/rain-cloud.png" Width="40" Height="40"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Rain Explorer" FontSize="16" FontWeight="Bold"
+                                                   Foreground="{StaticResource Text}" />
+                                        <TextBlock Text="&#x201C;All your files, in glass.&#x201D;  ·  A Sail Solutions App"
+                                                   FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Margin="24,0,0,0">
+                                        <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.cloud}"
+                                              Stroke="{StaticResource AccentBright}" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="VersionText" Margin="7,0,0,0" FontSize="12"
+                                                   Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

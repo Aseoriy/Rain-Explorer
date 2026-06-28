@@ -1,0 +1,509 @@
+<Window
+    x:Class="RainExplorer.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    xmlns:ctrl="clr-namespace:RainExplorer.Controls"
+    xmlns:svc="clr-namespace:RainExplorer.Services"
+    Title="Rain Explorer"
+    Icon="Assets/rain-cloud.png"
+    Height="720" Width="1140" MinHeight="480" MinWidth="760"
+    WindowStartupLocation="CenterScreen"
+    Background="{StaticResource Bg}"
+    Foreground="{StaticResource Text}"
+    FontFamily="{DynamicResource AppFont}" FontSize="13"
+    WindowStyle="None" ResizeMode="CanResize"
+    UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="40" ResizeBorderThickness="6"
+                            CornerRadius="0" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- Sidebar place row: glass hover, vector icon follows Foreground -->
+        <Style x:Key="SidebarButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="8" Padding="8,7">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder" Background="{DynamicResource AppBackgroundBrush}"
+            BorderBrush="{StaticResource Line2}" BorderThickness="1">
+        <Grid>
+            <!-- Ambient orb: two soft radial glows bleeding from the corners.
+                 Themed via OrbColor* (DynamicResource), pulses very slowly.
+                 Toggleable via the "ambient background" setting. -->
+            <Grid x:Name="Orb" IsHitTestVisible="False">
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <RadialGradientBrush Center="0.8,-0.05" GradientOrigin="0.8,-0.05"
+                                             RadiusX="0.62" RadiusY="0.62">
+                            <GradientStop Color="{DynamicResource OrbColor1}" Offset="0" />
+                            <GradientStop Color="{DynamicResource OrbColor1Fade}" Offset="1" />
+                        </RadialGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <RadialGradientBrush Center="-0.05,1.05" GradientOrigin="-0.05,1.05"
+                                             RadiusX="0.55" RadiusY="0.55">
+                            <GradientStop Color="{DynamicResource OrbColor2}" Offset="0" />
+                            <GradientStop Color="{DynamicResource OrbColor2Fade}" Offset="1" />
+                        </RadialGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Grid.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.82" To="1" Duration="0:0:11"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Grid.Triggers>
+            </Grid>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="40" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- ===== Title bar ===== -->
+                <Grid Grid.Row="0" Background="{StaticResource Glass2}">
+                    <Border BorderBrush="{StaticResource Line1}" BorderThickness="0,0,0,1" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
+                        <Button x:Name="SidebarToggle" Style="{StaticResource CaptionButton}" Width="34"
+                                Click="SidebarToggle_Click" ToolTip="Show/hide sidebar"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Path Style="{StaticResource IconPath}" Width="17" Height="17"
+                                  Data="{StaticResource Ic.panel-left}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Image Source="Assets/rain-cloud.png" Width="19" Height="19" Margin="6,0,0,0"
+                               VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Rain Explorer" FontSize="14" FontWeight="Bold"
+                                   Foreground="{StaticResource Text}"
+                                   Margin="9,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button x:Name="UndoButton" Style="{StaticResource CaptionButton}"
+                                Click="UndoButton_Click"
+                                IsEnabled="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanUndo}"
+                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=UndoText}">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                  Data="{StaticResource Ic.undo}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Button x:Name="ActivityButton" Style="{StaticResource CaptionButton}"
+                                Click="ActivityButton_Click" ToolTip="Activity">
+                            <Grid>
+                                <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                      Data="{StaticResource Ic.clock}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                <!-- Unseen badge -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,-5,-7,0" MinWidth="14" Height="14" CornerRadius="7"
+                                        Background="{StaticResource GradientAccent}" Padding="3,0"
+                                        Visibility="{Binding Source={x:Static svc:ActivityService.Instance},
+                                            Path=HasUnseen, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Source={x:Static svc:ActivityService.Instance}, Path=UnseenCount}"
+                                               Foreground="White" FontSize="9" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <Button x:Name="SettingsButton" Style="{StaticResource CaptionButton}"
+                                Command="{Binding OpenSettingsCommand}" ToolTip="Settings">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                  Data="{StaticResource Ic.settings}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Button x:Name="MinButton" Style="{StaticResource CaptionButton}"
+                                Click="MinButton_Click" ToolTip="Minimize">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                  Data="{StaticResource Ic.minus}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}"
+                                Click="MaxButton_Click" ToolTip="Maximize">
+                            <Path x:Name="MaxIcon" Style="{StaticResource IconPath}" Width="15" Height="15"
+                                  Data="{StaticResource Ic.square}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Button x:Name="CloseButton" Style="{StaticResource CloseButton}"
+                                Click="CloseButton_Click" ToolTip="Close">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                  Data="{StaticResource Ic.x}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- ===== Activity center flyout ===== -->
+                    <Popup x:Name="ActivityPopup" PlacementTarget="{Binding ElementName=ActivityButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                           PopupAnimation="Fade" HorizontalOffset="-300" VerticalOffset="4"
+                           DataContext="{x:Static svc:ActivityService.Instance}">
+                        <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                CornerRadius="12" Width="368" Margin="12" Padding="6">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="30" ShadowDepth="6" />
+                            </Border.Effect>
+                            <DockPanel LastChildFill="True" MaxHeight="480">
+                                <Grid DockPanel.Dock="Top" Margin="8,8,6,8">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                              Data="{StaticResource Ic.clock}" Stroke="{StaticResource AccentBright}"
+                                              VerticalAlignment="Center" />
+                                        <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
+                                                   Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <Button HorizontalAlignment="Right" Content="Clear" Style="{StaticResource GhostButton}"
+                                            MinWidth="0" Padding="12,5" FontSize="12" Click="ClearActivity_Click" />
+                                </Grid>
+
+                                <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
+                                           Foreground="{StaticResource TextFaint}" FontSize="12" Margin="10,8,0,14"
+                                           Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Items}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{StaticResource Glass2}" CornerRadius="8"
+                                                        Padding="11,9" Margin="2,2,2,5">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Path Grid.Column="0" Style="{StaticResource IconPath}"
+                                                              Width="16" Height="16" Margin="0,1,11,0"
+                                                              VerticalAlignment="Top"
+                                                              Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                                              Stroke="{StaticResource TextMuted}" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource Text}" />
+                                                            <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                                       Foreground="{StaticResource TextFaint}"
+                                                                       TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <Ellipse x:Name="dot" Width="7" Height="7"
+                                                                         VerticalAlignment="Center"
+                                                                         Fill="{StaticResource Warn}" />
+                                                                <TextBlock x:Name="stext" Text="{Binding StatusText}"
+                                                                           FontSize="11" Margin="6,0,0,0"
+                                                                           Foreground="{StaticResource Warn}"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <TextBlock FontSize="10" Foreground="{StaticResource TextFaint}"
+                                                                       HorizontalAlignment="Right" Margin="0,3,0,0"
+                                                                       FontFamily="{StaticResource MonoFont}">
+                                                                <Run Text="{Binding DurationText}" />
+                                                                <Run Text="·" />
+                                                                <Run Text="{Binding TimeText}" />
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Success">
+                                                        <Setter TargetName="dot" Property="Fill" Value="{StaticResource Ok}" />
+                                                        <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Ok}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                        <Setter TargetName="dot" Property="Fill" Value="{StaticResource Danger}" />
+                                                        <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Danger}" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
+
+                <!-- ===== Body ===== -->
+                <Grid Grid.Row="1">
+                    <!-- BodyGrid: blurred when settings is open -->
+                    <Grid x:Name="BodyGrid">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                    <!-- Sidebar (bound to MainViewModel). Width is animated by the collapse
+                         toggle; the column is Auto so it follows the border's width. -->
+                    <Border x:Name="Sidebar" Grid.Column="0" Width="220" ClipToBounds="True"
+                            Background="{StaticResource Glass2}"
+                            BorderBrush="{StaticResource Line1}" BorderThickness="0,0,1,0">
+                        <DockPanel LastChildFill="True" Width="220" HorizontalAlignment="Left">
+                            <!-- Footer: Rain Explorer brand + publisher -->
+                            <Border DockPanel.Dock="Bottom" Padding="14,8,10,12">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="Assets/rain-cloud.png" Width="22" Height="22"
+                                           VerticalAlignment="Center"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Rain Explorer" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextDim}" />
+                                        <TextBlock Text="A Sail Solutions App" FontSize="10"
+                                                   Foreground="{StaticResource TextFaint}" Margin="0,1,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TreeView x:Name="SidebarTree" ItemsSource="{Binding SidebarNodes}"
+                                      Background="Transparent" BorderThickness="0" Padding="8,8"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                      VirtualizingPanel.IsVirtualizing="False"
+                                      AllowDrop="True"
+                                      DragOver="Sidebar_DragOver"
+                                      DragLeave="Sidebar_DragLeave"
+                                      Drop="Sidebar_Drop"
+                                      SelectedItemChanged="Sidebar_SelectedItemChanged">
+                                <TreeView.ItemContainerStyle>
+                                    <Style TargetType="TreeViewItem">
+                                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                        <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TreeViewItem">
+                                                    <StackPanel>
+                                                        <Border x:Name="row" Background="Transparent" CornerRadius="8"
+                                                                BorderBrush="Transparent" BorderThickness="1"
+                                                                Margin="0,1" Padding="2,1">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="16" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <ToggleButton x:Name="Expander" Grid.Column="0"
+                                                                              Focusable="False" ClickMode="Press"
+                                                                              IsChecked="{Binding IsExpanded,
+                                                                                  RelativeSource={RelativeSource TemplatedParent}}">
+                                                                    <ToggleButton.Template>
+                                                                        <ControlTemplate TargetType="ToggleButton">
+                                                                            <Border Background="Transparent" Width="16" Height="22">
+                                                                                <Path x:Name="chev" Width="9" Height="9"
+                                                                                      Stretch="Uniform"
+                                                                                      Data="{StaticResource Ic.chevron-right}"
+                                                                                      Stroke="{StaticResource TextFaint}"
+                                                                                      StrokeThickness="2"
+                                                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsChecked" Value="True">
+                                                                                    <Setter TargetName="chev" Property="Data"
+                                                                                            Value="{StaticResource Ic.chevron-down}" />
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </ToggleButton.Template>
+                                                                </ToggleButton>
+                                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                                                  VerticalAlignment="Center" />
+                                                            </Grid>
+                                                        </Border>
+                                                        <ItemsPresenter x:Name="ItemsHost" Margin="12,0,0,0" />
+                                                    </StackPanel>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsExpanded" Value="False">
+                                                            <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                                                        </Trigger>
+                                                        <Trigger Property="HasItems" Value="False">
+                                                            <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                                                        </Trigger>
+                                                        <Trigger SourceName="row" Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource Glass3}" />
+                                                            <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />
+                                                            <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                                            <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                        </Trigger>
+                                                        <!-- File drag hovering this node: accent drop highlight -->
+                                                        <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />
+                                                            <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                                        </DataTrigger>
+                                                        <!-- Headers: section labels, never highlighted -->
+                                                        <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                            <Setter TargetName="row" Property="Background" Value="Transparent" />
+                                                            <Setter TargetName="row" Property="BorderBrush" Value="Transparent" />
+                                                            <Setter TargetName="Expander" Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </TreeView.ItemContainerStyle>
+
+                                <TreeView.ItemTemplate>
+                                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                        <Grid>
+                                            <!-- Header look -->
+                                            <Grid x:Name="hdr" Visibility="Collapsed" Margin="2,12,0,5">
+                                                <TextBlock Text="{Binding Name, Converter={StaticResource Upper}}"
+                                                           Foreground="{StaticResource TextFaint}"
+                                                           FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
+                                                <Button x:Name="addPin" HorizontalAlignment="Right" Width="20" Height="20"
+                                                        Background="Transparent" Cursor="Hand" Click="AddPin_Click"
+                                                        ToolTip="Pin the current folder"
+                                                        Visibility="{Binding IsPinnedHeader, Converter={StaticResource BoolToVis}}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="pb" Background="{TemplateBinding Background}" CornerRadius="5">
+                                                                <Path Style="{StaticResource IconPath}" Width="13" Height="13"
+                                                                      Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="pb" Property="Background" Value="{StaticResource Glass4}" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </Grid>
+                                            <!-- Item look -->
+                                            <StackPanel x:Name="itm" Orientation="Horizontal" Margin="2,5">
+                                                <StackPanel.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
+                                                                 RelativeSource={RelativeSource Self}}">
+                                                        <MenuItem Header="Open" Click="NodeOpen_Click">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.arrow-right}" Stroke="{StaticResource AccentBright}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Header="Open in new tab" Click="NodeOpenNewTab_Click">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <Separator />
+                                                        <MenuItem Header="Change icon…" Click="NodeChangeIcon_Click"
+                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.palette}" Stroke="{StaticResource TextMuted}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Header="Rename…" Click="NodeRename_Click"
+                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Header="Unpin" Click="NodeUnpin_Click"
+                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Header="Pin to Quick Access" Click="NodePin_Click"
+                                                                  Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVis}}">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.star}" Stroke="{StaticResource AccentBright}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <Separator />
+                                                        <MenuItem Header="Refresh" Click="NodeRefresh_Click">
+                                                            <MenuItem.Icon>
+                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                      Data="{StaticResource Ic.refresh}" Stroke="{StaticResource TextMuted}" />
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                    </ContextMenu>
+                                                </StackPanel.ContextMenu>
+                                                <Path Style="{StaticResource IconPath}" Width="17" Height="17"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" />
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <HierarchicalDataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                <Setter TargetName="hdr" Property="Visibility" Value="Visible" />
+                                                <Setter TargetName="itm" Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </HierarchicalDataTemplate.Triggers>
+                                    </HierarchicalDataTemplate>
+                                </TreeView.ItemTemplate>
+                            </TreeView>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Pane host: left pane, optional splitter + right pane -->
+                    <Grid Grid.Column="1" x:Name="PaneHost">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition x:Name="SplitterCol" Width="0" />
+                            <ColumnDefinition x:Name="RightCol" Width="0" />
+                        </Grid.ColumnDefinitions>
+
+                        <ctrl:PaneView Grid.Column="0" DataContext="{Binding LeftPane}" />
+
+                        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                                      Background="{StaticResource Line1}"
+                                      Visibility="{Binding IsSplit, Converter={StaticResource BoolToVis}}" />
+
+                        <ctrl:PaneView Grid.Column="2" DataContext="{Binding RightPane}"
+                                       Visibility="{Binding IsSplit, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+
+                    </Grid><!-- /BodyGrid -->
+
+                    <!-- ===== Settings (full-page overlay — above blurred body) ===== -->
+                    <ctrl:SettingsView
+                        Visibility="{Binding DataContext.IsSettingsOpen,
+                            RelativeSource={RelativeSource AncestorType=Window},
+                            Converter={StaticResource BoolToVis}}" />
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,20 @@
+# Build outputs
+Main/bin/
+Main/obj/
+dist/
+
+# Legacy Electron prototype (node_modules, build artifacts)
+Main/legacy-electron/
+
+# User-specific VS/Rider files
+*.user
+*.suo
+.vs/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log

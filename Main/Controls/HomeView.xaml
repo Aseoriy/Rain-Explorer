@@ -1,0 +1,184 @@
+<UserControl
+    x:Class="RainExplorer.Controls.HomeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <UserControl.Resources>
+        <Style x:Key="DashLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextFaint}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="2,22,0,10" />
+        </Style>
+
+        <!-- Pinned tile: square-ish glass card -->
+        <Style x:Key="PinTile" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{StaticResource Glass2}" CornerRadius="12"
+                                BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                Width="148" Padding="14,13">
+                            <StackPanel>
+                                <Border Width="38" Height="38" CornerRadius="9" Background="{StaticResource Glass3}"
+                                        BorderBrush="{StaticResource Line2}" BorderThickness="1" HorizontalAlignment="Left">
+                                    <Path Style="{StaticResource IconPath}" Width="20" Height="20"
+                                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                          Stroke="{Binding IconBrush}" />
+                                </Border>
+                                <TextBlock Text="{Binding Name}" Margin="0,11,0,0" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Text}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Recent row: full-width glass row -->
+        <Style x:Key="RecentRow" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{StaticResource Glass2}" CornerRadius="9"
+                                BorderBrush="Transparent" BorderThickness="1" Padding="12,9">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Path Grid.Column="0" Style="{StaticResource IconPath}" Width="18" Height="18"
+                                      Margin="0,0,12,0" VerticalAlignment="Center"
+                                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                      Stroke="{Binding IconBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Text}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextFaint}" FontSize="11"
+                                           FontFamily="{StaticResource MonoFont}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Line2}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Compact drive card -->
+        <Style x:Key="MiniDrive" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{StaticResource Glass2}" CornerRadius="11"
+                                BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                Width="240" Padding="15,13">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                          Data="{StaticResource Ic.hard-drive}" Stroke="{StaticResource AccentBright}"
+                                          VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Label}" Margin="9,0,0,0" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Text}" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <ProgressBar Style="{StaticResource UsageBar}" Value="{Binding UsedPercent}"
+                                             Margin="0,12,0,0" Height="7" />
+                                <TextBlock Text="{Binding FreeText}" Margin="0,8,0,0" FontSize="11"
+                                           Foreground="{StaticResource TextMuted}" FontFamily="{StaticResource MonoFont}" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,22,28,28">
+        <StackPanel MaxWidth="1000" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="Assets/rain-cloud.png" Width="30" Height="30" VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <TextBlock Text="Welcome back" FontSize="26" FontWeight="Bold" Margin="12,0,0,0"
+                           VerticalAlignment="Center" Foreground="{StaticResource Text}" />
+            </StackPanel>
+            <TextBlock Text="Jump back in, or pick a place to go." Foreground="{StaticResource TextMuted}"
+                       Margin="0,4,0,0" />
+
+            <!-- Pinned -->
+            <TextBlock Text="PINNED" Style="{StaticResource DashLabel}"
+                       Visibility="{Binding PinnedTiles.Count, Converter={StaticResource CountToVis}}" />
+            <ItemsControl ItemsSource="{Binding PinnedTiles}"
+                          Visibility="{Binding PinnedTiles.Count, Converter={StaticResource CountToVis}}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource PinTile}"
+                                Command="{Binding DataContext.OpenEntryCommand,
+                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Recent -->
+            <TextBlock Text="RECENT" Style="{StaticResource DashLabel}" />
+            <TextBlock Text="Nothing yet — open a file or folder and it'll show up here."
+                       Foreground="{StaticResource TextFaint}" FontSize="12" Margin="2,0,0,4"
+                       Visibility="{Binding Recents.Count, Converter={StaticResource CountToVis}, ConverterParameter=invert}" />
+            <ItemsControl ItemsSource="{Binding Recents}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource RecentRow}"
+                                Command="{Binding DataContext.OpenEntryCommand,
+                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Drives -->
+            <TextBlock Text="DRIVES" Style="{StaticResource DashLabel}" />
+            <ItemsControl ItemsSource="{Binding Drives}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource MiniDrive}"
+                                Command="{Binding DataContext.OpenEntryCommand,
+                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
