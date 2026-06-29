@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using RainExplorer.ViewModels;
 
 namespace RainExplorer.Models;
@@ -24,6 +25,7 @@ public sealed class ActivityEntry : ObservableObject
     private string _durationText = string.Empty;
     public string DurationText { get => _durationText; set => Set(ref _durationText, value); }
 
+    [JsonIgnore]
     public string StatusText => _status switch
     {
         ActivityStatus.Running => "Working…",
@@ -31,8 +33,10 @@ public sealed class ActivityEntry : ObservableObject
         _ => "Failed",
     };
 
+    [JsonIgnore]
     public string TimeText => StartedAt.ToString("h:mm tt");
 
-    /// <summary>Wall-clock timer; not data-bound.</summary>
+    /// <summary>Wall-clock timer; not data-bound, not persisted.</summary>
+    [JsonIgnore]
     internal System.Diagnostics.Stopwatch? Watch { get; set; }
 }

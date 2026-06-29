@@ -229,9 +229,12 @@
                                                             <TextBlock FontSize="10" Foreground="{StaticResource TextFaint}"
                                                                        HorizontalAlignment="Right" Margin="0,3,0,0"
                                                                        FontFamily="{StaticResource MonoFont}">
-                                                                <Run Text="{Binding DurationText}" />
+                                                                <!-- Run.Text binds TwoWay by default; these targets are
+                                                                     read-only computed props, so force OneWay or the
+                                                                     popup throws on realize and crashes the app. -->
+                                                                <Run Text="{Binding DurationText, Mode=OneWay}" />
                                                                 <Run Text="·" />
-                                                                <Run Text="{Binding TimeText}" />
+                                                                <Run Text="{Binding TimeText, Mode=OneWay}" />
                                                             </TextBlock>
                                                         </StackPanel>
                                                     </Grid>
@@ -271,17 +274,12 @@
                             BorderBrush="{StaticResource Line1}" BorderThickness="0,0,1,0">
                         <DockPanel LastChildFill="True" Width="220" HorizontalAlignment="Left">
                             <!-- Footer: Rain Explorer brand + publisher -->
-                            <Border DockPanel.Dock="Bottom" Padding="14,8,10,12">
-                                <StackPanel Orientation="Horizontal">
-                                    <Image Source="Assets/rain-cloud.png" Width="22" Height="22"
-                                           VerticalAlignment="Center"
-                                           RenderOptions.BitmapScalingMode="HighQuality" />
-                                    <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="Rain Explorer" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextDim}" />
-                                        <TextBlock Text="A Sail Solutions App" FontSize="10"
-                                                   Foreground="{StaticResource TextFaint}" Margin="0,1,0,0" />
-                                    </StackPanel>
+                            <Border DockPanel.Dock="Bottom" Padding="8,8,10,12">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Rain Explorer" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextDim}" />
+                                    <TextBlock Text="A Sail Solutions App" FontSize="10"
+                                               Foreground="{StaticResource TextFaint}" Margin="0,1,0,0" />
                                 </StackPanel>
                             </Border>
 
@@ -293,6 +291,8 @@
                                       DragOver="Sidebar_DragOver"
                                       DragLeave="Sidebar_DragLeave"
                                       Drop="Sidebar_Drop"
+                                      PreviewMouseLeftButtonDown="SidebarTree_PreviewMouseLeftButtonDown"
+                                      MouseMove="SidebarTree_MouseMove"
                                       SelectedItemChanged="Sidebar_SelectedItemChanged">
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
@@ -378,14 +378,58 @@
                                 <TreeView.ItemTemplate>
                                     <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                         <Grid>
-                                            <!-- Header look -->
+                                            <!-- Header look: clickable to collapse/expand, with a context menu -->
                                             <Grid x:Name="hdr" Visibility="Collapsed" Margin="2,12,0,5">
-                                                <TextBlock Text="{Binding Name, Converter={StaticResource Upper}}"
-                                                           Foreground="{StaticResource TextFaint}"
-                                                           FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
-                                                <Button x:Name="addPin" HorizontalAlignment="Right" Width="20" Height="20"
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal"
+                                                            Background="Transparent" Cursor="Hand"
+                                                            MouseLeftButtonDown="Header_Click">
+                                                    <StackPanel.ContextMenu>
+                                                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
+                                                                     RelativeSource={RelativeSource Self}}">
+                                                            <MenuItem Header="New list…" Click="NewList_Click">
+                                                                <MenuItem.Icon>
+                                                                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                          Data="{StaticResource Ic.plus}" Stroke="{StaticResource AccentBright}" />
+                                                                </MenuItem.Icon>
+                                                            </MenuItem>
+                                                            <MenuItem Header="Rename list…" Click="RenameList_Click"
+                                                                      Visibility="{Binding IsCustomHeader, Converter={StaticResource BoolToVis}}">
+                                                                <MenuItem.Icon>
+                                                                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                          Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
+                                                                </MenuItem.Icon>
+                                                            </MenuItem>
+                                                            <MenuItem Header="Delete list" Click="DeleteList_Click"
+                                                                      Visibility="{Binding IsCustomHeader, Converter={StaticResource BoolToVis}}">
+                                                                <MenuItem.Icon>
+                                                                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                          Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
+                                                                </MenuItem.Icon>
+                                                            </MenuItem>
+                                                            <MenuItem Header="Hide drives" Click="HideDrives_Click"
+                                                                      Visibility="{Binding IsDrivesHeader, Converter={StaticResource BoolToVis}}">
+                                                                <MenuItem.Icon>
+                                                                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                          Data="{StaticResource Ic.x}" Stroke="{StaticResource TextMuted}" />
+                                                                </MenuItem.Icon>
+                                                            </MenuItem>
+                                                        </ContextMenu>
+                                                    </StackPanel.ContextMenu>
+                                                    <Path x:Name="hchev" Width="9" Height="9" Stretch="Uniform"
+                                                          Data="{StaticResource Ic.chevron-down}"
+                                                          Stroke="{StaticResource TextFaint}" StrokeThickness="2"
+                                                          VerticalAlignment="Center" Margin="0,0,5,0" />
+                                                    <TextBlock Text="{Binding Name, Converter={StaticResource Upper}}"
+                                                               Foreground="{StaticResource TextFaint}"
+                                                               FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <Button x:Name="addPin" Grid.Column="1" Width="20" Height="20"
                                                         Background="Transparent" Cursor="Hand" Click="AddPin_Click"
-                                                        ToolTip="Pin the current folder"
+                                                        ToolTip="Pin a folder to this list"
                                                         Visibility="{Binding IsPinnedHeader, Converter={StaticResource BoolToVis}}">
                                                     <Button.Template>
                                                         <ControlTemplate TargetType="Button">
@@ -469,6 +513,9 @@
                                             <DataTrigger Binding="{Binding IsHeader}" Value="True">
                                                 <Setter TargetName="hdr" Property="Visibility" Value="Visible" />
                                                 <Setter TargetName="itm" Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
+                                                <Setter TargetName="hchev" Property="Data" Value="{StaticResource Ic.chevron-right}" />
                                             </DataTrigger>
                                         </HierarchicalDataTemplate.Triggers>
                                     </HierarchicalDataTemplate>

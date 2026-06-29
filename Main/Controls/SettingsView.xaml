@@ -369,17 +369,40 @@
                                               IsChecked="{Binding ShowCheckboxes, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
-
-                            <TextBlock Text="BEHAVIOR" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
-                            <Border Style="{StaticResource Card}">
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
-                                    <StackPanel>
-                                        <TextBlock Text="Confirm before deleting" Style="{StaticResource RowTitle}" />
-                                        <TextBlock Text="Ask before sending items to the Recycle Bin."
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Show drives in sidebar" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Show the Drives section in the sidebar list."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
                                     <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
-                                              IsChecked="{Binding ConfirmDelete, Mode=TwoWay}" />
+                                              IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="BEHAVIOR" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="When deleting items" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Prompt = ask each time (Recycle Bin or permanent). Otherwise delete that way with no prompt."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="DeleteBehaviorBox" Width="160" HorizontalAlignment="Right"
+                                              VerticalAlignment="Center"
+                                              SelectedItem="{Binding DeleteBehavior, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Remember activity" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Keep the activity center log across restarts. When off, it resets each launch."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding RememberActivity, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">

@@ -31,6 +31,7 @@ public partial class SettingsView : UserControl
         RenameBox.ItemsSource = Enum.GetValues(typeof(RenameMode));
         SizeFormatBox.ItemsSource = Enum.GetValues(typeof(SizeFormat));
         LayoutBox.ItemsSource = Enum.GetValues(typeof(ViewLayout));
+        DeleteBehaviorBox.ItemsSource = Enum.GetValues(typeof(DeleteBehavior));
 
         // Installed UI fonts, alphabetised.
         FontBox.ItemsSource = System.Windows.Media.Fonts.SystemFontFamilies

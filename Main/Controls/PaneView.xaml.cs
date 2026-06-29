@@ -38,6 +38,7 @@ public partial class PaneView : UserControl
     private ViewBase? _detailsView;
     private ItemsPanelTemplate? _detailsPanel;
     private Style? _detailsRowStyle;
+    private bool _clearSelectionAfterNav;
     private static readonly ActivityService Activity = ActivityService.Instance;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -256,6 +257,14 @@ public partial class PaneView : UserControl
             AddressBar.BeginEdit();
             e.Handled = true;
         }
+        // Ctrl+F: jump to the search box for the current folder. The recursive toggle
+        // beside it chooses "this folder only" vs "include subfolders".
+        else if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+        }
     }
 
     // ---- Navigation animation (subtle fade + slide up) ---------------------
@@ -271,6 +280,40 @@ public partial class PaneView : UserControl
         };
         FileList.BeginAnimation(OpacityProperty, fade);
         ListTransform.BeginAnimation(TranslateTransform.YProperty, slide);
+
+        TrySelectPendingItem();
+
+        // After a double-click folder open, drop any selection the trailing click left
+        // behind. Deferred below pending input so it runs after that stray mouse event.
+        if (_clearSelectionAfterNav)
+        {
+            _clearSelectionAfterNav = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, () => FileList.UnselectAll());
+        }
+    }
+
+    // When launched via "Show in folder" / "Reveal in File Explorer" the shell hands
+    // us a file to highlight (App.SelectPath). Once its folder is loaded, select and
+    // scroll to that row, then clear the request so it only fires once.
+    private void TrySelectPendingItem()
+    {
+        if (App.SelectPath is not { } target || _tab is null) return;
+        if (!string.Equals(_tab.CurrentPath, Path.GetDirectoryName(target),
+                StringComparison.OrdinalIgnoreCase)) return;
+
+        var match = FileList.Items.OfType<FileItem>().FirstOrDefault(
+            i => string.Equals(i.FullPath, target, StringComparison.OrdinalIgnoreCase));
+        if (match is null) return;
+
+        App.SelectPath = null;   // one-shot
+
+        // Defer until the rows are realized so ScrollIntoView/focus land on a container.
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            FileList.SelectedItem = match;
+            FileList.ScrollIntoView(match);
+            (FileList.ItemContainerGenerator.ContainerFromItem(match) as ListViewItem)?.Focus();
+        });
     }
 
     // ---- Sorting ------------------------------------------------------------
@@ -294,7 +337,13 @@ public partial class PaneView : UserControl
         if (item.IsDirectory && SettingsStore.Instance.Settings.OpenFoldersInNewTab)
             _vm?.NewTab(item.FullPath, activate: true);
         else
+        {
+            // In-place folder navigation: the second click's trailing mouse event can
+            // land on the freshly-loaded list and select whatever row is now under the
+            // cursor. Clear that stray selection once the new folder finishes loading.
+            if (item.IsDirectory) _clearSelectionAfterNav = true;
             _vm?.SelectedTab?.Open(item);
+        }
     }
 
     // ---- Middle-click a folder -> open in a new background tab in THIS pane -
@@ -647,7 +696,7 @@ public partial class PaneView : UserControl
     }
 
     private static readonly HashSet<string> ArchiveExts =
-        new(StringComparer.OrdinalIgnoreCase) { ".zip" };
+        new(StringComparer.OrdinalIgnoreCase) { ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2" };
 
     private void FileContextMenu_Opened(object sender, RoutedEventArgs e)
     {
@@ -743,21 +792,30 @@ public partial class PaneView : UserControl
         var paths = SelectedPaths();
         if (paths.Count == 0) return;
 
-        if (SettingsStore.Instance.Settings.ConfirmDelete)
+        string what = paths.Count == 1
+            ? $"“{Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar))}”"
+            : $"{paths.Count} items";
+
+        // Decide recycle vs permanent based on the setting (prompt / always recycle / always permanent).
+        bool permanent;
+        switch (SettingsStore.Instance.Settings.DeleteBehavior)
         {
-            string what = paths.Count == 1
-                ? $"“{Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar))}”"
-                : $"{paths.Count} items";
-            if (!ConfirmDialog.Ask(Window.GetWindow(this), "Delete",
-                    $"Send {what} to the Recycle Bin?", "Delete", "Cancel", danger: true))
-                return;
+            case DeleteBehavior.Recycle: permanent = false; break;
+            case DeleteBehavior.Permanent: permanent = true; break;
+            default:
+                var choice = DeleteDialog.Ask(Window.GetWindow(this),
+                    $"What should happen to {what}?");
+                if (choice == DeleteChoice.Cancel) return;
+                permanent = choice == DeleteChoice.Permanent;
+                break;
         }
 
-        var act = Activity.Begin("Delete", Summarize(paths), "trash");
-        string? err = _ops.Delete(paths);
+        var act = Activity.Begin(permanent ? "Delete permanently" : "Delete", Summarize(paths), "trash");
+        string? err = permanent ? _ops.DeletePermanent(paths) : _ops.Delete(paths);
         Activity.Complete(act, err is null, err);
         if (err is not null) SetStatus($"⚠️ {err}");
-        else UndoService.Instance.Push(new RestoreFromBinAction(
+        // Only a Recycle-Bin delete is undoable; a permanent delete can't be restored.
+        else if (!permanent) UndoService.Instance.Push(new RestoreFromBinAction(
             paths, paths.Count == 1 ? "Delete" : $"Delete ({paths.Count} items)"));
         _ = _tab.ReloadAsync();
     }
@@ -1095,7 +1153,7 @@ public partial class PaneView : UserControl
             {
                 string dest = FileOperationsService.UniquePath(
                     Path.Combine(_tab.CurrentPath, Path.GetFileNameWithoutExtension(z.Name)));
-                ZipFile.ExtractToDirectory(z.FullPath, dest);
+                ExtractArchive(z.FullPath, dest);
                 extracted.Add(dest);
                 ok++;
             }
@@ -1104,6 +1162,21 @@ public partial class PaneView : UserControl
         Activity.Complete(act, ok == zips.Count, lastErr);
         if (extracted.Count > 0) UndoService.Instance.Push(new RecycleAction(extracted, "Extract"));
         if (ok > 0) { SetStatus($"Extracted {ok} archive{(ok == 1 ? "" : "s")}"); _ = _tab.ReloadAsync(); }
+    }
+
+    // Extract any supported archive into destDir. ZIP uses the built-in extractor;
+    // RAR / 7z / TAR / GZ / BZ2 go through SharpCompress (pure-managed, no external tools).
+    private static void ExtractArchive(string src, string destDir)
+    {
+        if (string.Equals(Path.GetExtension(src), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            ZipFile.ExtractToDirectory(src, destDir);
+            return;
+        }
+
+        Directory.CreateDirectory(destDir);
+        var opts = new SharpCompress.Common.ExtractionOptions { ExtractFullPath = true, Overwrite = true };
+        SharpCompress.Archives.ArchiveFactory.WriteToDirectory(src, destDir, opts);
     }
 
     // ---- New text file (dialog or inline, per Settings) --------------------

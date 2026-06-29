@@ -20,6 +20,7 @@
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:IconKeyToGeometryConverter x:Key="IconGeom" />
+    <conv:NullToVisibilityConverter x:Key="NullToVis" />
     <conv:UpperCaseConverter x:Key="Upper" />
     <conv:CountToVisibilityConverter x:Key="CountToVis" />
 

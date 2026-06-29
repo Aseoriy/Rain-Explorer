@@ -17,6 +17,12 @@ public sealed class SettingsStore
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
+        // Be forgiving on read: a single stray comma, comment, casing difference, or
+        // BOM must NOT throw — a parse failure used to silently reset every setting
+        // (including pinned Quick Access items) back to defaults on the next launch.
+        PropertyNameCaseInsensitive = true,
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
     };
 
     private readonly string _path;
@@ -33,19 +39,35 @@ public sealed class SettingsStore
         Settings.PropertyChanged += (_, _) => Save();
     }
 
+    /// <summary>True when no settings file existed at startup (a genuine first run).</summary>
+    public bool IsFirstRun { get; private set; }
+
+    /// <summary>True when a settings file existed but could not be parsed. In that case
+    /// we must NOT seed defaults — doing so would permanently clobber the user's pins.</summary>
+    public bool LoadFailed { get; private set; }
+
     private AppSettings Load()
     {
+        if (!File.Exists(_path))
+        {
+            IsFirstRun = true;
+            return new AppSettings();
+        }
+
         try
         {
-            if (File.Exists(_path))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_path), JsonOpts)
-                       ?? new AppSettings();
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_path), JsonOpts)
+                   ?? new AppSettings();
         }
         catch
         {
-            // Corrupt/unreadable — fall back to defaults.
+            // The file exists but won't parse. Preserve it for recovery instead of
+            // silently overwriting it with defaults, and flag the failure so we don't
+            // re-seed (which would permanently lose the user's pinned items).
+            try { File.Copy(_path, _path + ".corrupt", overwrite: true); } catch { }
+            LoadFailed = true;
+            return new AppSettings();
         }
-        return new AppSettings();
     }
 
     /// <summary>Force an immediate save (e.g. on app exit).</summary>

@@ -154,10 +154,15 @@
         <!-- List: compact icon + name -->
         <DataTemplate x:Key="ListItemTemplate">
             <StackPanel Orientation="Horizontal" Width="232" Margin="8,5">
-                <Path Style="{StaticResource IconPath}" Width="16" Height="16" StrokeThickness="1.7"
-                      Margin="0,0,9,0" VerticalAlignment="Center"
-                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                      Stroke="{Binding IconBrush}" />
+                <Grid Width="16" Height="16" Margin="0,0,9,0" VerticalAlignment="Center">
+                    <Path Style="{StaticResource IconPath}" StrokeThickness="1.7"
+                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                          Stroke="{Binding IconBrush}"
+                          Visibility="{Binding Icon, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
+                           SnapsToDevicePixels="True"
+                           Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
+                </Grid>
                 <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
                            Foreground="{StaticResource Text}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
@@ -166,10 +171,15 @@
         <!-- Tiles: medium icon + name + type, card-like -->
         <DataTemplate x:Key="TileTemplateMedium">
             <StackPanel Orientation="Horizontal" Width="216" Margin="10,8">
-                <Path Style="{StaticResource IconPath}" Width="30" Height="30" StrokeThickness="1.6"
-                      Margin="0,0,12,0" VerticalAlignment="Center"
-                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                      Stroke="{Binding IconBrush}" />
+                <Grid Width="30" Height="30" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <Path Style="{StaticResource IconPath}" StrokeThickness="1.6"
+                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                          Stroke="{Binding IconBrush}"
+                          Visibility="{Binding Icon, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
+                           SnapsToDevicePixels="True"
+                           Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
+                </Grid>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource Text}"
                                FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="150" />
@@ -182,10 +192,15 @@
         <!-- Grid: large icon over centered name -->
         <DataTemplate x:Key="TileTemplateLarge">
             <StackPanel Width="116" Margin="6,12" HorizontalAlignment="Center">
-                <Path Style="{StaticResource IconPath}" Width="46" Height="46" StrokeThickness="1.4"
-                      HorizontalAlignment="Center"
-                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                      Stroke="{Binding IconBrush}" />
+                <Grid Width="46" Height="46" HorizontalAlignment="Center">
+                    <Path Style="{StaticResource IconPath}" StrokeThickness="1.4"
+                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                          Stroke="{Binding IconBrush}"
+                          Visibility="{Binding Icon, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
+                           SnapsToDevicePixels="True"
+                           Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
+                </Grid>
                 <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource Text}"
                            HorizontalAlignment="Center" TextAlignment="Center" Margin="0,9,0,0"
                            TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="34"
@@ -530,10 +545,15 @@
                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
                                               Visibility="{Binding Source={x:Static svc:SettingsStore.Instance},
                                                   Path=Settings.ShowCheckboxes, Converter={StaticResource BoolToVis}}" />
-                                    <Path Style="{StaticResource IconPath}" Width="17" Height="17" StrokeThickness="1.7"
-                                          Margin="0,0,10,0" VerticalAlignment="Center"
-                                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                                          Stroke="{Binding IconBrush}" />
+                                    <Grid Width="17" Height="17" Margin="0,0,10,0" VerticalAlignment="Center">
+                                        <Path Style="{StaticResource IconPath}" StrokeThickness="1.7"
+                                              Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                              Stroke="{Binding IconBrush}"
+                                              Visibility="{Binding Icon, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+                                        <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
+                                               SnapsToDevicePixels="True"
+                                               Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
+                                    </Grid>
                                     <!-- Display mode -->
                                     <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
                                                Foreground="{StaticResource Text}"

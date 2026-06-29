@@ -23,6 +23,25 @@ public sealed class IconKeyToGeometryConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>
+/// Maps null/non-null to Visibility. Default: visible when the value is non-null
+/// (use on the real-icon <c>Image</c>). With ConverterParameter="invert": visible
+/// when the value IS null (use on the vector-glyph fallback <c>Path</c>).
+/// </summary>
+public sealed class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool invert = parameter as string == "invert";
+        bool isNull = value is null;
+        bool visible = invert ? isNull : !isNull;
+        return visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Uppercases a string for display (column headers) without touching the source copy.</summary>
 public sealed class UpperCaseConverter : IValueConverter
 {

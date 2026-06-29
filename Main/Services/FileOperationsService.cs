@@ -34,6 +34,26 @@ public sealed class FileOperationsService
         catch (Exception ex) { return ex.Message; }
     }
 
+    /// <summary>Permanently delete paths (bypasses the Recycle Bin — not undoable). Shows the OS confirm + progress.</summary>
+    public string? DeletePermanent(IEnumerable<string> paths)
+    {
+        try
+        {
+            foreach (string p in paths)
+            {
+                if (Directory.Exists(p))
+                    FileSystem.DeleteDirectory(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
+                        UICancelOption.DoNothing);
+                else if (File.Exists(p))
+                    FileSystem.DeleteFile(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
+                        UICancelOption.DoNothing);
+            }
+            return null;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex) { return ex.Message; }
+    }
+
     public string? CopyInto(IEnumerable<string> sources, string destDir) => Transfer(sources, destDir, move: false);
     public string? MoveInto(IEnumerable<string> sources, string destDir) => Transfer(sources, destDir, move: true);
 

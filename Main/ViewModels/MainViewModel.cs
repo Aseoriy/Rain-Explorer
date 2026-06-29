@@ -66,7 +66,10 @@ public sealed class MainViewModel : ObservableObject
                 or nameof(AppSettings.FoldersFirst) or nameof(AppSettings.SizeFormat)
                 or nameof(AppSettings.ShowFileExtensions) or nameof(AppSettings.CalculateFolderSizes))
                 ReloadAllTabs();
-            if (e.PropertyName == nameof(AppSettings.Pinned))
+            if (e.PropertyName is nameof(AppSettings.Pinned)
+                or nameof(AppSettings.ShowDrivesInSidebar)
+                or nameof(AppSettings.QuickAccessCollapsed)
+                or nameof(AppSettings.DrivesCollapsed))
                 RebuildSidebar();
         };
     }
@@ -84,7 +87,12 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     private static void SeedQuickAccessDefaults()
     {
-        var settings = SettingsStore.Instance.Settings;
+        var store = SettingsStore.Instance;
+        var settings = store.Settings;
+        // Never seed when an existing settings file failed to parse — that path also
+        // arrives here with QuickAccessSeeded==false, and seeding would overwrite the
+        // user's (recoverable) pins with the defaults.
+        if (store.LoadFailed) return;
         if (settings.QuickAccessSeeded) return;
         settings.QuickAccessSeeded = true;
 
@@ -112,52 +120,158 @@ public sealed class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(p) && Directory.Exists(p)) Pin(p);
     }
 
-    /// <summary>Change a pinned item's custom icon.</summary>
+    // ---- Sidebar list helpers (default "quick" + custom lists) -------------
+
+    /// <summary>The pin list for a sidebar group key ("quick"/""→default, "custom:N"→a custom list).</summary>
+    public static List<PinnedItem>? GroupItems(string key)
+    {
+        var s = SettingsStore.Instance.Settings;
+        if (string.IsNullOrEmpty(key) || key == "quick") return s.Pinned;
+        if (TryCustomIndex(key, out int i)) return s.CustomGroups[i].Items;
+        return null;
+    }
+
+    private static bool TryCustomIndex(string key, out int i)
+    {
+        i = -1;
+        if (key is null || !key.StartsWith("custom:")) return false;
+        return int.TryParse(key.AsSpan(7), out i)
+               && i >= 0 && i < SettingsStore.Instance.Settings.CustomGroups.Count;
+    }
+
+    /// <summary>Find a pin by path across the default list and every custom list.</summary>
+    private static PinnedItem? FindPin(string path)
+    {
+        var s = SettingsStore.Instance.Settings;
+        var hit = s.Pinned.FirstOrDefault(p => Same(p.Path, path));
+        if (hit is not null) return hit;
+        foreach (var g in s.CustomGroups)
+            if (g.Items.FirstOrDefault(p => Same(p.Path, path)) is { } h) return h;
+        return null;
+    }
+
+    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Collapse/expand a sidebar section by its group key.</summary>
+    public static void ToggleGroupCollapsed(string key)
+    {
+        var s = SettingsStore.Instance.Settings;
+        if (key == "quick") s.QuickAccessCollapsed = !s.QuickAccessCollapsed;
+        else if (key == "drives") s.DrivesCollapsed = !s.DrivesCollapsed;
+        else if (TryCustomIndex(key, out int i))
+        {
+            s.CustomGroups[i].Collapsed = !s.CustomGroups[i].Collapsed;
+            s.NotifyPinnedChanged();
+        }
+    }
+
+    /// <summary>Create a new empty custom list.</summary>
+    public static void AddCustomGroup(string? name = null)
+    {
+        var s = SettingsStore.Instance.Settings;
+        s.CustomGroups.Add(new SidebarGroup
+        {
+            Name = string.IsNullOrWhiteSpace(name) ? UniqueGroupName(s) : name!,
+        });
+        s.NotifyPinnedChanged();
+    }
+
+    private static string UniqueGroupName(AppSettings s)
+    {
+        int n = 2;
+        string name = "Quick access 2";
+        while (s.CustomGroups.Any(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)))
+            name = $"Quick access {++n}";
+        return name;
+    }
+
+    public static void RenameGroup(string key, string newName)
+    {
+        if (!TryCustomIndex(key, out int i) || string.IsNullOrWhiteSpace(newName)) return;
+        SettingsStore.Instance.Settings.CustomGroups[i].Name = newName.Trim();
+        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+    }
+
+    public static void DeleteGroup(string key)
+    {
+        if (!TryCustomIndex(key, out int i)) return;
+        SettingsStore.Instance.Settings.CustomGroups.RemoveAt(i);
+        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+    }
+
+    /// <summary>Reorder a pin within its list, dropping it before/after the target pin.</summary>
+    public static void ReorderPin(string key, string fromPath, string toPath, bool after)
+    {
+        var items = GroupItems(key);
+        if (items is null || Same(fromPath, toPath)) return;
+        var moved = items.FirstOrDefault(p => Same(p.Path, fromPath));
+        if (moved is null) return;
+
+        items.Remove(moved);
+        int to = items.FindIndex(p => Same(p.Path, toPath));
+        if (to < 0) to = items.Count;
+        else if (after) to++;
+        to = Math.Clamp(to, 0, items.Count);
+        items.Insert(to, moved);
+        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+    }
+
+    /// <summary>Change a pinned item's custom icon (any list).</summary>
     public static void SetPinnedIcon(string path, string iconKey)
     {
-        var pin = SettingsStore.Instance.Settings.Pinned
-            .FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
+        var pin = FindPin(path);
         if (pin is null || string.Equals(pin.IconKey, iconKey, StringComparison.Ordinal)) return;
         pin.IconKey = iconKey;
         SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
-    /// <summary>Rename a pinned item's display label.</summary>
+    /// <summary>Rename a pinned item's display label (any list).</summary>
     public static void RenamePinned(string path, string newName)
     {
-        var pin = SettingsStore.Instance.Settings.Pinned
-            .FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
+        var pin = FindPin(path);
         if (pin is null || string.IsNullOrWhiteSpace(newName) ||
             string.Equals(pin.Name, newName, StringComparison.Ordinal)) return;
         pin.Name = newName;
         SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
-    /// <summary>Pin a folder to Quick Access (no-op if already pinned).</summary>
-    public static void Pin(string path, string? name = null, string iconKey = "folder")
+    /// <summary>Pin a folder to the default Quick Access list (no-op if already pinned).</summary>
+    public static void Pin(string path, string? name = null, string iconKey = "folder") =>
+        PinTo("quick", path, name, iconKey);
+
+    /// <summary>Pin a folder to a specific sidebar list (no-op if already pinned there).</summary>
+    public static void PinTo(string key, string path, string? name = null, string iconKey = "folder")
     {
         if (string.IsNullOrWhiteSpace(path)) return;
-        var settings = SettingsStore.Instance.Settings;
-        if (settings.Pinned.Any(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase))) return;
-        settings.Pinned.Add(new PinnedItem
+        var items = GroupItems(key);
+        if (items is null || items.Any(p => Same(p.Path, path))) return;
+        items.Add(new PinnedItem
         {
             Path = path,
             Name = string.IsNullOrWhiteSpace(name) ? Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)) : name!,
             IconKey = iconKey,
         });
-        settings.NotifyPinnedChanged();
+        SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
-    /// <summary>Remove a pinned Quick Access entry by path.</summary>
-    public static void Unpin(string path)
+    /// <summary>Remove a pin from a specific list (falls back to searching all lists).</summary>
+    public static void UnpinFrom(string key, string path)
     {
-        var settings = SettingsStore.Instance.Settings;
-        int removed = settings.Pinned.RemoveAll(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
-        if (removed > 0) settings.NotifyPinnedChanged();
+        var items = GroupItems(key);
+        int removed = items?.RemoveAll(p => Same(p.Path, path)) ?? 0;
+        if (removed == 0)   // group changed/unknown — remove wherever it is
+        {
+            var s = SettingsStore.Instance.Settings;
+            removed = s.Pinned.RemoveAll(p => Same(p.Path, path));
+            foreach (var g in s.CustomGroups) removed += g.Items.RemoveAll(p => Same(p.Path, path));
+        }
+        if (removed > 0) SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
-    public static bool IsPinned(string path) =>
-        SettingsStore.Instance.Settings.Pinned.Any(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
+    /// <summary>Remove a pin from the default Quick Access list (by path).</summary>
+    public static void Unpin(string path) => UnpinFrom("quick", path);
+
+    public static bool IsPinned(string path) => FindPin(path) is not null;
 
     private void ReloadAllTabs()
     {

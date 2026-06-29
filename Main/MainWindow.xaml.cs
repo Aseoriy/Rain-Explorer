@@ -152,15 +152,48 @@ public partial class MainWindow : Window
             _vm.NavigateTo(n.Path);
     }
 
-    // The (+) on the Quick access header: browse for a folder and pin it.
+    // The (+) on a list header: browse for a folder and pin it to THAT list.
     private void AddPin_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFolderDialog { Title = "Pin a folder to Quick Access" };
+        string key = NodeFrom(sender)?.GroupKey ?? "quick";
+        var dlg = new OpenFolderDialog { Title = "Pin a folder to this list" };
         string cur = _vm.ActivePane.SelectedTab?.CurrentPath ?? "";
         if (Directory.Exists(cur)) dlg.InitialDirectory = cur;
         if (dlg.ShowDialog() == true && Directory.Exists(dlg.FolderName))
-            MainViewModel.Pin(dlg.FolderName);
+            MainViewModel.PinTo(key, dlg.FolderName);
     }
+
+    // ---- Section header: collapse + list management ------------------------
+    private void Header_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (NodeFrom(sender) is { IsHeader: true } n)
+        {
+            MainViewModel.ToggleGroupCollapsed(n.GroupKey);
+            e.Handled = true;
+        }
+    }
+
+    private void NewList_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new InputDialog("New list", "List name:", "") { Owner = this };
+        MainViewModel.AddCustomGroup(dlg.ShowDialog() == true ? dlg.Value : null);
+    }
+
+    private void RenameList_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeFrom(sender) is not { } n) return;
+        var dlg = new InputDialog("Rename list", "List name:", n.Name) { Owner = this };
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Value))
+            MainViewModel.RenameGroup(n.GroupKey, dlg.Value);
+    }
+
+    private void DeleteList_Click(object sender, RoutedEventArgs e)
+    {
+        if (NodeFrom(sender) is { } n) MainViewModel.DeleteGroup(n.GroupKey);
+    }
+
+    private void HideDrives_Click(object sender, RoutedEventArgs e) =>
+        SettingsStore.Instance.Settings.ShowDrivesInSidebar = false;
 
     // ---- Sidebar collapse toggle (animated) --------------------------------
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
@@ -193,7 +226,7 @@ public partial class MainWindow : Window
 
     private void NodeUnpin_Click(object sender, RoutedEventArgs e)
     {
-        if (NodeFrom(sender) is { } n) MainViewModel.Unpin(n.Path);
+        if (NodeFrom(sender) is { } n) MainViewModel.UnpinFrom(n.GroupKey, n.Path);
     }
 
     private void NodeChangeIcon_Click(object sender, RoutedEventArgs e)
@@ -217,8 +250,55 @@ public partial class MainWindow : Window
     // ---- Drop files onto a sidebar folder/pin/drive ------------------------
     private SidebarNode? _sidebarDropTarget;
 
+    // ---- Drag a pinned item to reorder it within its list ------------------
+    private const string PinDragFormat = "RainExplorerPinReorder";
+    private Point _pinDragStart;
+    private SidebarNode? _pinDragNode;
+
+    private void SidebarTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _pinDragStart = e.GetPosition(null);
+        var n = NodeUnder(e.OriginalSource);
+        _pinDragNode = n is { Kind: NodeKind.Pinned } ? n : null;
+    }
+
+    private void SidebarTree_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_pinDragNode is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _pinDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _pinDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+        var node = _pinDragNode;
+        _pinDragNode = null;
+        var data = new DataObject(PinDragFormat, node.GroupKey + "|" + node.Path);
+        try { DragDrop.DoDragDrop(SidebarTree, data, DragDropEffects.Move); }
+        catch { /* drag cancelled */ }
+        finally { SetSidebarDropTarget(null); }
+    }
+
+    private static (string key, string path) ParsePinDrag(DragEventArgs e)
+    {
+        string s = e.Data.GetData(PinDragFormat) as string ?? "";
+        int i = s.IndexOf('|');
+        return i < 0 ? ("", s) : (s[..i], s[(i + 1)..]);
+    }
+
     private void Sidebar_DragOver(object sender, DragEventArgs e)
     {
+        // Reordering a pin: only valid when hovering another pin in the SAME list.
+        if (e.Data.GetDataPresent(PinDragFormat))
+        {
+            var (srcKey, srcPath) = ParsePinDrag(e);
+            var t = NodeUnder(e.OriginalSource);
+            bool ok = t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey
+                      && !string.Equals(t.Path, srcPath, StringComparison.OrdinalIgnoreCase);
+            e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
+            SetSidebarDropTarget(ok ? t : null);
+            e.Handled = true;
+            return;
+        }
+
         var node = NodeUnder(e.OriginalSource);
         string? dest = SidebarDropDir(node);
         var files = e.Data.GetData(DataFormats.FileDrop) as string[];
@@ -233,8 +313,19 @@ public partial class MainWindow : Window
     private void Sidebar_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
-        var node = NodeUnder(e.OriginalSource);
         SetSidebarDropTarget(null);
+
+        // Pin reorder within a list.
+        if (e.Data.GetDataPresent(PinDragFormat))
+        {
+            var (srcKey, srcPath) = ParsePinDrag(e);
+            var t = NodeUnder(e.OriginalSource);
+            if (t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey)
+                MainViewModel.ReorderPin(srcKey, srcPath, t.Path, DropsAfter(e.OriginalSource, e));
+            return;
+        }
+
+        var node = NodeUnder(e.OriginalSource);
         string? dest = SidebarDropDir(node);
         if (dest is null) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
@@ -243,6 +334,16 @@ public partial class MainWindow : Window
         string? err = FileDropService.Perform(files, dest, move);
         // A move emptied the source folder — refresh the active tab if it's showing it.
         if (err is null && move) _ = _vm.ActivePane.SelectedTab?.ReloadAsync();
+    }
+
+    // True if the cursor is in the lower half of the hovered row (drop after it).
+    private static bool DropsAfter(object? source, DragEventArgs e)
+    {
+        DependencyObject? d = source as DependencyObject;
+        while (d is not null and not TreeViewItem) d = VisualTreeHelper.GetParent(d);
+        if (d is TreeViewItem tvi && tvi.ActualHeight > 0)
+            return e.GetPosition(tvi).Y > tvi.ActualHeight / 2;
+        return false;
     }
 
     // A droppable target = a real-directory node (pin / drive / subfolder), not a header or Home/Drives token.

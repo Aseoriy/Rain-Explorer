@@ -60,11 +60,23 @@ public static class ShellIntegrationService
     // HKCR view). DelegateExecute="" disables the shell's default COM handler so our
     // command string actually runs. Win+E points at the File Explorer folder CLSID.
     // All HKCU-only and reversible; it never replaces explorer.exe itself.
+    //
+    // Directory/Drive alone only cover double-click and Win+E. "Show in folder"
+    // (browser downloads), "Reveal in File Explorer" (VS Code, Claude, other
+    // Electron apps) and any other caller of the shell's SHOpenFolderAndSelectItems
+    // API resolve the target through the BASE "Folder" class and invoke its open
+    // (or explore) verb — so we must override those too, or those actions keep
+    // launching Windows Explorer even with the toggle on. This mirrors how the
+    // Files app makes itself the default. Virtual locations that route through the
+    // Folder verb but aren't real paths (This PC, Recycle Bin, …) are detected on
+    // startup and handed back to Windows Explorer — see App.ResolveLaunchTarget.
 
     private static readonly string[] OpenCommandKeys =
     {
         @"Software\Classes\Directory\shell\open\command",
         @"Software\Classes\Drive\shell\open\command",
+        @"Software\Classes\Folder\shell\open\command",
+        @"Software\Classes\Folder\shell\explore\command",
     };
 
     private const string WinEKey =

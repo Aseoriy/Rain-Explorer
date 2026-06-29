@@ -41,6 +41,29 @@ public sealed class FileItem : INotifyPropertyChanged
     public Brush IconBrush =>
         IsDirectory ? Icons.FolderBrush : Icons.BrushForExtension(Extension.ToLowerInvariant());
 
+    // ---- Real Windows associated icon (lazy) -------------------------------
+    private ImageSource? _icon;
+    private bool _iconRequested;
+    /// <summary>The actual Explorer icon for this item (exe-embedded icon, registered
+    /// file-type icon, folder icon). Loaded on first access off the UI thread; until it
+    /// arrives this is null and the view falls back to the vector glyph (<see cref="IconKey"/>).</summary>
+    public ImageSource? Icon
+    {
+        get
+        {
+            if (_icon is null && !_iconRequested)
+            {
+                _iconRequested = true;
+                ShellIconService.LoadAsync(FullPath, IsDirectory, img =>
+                {
+                    _icon = img;
+                    OnPropertyChanged(nameof(Icon));
+                });
+            }
+            return _icon;
+        }
+    }
+
     public string TypeLabel =>
         IsDirectory ? "Folder" : (Extension.Length > 0 ? $"{Extension} file" : "File");
 

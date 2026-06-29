@@ -7,6 +7,17 @@ public enum RenameMode { Dialog, Inline }
 public enum ViewDensity { Comfortable, Compact }
 public enum SizeFormat { Binary, Decimal }
 
+/// <summary>What happens when the user deletes items.</summary>
+public enum DeleteBehavior
+{
+    /// <summary>Ask each time whether to recycle or permanently delete.</summary>
+    Prompt,
+    /// <summary>Always send to the Recycle Bin, no prompt.</summary>
+    Recycle,
+    /// <summary>Always delete permanently, no prompt.</summary>
+    Permanent,
+}
+
 /// <summary>How the file list lays out its items.</summary>
 public enum ViewLayout { Details, List, Tiles, Grid }
 
@@ -82,9 +93,9 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Open items with a single click instead of a double-click.</summary>
     public bool SingleClickToOpen { get => _singleClickToOpen; set => Set(ref _singleClickToOpen, value); }
 
-    private bool _confirmDelete = true;
-    /// <summary>Ask for confirmation before sending items to the Recycle Bin.</summary>
-    public bool ConfirmDelete { get => _confirmDelete; set => Set(ref _confirmDelete, value); }
+    private DeleteBehavior _deleteBehavior = DeleteBehavior.Prompt;
+    /// <summary>Whether deleting prompts each time, always recycles, or always permanently deletes.</summary>
+    public DeleteBehavior DeleteBehavior { get => _deleteBehavior; set => Set(ref _deleteBehavior, value); }
 
     private bool _warnOnExtensionChange = true;
     /// <summary>Warn when a rename changes a file's extension.</summary>
@@ -102,6 +113,11 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Whether the right-hand file preview pane is shown (toggle with Space).</summary>
     public bool ShowPreviewPane { get => _showPreviewPane; set => Set(ref _showPreviewPane, value); }
 
+    private bool _rememberActivity = true;
+    /// <summary>Persist the activity center log across restarts. When off, the log is
+    /// in-memory only and resets every launch.</summary>
+    public bool RememberActivity { get => _rememberActivity; set => Set(ref _rememberActivity, value); }
+
     private double _previewPaneWidth = 340;
     /// <summary>Remembered width of the preview pane (px), restored across restarts.</summary>
     public double PreviewPaneWidth { get => _previewPaneWidth; set => Set(ref _previewPaneWidth, value); }
@@ -110,8 +126,23 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// Once set, removed defaults stay removed.</summary>
     public bool QuickAccessSeeded { get; set; }
 
-    /// <summary>User-pinned Quick Access folders shown in the sidebar.</summary>
+    /// <summary>User-pinned Quick Access folders shown in the sidebar (the default list).</summary>
     public List<PinnedItem> Pinned { get; set; } = new();
+
+    /// <summary>Extra user-created sidebar lists (e.g. "Quick access 2"), each with its own pins.</summary>
+    public List<SidebarGroup> CustomGroups { get; set; } = new();
+
+    private bool _showDrivesInSidebar = true;
+    /// <summary>Whether the Drives section is shown in the sidebar.</summary>
+    public bool ShowDrivesInSidebar { get => _showDrivesInSidebar; set => Set(ref _showDrivesInSidebar, value); }
+
+    private bool _quickAccessCollapsed;
+    /// <summary>Collapsed state of the default Quick access section.</summary>
+    public bool QuickAccessCollapsed { get => _quickAccessCollapsed; set => Set(ref _quickAccessCollapsed, value); }
+
+    private bool _drivesCollapsed;
+    /// <summary>Collapsed state of the Drives section.</summary>
+    public bool DrivesCollapsed { get => _drivesCollapsed; set => Set(ref _drivesCollapsed, value); }
 
     /// <summary>Raise a change for <see cref="Pinned"/> (list mutations don't auto-notify) to trigger save + sidebar rebuild.</summary>
     public void NotifyPinnedChanged() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Pinned)));

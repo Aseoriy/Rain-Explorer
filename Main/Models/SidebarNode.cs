@@ -28,6 +28,19 @@ public sealed class SidebarNode : ObservableObject
     /// <summary>True for headers — they shouldn't be selectable/navigable.</summary>
     public bool IsSelectable => Kind != NodeKind.Header;
 
+    /// <summary>Which sidebar list this node belongs to: "quick", "drives", or "custom:&lt;index&gt;".
+    /// Carried by both section headers and pinned items so handlers know the target list.</summary>
+    public string GroupKey { get; init; } = "";
+
+    /// <summary>True for a custom-list header (gets rename/delete affordances).</summary>
+    public bool IsCustomHeader { get; init; }
+
+    /// <summary>True for the Drives section header (gets a "Hide drives" affordance).</summary>
+    public bool IsDrivesHeader => Kind == NodeKind.Header && GroupKey == "drives";
+
+    /// <summary>Collapsed state shown on a section header (drives the chevron + hides items).</summary>
+    public bool IsCollapsed { get; init; }
+
     public bool CanExpand { get; init; }
     public ObservableCollection<SidebarNode> Children { get; } = new();
 
@@ -49,15 +62,23 @@ public sealed class SidebarNode : ObservableObject
     public bool IsDropTarget { get => _isDropTarget; set => Set(ref _isDropTarget, value); }
 
     /// <summary>A lazily-expandable folder node (used for places, drives, pins and their subfolders).</summary>
-    public static SidebarNode Folder(string name, string path, string iconKey, NodeKind kind)
+    public static SidebarNode Folder(string name, string path, string iconKey, NodeKind kind, string groupKey = "")
     {
-        var node = new SidebarNode { Name = name, Path = path, IconKey = iconKey, Kind = kind, CanExpand = true };
+        var node = new SidebarNode
+        {
+            Name = name, Path = path, IconKey = iconKey, Kind = kind, CanExpand = true, GroupKey = groupKey,
+        };
         node.Children.Add(NewPlaceholder());   // gives the expander chevron before the first load
         return node;
     }
 
-    public static SidebarNode HeaderNode(string name, bool pinnedHeader = false) =>
-        new() { Name = name, Kind = NodeKind.Header, IsPinnedHeader = pinnedHeader };
+    public static SidebarNode HeaderNode(string name, bool pinnedHeader = false,
+        string groupKey = "", bool collapsed = false, bool customHeader = false) =>
+        new()
+        {
+            Name = name, Kind = NodeKind.Header, IsPinnedHeader = pinnedHeader,
+            GroupKey = groupKey, IsCollapsed = collapsed, IsCustomHeader = customHeader,
+        };
 
     public static SidebarNode SpecialNode(string name, string token, string iconKey) =>
         new() { Name = name, Path = token, IconKey = iconKey, Kind = NodeKind.Special };

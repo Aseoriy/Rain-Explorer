@@ -1,12 +1,12 @@
-; Inno Setup script for Rain Explorer (framework-dependent build).
-; Builds a per-user (no-admin) installer with Start-menu shortcut, uninstaller,
-; and a check for the required .NET 10 Desktop Runtime.
+; Inno Setup script for Rain Explorer (self-contained build).
+; Builds a per-user (no-admin) installer with Start-menu shortcut and uninstaller.
+; The .NET 10 runtime is bundled with the app, so no separate runtime is required.
 
 #define MyAppName "Rain Explorer"
-#define MyAppVersion "1.0.0-PreRelease"
+#define MyAppVersion "1.1.0-Pre"
 #define MyAppPublisher "Aseoriy"
 #define MyAppExeName "RainExplorer.exe"
-#define SourceDir "E:\Downloads\Rain\Code stuff\File Explorer\dist\app"
+#define SourceDir "E:\Downloads\Rain\Code stuff\File Explorer\dist\app-sc"
 #define IconFile "E:\Downloads\Rain\Code stuff\File Explorer\Main\Assets\rain.ico"
 
 [Setup]
@@ -15,7 +15,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.1.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoCompany={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
@@ -50,47 +50,5 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[Code]
-// True if any "10.*" Microsoft.WindowsDesktop.App runtime folder exists.
-function IsDotNet10DesktopInstalled(): Boolean;
-var
-  FindRec: TFindRec;
-  BasePath: String;
-begin
-  Result := False;
-  BasePath := ExpandConstant('{commonpf}\dotnet\shared\Microsoft.WindowsDesktop.App');
-  if FindFirst(BasePath + '\10.*', FindRec) then
-  begin
-    try
-      repeat
-        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
-        begin
-          Result := True;
-          Break;
-        end;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
-    end;
-  end;
-end;
-
-function InitializeSetup(): Boolean;
-var
-  ErrorCode: Integer;
-begin
-  Result := True;
-  if not IsDotNet10DesktopInstalled() then
-  begin
-    if MsgBox('Rain Explorer needs the .NET 10 Desktop Runtime (x64), which doesn''t appear to be installed.'
-        + #13#10#13#10
-        + 'Click Yes to open the download page now (install the "Desktop Runtime", then run this setup again), '
-        + 'or No to continue anyway.',
-        mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      ShellExec('open', 'https://dotnet.microsoft.com/en-us/download/dotnet/10.0',
-        '', '', SW_SHOW, ewNoWait, ErrorCode);
-      Result := False;
-    end;
-  end;
-end;
+; Self-contained build — the .NET runtime ships inside {app}, so there is no
+; runtime prerequisite check here.

@@ -418,6 +418,15 @@ public partial class BreadcrumbBar : UserControl
 
         if (p.Length == 0) { ExitEdit(); Rebuild(); return; }
 
+        // Browser-style command shortcuts: typing "cmd", "powershell", "wt", etc. in the
+        // address bar launches that tool with the current folder as its working directory.
+        if (tab.Page == PageKind.Folder && Directory.Exists(tab.CurrentPath)
+            && TryLaunchInFolder(p, tab.CurrentPath))
+        {
+            ExitEdit();
+            return;
+        }
+
         // A file path opens the file; a folder navigates; anything else shows a status warning.
         if (File.Exists(p))
         {
@@ -427,6 +436,41 @@ public partial class BreadcrumbBar : UserControl
             return;
         }
         _ = CommitNavigate(tab, p);
+    }
+
+    // Recognised address-bar commands → the executable to run in the current folder.
+    // "explorer" reveals the folder in Windows Explorer; the rest open a shell there.
+    private static readonly Dictionary<string, string> ShellCommands =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cmd"] = "cmd.exe",
+            ["powershell"] = "powershell.exe",
+            ["pwsh"] = "pwsh.exe",
+            ["wt"] = "wt.exe",
+            ["bash"] = "bash.exe",
+            ["explorer"] = "explorer.exe",
+        };
+
+    /// <summary>If <paramref name="text"/> is a known shell command, launch it with
+    /// <paramref name="folder"/> as the working directory. Returns true if handled.</summary>
+    private static bool TryLaunchInFolder(string text, string folder)
+    {
+        if (!ShellCommands.TryGetValue(text, out var exe)) return false;
+        try
+        {
+            // explorer.exe ignores WorkingDirectory; pass the folder as its argument.
+            var psi = string.Equals(exe, "explorer.exe", StringComparison.OrdinalIgnoreCase)
+                ? new ProcessStartInfo(exe, $"\"{folder}\"") { UseShellExecute = true }
+                : new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = folder };
+            Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            // wt/pwsh/bash may not be installed — fall through so the text is treated
+            // as a path instead (and the user gets the normal "not a folder" warning).
+            return false;
+        }
     }
 
     private async Task CommitNavigate(TabViewModel tab, string p)

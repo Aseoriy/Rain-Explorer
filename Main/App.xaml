@@ -1,8 +1,10 @@
 <Application
     x:Class="RainExplorer.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    StartupUri="MainWindow.xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- The main window is created explicitly in App.OnStartup so a "Show in folder"
+         launch that targets a virtual shell location can forward to Windows Explorer
+         and exit without flashing a window. -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
