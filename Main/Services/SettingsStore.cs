@@ -54,20 +54,35 @@ public sealed class SettingsStore
             return new AppSettings();
         }
 
-        try
+        // A transient IOException here means another process is mid-write (a sharing
+        // violation), NOT that the file is corrupt. Retry a few times before giving up
+        // so we never mistake "busy" for "broken" and fall back to empty defaults —
+        // that fallback, followed by a Save, is exactly what used to wipe the pins.
+        for (int attempt = 0; attempt < 5; attempt++)
         {
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_path), JsonOpts)
-                   ?? new AppSettings();
+            try
+            {
+                using var fs = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var sr = new StreamReader(fs);
+                return JsonSerializer.Deserialize<AppSettings>(sr.ReadToEnd(), JsonOpts)
+                       ?? new AppSettings();
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(60);   // file busy — let the other writer finish, then retry
+            }
+            catch
+            {
+                break;              // genuine parse error — stop and preserve below
+            }
         }
-        catch
-        {
-            // The file exists but won't parse. Preserve it for recovery instead of
-            // silently overwriting it with defaults, and flag the failure so we don't
-            // re-seed (which would permanently lose the user's pinned items).
-            try { File.Copy(_path, _path + ".corrupt", overwrite: true); } catch { }
-            LoadFailed = true;
-            return new AppSettings();
-        }
+
+        // The file exists but won't parse (or stayed locked). Preserve it for recovery
+        // instead of silently overwriting it with defaults, and flag the failure so we
+        // neither re-seed nor Save over it (either would lose the user's pinned items).
+        try { File.Copy(_path, _path + ".corrupt", overwrite: true); } catch { }
+        LoadFailed = true;
+        return new AppSettings();
     }
 
     /// <summary>Force an immediate save (e.g. on app exit).</summary>
@@ -78,6 +93,12 @@ public sealed class SettingsStore
     // (which would silently load as defaults on next launch).
     private void Save()
     {
+        // We couldn't read the existing file at startup (locked or corrupt). Writing now
+        // would overwrite a file we never successfully loaded — clobbering whatever pins
+        // it holds with our empty in-memory defaults. Refuse: the user's data on disk
+        // (and the .corrupt copy) stays intact until a clean run can read it.
+        if (LoadFailed) return;
+
         try
         {
             string json = JsonSerializer.Serialize(Settings, JsonOpts);

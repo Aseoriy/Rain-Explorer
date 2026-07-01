@@ -21,8 +21,20 @@ namespace RainExplorer.Services;
 /// </summary>
 public static class ShellIconService
 {
-    private static readonly Dictionary<string, BitmapSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, BitmapSource> Cache = new(StringComparer.OrdinalIgnoreCase);
+    // Requests for a key that's already being resolved piggyback on that one native
+    // call instead of issuing their own — see the threading note on NativeGate below.
+    private static readonly Dictionary<string, List<Action<BitmapSource>>> InFlight = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object Gate = new();
+
+    // SHGetFileInfo's icon extraction isn't safe to call concurrently from multiple
+    // threads: opening a folder fires one lookup per row at once, and — before this
+    // lock — those concurrent native calls would intermittently return no icon for
+    // some rows with no error, and the (permanently cached) failure meant that row's
+    // icon never appeared until something reset the in-memory cache, e.g. an app
+    // restart. Serializing the native call, plus never caching a failure, fixes both
+    // the flakiness and its permanence.
+    private static readonly object NativeGate = new();
 
     // Extensions whose icon is embedded in / specific to the individual file, so we
     // must query the real path rather than reusing an extension-level icon.
@@ -44,21 +56,40 @@ public static class ShellIconService
         {
             if (Cache.TryGetValue(key, out var cached))
             {
-                if (cached is not null) onLoaded(cached);
+                onLoaded(cached);
                 return;
             }
+
+            if (InFlight.TryGetValue(key, out var waiters))
+            {
+                waiters.Add(onLoaded);
+                return;
+            }
+            InFlight[key] = new List<Action<BitmapSource>> { onLoaded };
         }
 
         Task.Run(() =>
         {
             BitmapSource? img = null;
-            try { img = Resolve(path, isDirectory); } catch { /* fall back to the vector glyph */ }
+            try { lock (NativeGate) { img = Resolve(path, isDirectory); } }
+            catch { /* fall back to the vector glyph */ }
             if (img is not null && img.CanFreeze) img.Freeze();
 
-            lock (Gate) { Cache[key] = img; }
+            List<Action<BitmapSource>>? waiters;
+            lock (Gate)
+            {
+                // A failed resolve is NOT cached — a transient extraction failure
+                // must stay retryable on the next request for this key, not get
+                // stuck as a permanent miss for the rest of the process's lifetime.
+                if (img is not null) Cache[key] = img;
+                InFlight.Remove(key, out waiters);
+            }
 
-            if (img is not null)
-                Application.Current?.Dispatcher.BeginInvoke(() => onLoaded(img));
+            if (img is not null && waiters is not null)
+                Application.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    foreach (var cb in waiters) cb(img);
+                });
         });
     }
 

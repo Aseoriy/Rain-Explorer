@@ -1,13 +1,23 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace RainExplorer.Models;
 
+// These enums are persisted to settings.json BY NAME ("Dialog", "Comfortable", …).
+// The string<->enum converter is pinned directly on each type via [JsonConverter] so
+// reading always works, regardless of whether a JsonStringEnumConverter happens to be
+// registered on the serializer options — relying on the options collection silently
+// failed in the published build, which threw on load and wiped the user's pins.
+[JsonConverter(typeof(JsonStringEnumConverter<RenameMode>))]
 public enum RenameMode { Dialog, Inline }
+[JsonConverter(typeof(JsonStringEnumConverter<ViewDensity>))]
 public enum ViewDensity { Comfortable, Compact }
+[JsonConverter(typeof(JsonStringEnumConverter<SizeFormat>))]
 public enum SizeFormat { Binary, Decimal }
 
 /// <summary>What happens when the user deletes items.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DeleteBehavior>))]
 public enum DeleteBehavior
 {
     /// <summary>Ask each time whether to recycle or permanently delete.</summary>
@@ -19,6 +29,7 @@ public enum DeleteBehavior
 }
 
 /// <summary>How the file list lays out its items.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ViewLayout>))]
 public enum ViewLayout { Details, List, Tiles, Grid }
 
 /// <summary>

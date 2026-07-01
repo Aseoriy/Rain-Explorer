@@ -57,6 +57,15 @@ public partial class MainWindow : Window
     private void AddShortcut(Key key, ModifierKeys mods, Action action) =>
         InputBindings.Add(new KeyBinding(new RelayCommand(_ => action()), key, mods));
 
+    /// <summary>Open <paramref name="folder"/> in a new tab of the active pane, optionally
+    /// highlighting <paramref name="select"/> once it loads. Used when a second launch is
+    /// forwarded to this (the single) running instance instead of starting a new process.</summary>
+    public void OpenPathInNewTab(string folder, string? select)
+    {
+        App.SelectPath = select;
+        _vm.ActivePane.NewTab(folder, activate: true);
+    }
+
     // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs in the active pane.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {

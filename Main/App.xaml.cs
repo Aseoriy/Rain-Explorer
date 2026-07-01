@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using RainExplorer.Models;
 using RainExplorer.Services;
@@ -17,9 +19,29 @@ public partial class App : Application
     /// launched via "Show in folder" / "Reveal in File Explorer" (the /select form).</summary>
     public static string? SelectPath { get; set; }
 
+    // Single-instance plumbing. Only one process may own settings.json at a time:
+    // two processes racing on it could read a half-written file, fall back to empty
+    // defaults, and Save over the user's pinned items. Per-user names so concurrent
+    // logins don't collide.
+    private const string MutexName = "RainExplorer.SingleInstance.v1";
+    private const string PipeName = "RainExplorer.Forward.v1";
+    private static Mutex? _instanceMutex;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // If another instance already holds the mutex, hand it our launch target (so it
+        // opens in a new tab) and bow out — never run a second process against the same
+        // settings file.
+        _instanceMutex = new Mutex(initiallyOwned: true, MutexName, out bool isFirstInstance);
+        if (!isFirstInstance)
+        {
+            ForwardArgsToRunningInstance(e.Args);
+            Shutdown();
+            return;
+        }
+        StartForwardListener();
 
         // Last-resort safety net: log unhandled UI-thread exceptions and keep the
         // app alive rather than hard-crashing on a stray binding/render fault.
@@ -73,6 +95,74 @@ public partial class App : Application
                 $"{DateTime.Now:u}  {ex}{Environment.NewLine}{Environment.NewLine}");
         }
         catch { /* logging must never throw */ }
+    }
+
+    // ---- Single instance: forward a second launch to the running window --------
+
+    /// <summary>Run a background pipe server that accepts launch arguments from later
+    /// instances and opens them as a new tab in this (the first) instance's window.</summary>
+    private void StartForwardListener()
+    {
+        var thread = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var server = new NamedPipeServerStream(
+                        PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+                    server.WaitForConnection();
+                    using var reader = new StreamReader(server);
+                    string payload = reader.ReadToEnd();
+                    string[] args = payload.Length == 0
+                        ? Array.Empty<string>()
+                        : payload.Split('\n');
+                    Dispatcher.BeginInvoke(() => OpenForwardedTarget(args));
+                }
+                catch
+                {
+                    // A malformed connection must not kill the listener — keep accepting.
+                }
+            }
+        })
+        { IsBackground = true, Name = "RainExplorer.ForwardListener" };
+        thread.Start();
+    }
+
+    /// <summary>Send our launch arguments to the already-running instance, best-effort.</summary>
+    private static void ForwardArgsToRunningInstance(string[] args)
+    {
+        try
+        {
+            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+            client.Connect(2000);
+            using var writer = new StreamWriter(client) { AutoFlush = true };
+            writer.Write(string.Join('\n', args));
+        }
+        catch { /* the other instance may be shutting down — nothing we can do */ }
+    }
+
+    /// <summary>Bring the existing window forward and, if the forwarded args name a folder
+    /// or file, open it in a new tab. Runs on the UI thread.</summary>
+    private void OpenForwardedTarget(string[] args)
+    {
+        if (Current.MainWindow is not MainWindow w) return;
+
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Activate();
+        w.Topmost = true;   // nudge to the foreground, then release so it isn't pinned
+        w.Topmost = false;
+
+        string? folder = null, select = null;
+        foreach (string raw in args)
+        {
+            string p = StripSelectSwitch(raw).Trim().Trim('"');
+            if (p.Length == 0) continue;
+            if (Directory.Exists(p)) { folder = p; break; }
+            if (File.Exists(p)) { folder = Path.GetDirectoryName(p); select = p; break; }
+        }
+
+        if (folder is not null) w.OpenPathInNewTab(folder, select);
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
