@@ -82,8 +82,8 @@ public sealed class RecycleAction : UndoAction
     {
         var existing = _paths.Where(PathExists).ToList();
         if (existing.Count == 0) return (null, null);
-        string? e = new FileOperationsService().Delete(existing);   // to the Recycle Bin
-        if (e is not null) return (e, null);
+        var res = new FileOperationsService().Delete(existing);   // to the Recycle Bin
+        if (!res.Ok) return (res.Error, null);
         return (null, new RestoreFromBinAction(existing, _label));
     }
 }

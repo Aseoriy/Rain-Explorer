@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
 using System.Windows.Input;
+using System.Windows.Threading;
 using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
@@ -118,7 +119,32 @@ public sealed class TabViewModel : ObservableObject
     private bool _isSearchView;
 
     private string _status = string.Empty;
-    public string Status { get => _status; set => Set(ref _status, value); }
+    private DispatcherTimer? _statusClearTimer;
+
+    // Warnings/errors ("⚠️ …") are transient toasts — clear them after a while so the
+    // footer doesn't get stuck showing a stale error. Normal status (item counts, page
+    // labels) is left alone since it reflects ongoing state, not a one-off notification.
+    public string Status
+    {
+        get => _status;
+        set
+        {
+            if (!Set(ref _status, value)) return;
+            _statusClearTimer?.Stop();
+            if (!value.StartsWith("⚠️", StringComparison.Ordinal)) return;
+            _statusClearTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(7) };
+            _statusClearTimer.Tick -= OnStatusClearTick;
+            _statusClearTimer.Tick += OnStatusClearTick;
+            _statusClearTimer.Start();
+        }
+    }
+
+    private void OnStatusClearTick(object? sender, EventArgs e)
+    {
+        _statusClearTimer!.Stop();
+        if (Page == PageKind.Folder) ApplyView();
+        else Status = string.Empty;
+    }
 
     private bool _busy;
     public bool Busy { get => _busy; set => Set(ref _busy, value); }

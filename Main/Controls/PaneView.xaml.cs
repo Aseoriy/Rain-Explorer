@@ -33,6 +33,10 @@ public partial class PaneView : UserControl
     private Point _marqueeStart;
     private bool _maybeMarquee;
     private bool _marqueeing;
+    // When the user presses an already-selected row (part of a multi-selection) without
+    // modifiers, we suppress WPF's default "collapse to this row" so a drag can carry the
+    // whole selection. If no drag follows, the mouse-up collapses to just this row.
+    private FileItem? _pendingSingleSelect;
     private FileItem? _dropTarget;
     private DragAdorner? _dragAdorner;
     private ViewBase? _detailsView;
@@ -61,7 +65,13 @@ public partial class PaneView : UserControl
         DataContextChanged += OnDataContextChanged;
         FileList.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler(OnHeaderClick));
         FileList.GiveFeedback += FileList_GiveFeedback;
-        Loaded += (_, _) => { ApplyLayout(); ApplyPreviewVisibility(); };
+        Loaded += (_, _) =>
+        {
+            ApplyLayout();
+            ApplyPreviewVisibility();
+            Window.GetWindow(this)?.AddHandler(UIElement.PreviewMouseDownEvent,
+                (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick, true);
+        };
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
     }
 
@@ -156,28 +166,65 @@ public partial class PaneView : UserControl
     }
 
     // ---- Toolbar dropdown buttons ------------------------------------------
+    // These are plain Popups (not ContextMenu — a ContextMenu keeps its own mouse capture
+    // regardless of StaysOpen, which swallows the re-click on its own toggle button rather
+    // than letting it fall through as a normal Click, so a naive toggle either instantly
+    // reopens or gets stuck open no matter how the reopen is suppressed). A bare Popup has no
+    // such capture, so we can safely own the whole open/close lifecycle ourselves: the button's
+    // Click is the only way its own popup opens/closes, and any other click in the window
+    // (handled below) closes it.
     private void OpenButtonMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { ContextMenu: { } menu } b)
+        var popup = sender == SortButton ? SortPopup : sender == LayoutButton ? LayoutPopup : null;
+        if (popup is null) return;
+        if (popup.IsOpen) { popup.IsOpen = false; return; }
+        CloseToolbarPopups();
+        popup.IsOpen = true;
+    }
+
+    private void CloseToolbarPopups()
+    {
+        SortPopup.IsOpen = false;
+        LayoutPopup.IsOpen = false;
+    }
+
+    // A click anywhere else in the window closes whichever dropdown is open (popup content
+    // itself renders in its own top-level window, so clicks inside it never reach here).
+    private void DismissToolbarPopupsOnOutsideClick(object sender, MouseButtonEventArgs e)
+    {
+        var src = e.OriginalSource as DependencyObject;
+        if (SortPopup.IsOpen && !IsWithin(src, SortButton)) SortPopup.IsOpen = false;
+        if (LayoutPopup.IsOpen && !IsWithin(src, LayoutButton)) LayoutPopup.IsOpen = false;
+    }
+
+    private static bool IsWithin(DependencyObject? d, DependencyObject ancestor)
+    {
+        while (d is not null)
         {
-            menu.PlacementTarget = b;
-            menu.IsOpen = true;
+            if (ReferenceEquals(d, ancestor)) return true;
+            d = VisualTreeHelper.GetParent(d);
         }
+        return false;
     }
 
     private void Sort_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: string key }) _tab?.SortCommand.Execute(key);
+        SortPopup.IsOpen = false;
     }
 
-    private void ReverseSort_Click(object sender, RoutedEventArgs e) =>
+    private void ReverseSort_Click(object sender, RoutedEventArgs e)
+    {
         _tab?.SortCommand.Execute(_tab.SortKey);   // re-selecting the same key flips direction
+        SortPopup.IsOpen = false;
+    }
 
     private void Layout_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: string name } &&
             Enum.TryParse<ViewLayout>(name, out var layout))
             SettingsStore.Instance.Settings.ViewLayout = layout;
+        LayoutPopup.IsOpen = false;
     }
 
     // ---- Single-click to open (when enabled) -------------------------------
@@ -185,6 +232,17 @@ public partial class PaneView : UserControl
     {
         if (_marqueeing) { EndMarquee(); e.Handled = true; return; }
         _maybeMarquee = false;
+
+        // A plain click (no drag) on a row that was part of a multi-selection: now that we
+        // know it wasn't a drag, collapse the selection down to just that row (normal click).
+        if (_pendingSingleSelect is { } single)
+        {
+            _pendingSingleSelect = null;
+            FileList.SelectedItems.Clear();
+            FileList.SelectedItems.Add(single);
+            return;
+        }
+
         if (!SettingsStore.Instance.Settings.SingleClickToOpen) return;
         if (Keyboard.Modifiers != ModifierKeys.None) return;       // let Ctrl/Shift extend selection
         if (Keyboard.FocusedElement is TextBox) return;            // inline rename in progress
@@ -195,6 +253,9 @@ public partial class PaneView : UserControl
         else
             _vm?.SelectedTab?.Open(item);
     }
+
+    /// <summary>Open a folder in a new tab of this pane (used by the breadcrumb context menu).</summary>
+    public void OpenInNewTab(string path) => _vm?.NewTab(path, activate: true);
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
@@ -395,6 +456,18 @@ public partial class PaneView : UserControl
         _marqueeStart = e.GetPosition(FileList);
         _maybeMarquee = hit is null && _tab is { IsFolderView: true }
                         && !IsWithin<GridViewColumnHeader>(e.OriginalSource);
+
+        // Pressing a row that's already part of a multi-selection (no Ctrl/Shift) must NOT
+        // collapse the selection — otherwise a drag would only carry this one row. Suppress
+        // the default and remember to collapse on mouse-up if the press turns out to be a click.
+        _pendingSingleSelect = null;
+        if (hit is not null && FileList.SelectedItems.Count > 1
+            && FileList.SelectedItems.Contains(hit)
+            && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == 0)
+        {
+            _pendingSingleSelect = hit;
+            e.Handled = true;
+        }
     }
 
     private static bool IsWithin<T>(object? source) where T : DependencyObject
@@ -427,6 +500,7 @@ public partial class PaneView : UserControl
             Math.Abs(pos.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
         _maybeDrag = false;
+        _pendingSingleSelect = null;   // a drag happened — don't collapse the selection on mouse-up
         var items = SelectedItems();
         if (items.Count == 0) return;
         var paths = items.Select(i => i.FullPath).ToList();
@@ -810,10 +884,20 @@ public partial class PaneView : UserControl
                 break;
         }
 
-        var act = Activity.Begin(permanent ? "Delete permanently" : "Delete", Summarize(paths), "trash");
-        string? err = permanent ? _ops.DeletePermanent(paths) : _ops.Delete(paths);
-        Activity.Complete(act, err is null, err);
-        if (err is not null) SetStatus($"⚠️ {err}");
+        var act = Activity.Begin(permanent ? "Permanently deleted" : "Recycled", Summarize(paths), "trash");
+        OpResult res = permanent ? _ops.DeletePermanent(paths) : _ops.Delete(paths);
+
+        // The user backed out of the OS confirm dialog — nothing was deleted. Reflect that in
+        // the activity center (instead of falsely logging a completed delete) and stop here.
+        if (res.Canceled)
+        {
+            Activity.Cancel(act);
+            _ = _tab.ReloadAsync();   // a multi-item delete may have partially completed before cancel
+            return;
+        }
+
+        Activity.Complete(act, res.Ok, res.Error);
+        if (!res.Ok) SetStatus($"⚠️ {res.Error}");
         // Only a Recycle-Bin delete is undoable; a permanent delete can't be restored.
         else if (!permanent) UndoService.Instance.Push(new RestoreFromBinAction(
             paths, paths.Count == 1 ? "Delete" : $"Delete ({paths.Count} items)"));
@@ -1038,22 +1122,7 @@ public partial class PaneView : UserControl
         string? dir = FileList.SelectedItem is FileItem { IsDirectory: true } d
             ? d.FullPath : _tab?.CurrentPath;
         if (string.IsNullOrEmpty(dir)) return;
-        try
-        {
-            // Windows Terminal if present…
-            Process.Start(new ProcessStartInfo("wt.exe")
-            { ArgumentList = { "-d", dir }, UseShellExecute = true });
-        }
-        catch
-        {
-            // …otherwise fall back to PowerShell.
-            try
-            {
-                Process.Start(new ProcessStartInfo("powershell.exe")
-                { WorkingDirectory = dir, UseShellExecute = true });
-            }
-            catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
-        }
+        if (!TerminalLauncher.TryOpen(dir, out var err)) SetStatus($"⚠️ {err}");
     }
 
     // ---- Copy as path (quoted, newline-separated) --------------------------

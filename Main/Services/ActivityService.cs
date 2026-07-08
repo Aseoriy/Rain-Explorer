@@ -113,6 +113,16 @@ public sealed class ActivityService : ObservableObject
         });
     }
 
+    /// <summary>Mark a running activity as cancelled (the user backed out of a confirm dialog,
+    /// so nothing actually happened). Keeps it in the log so the outcome is visible.</summary>
+    public void Cancel(ActivityEntry e) => OnUi(() =>
+    {
+        e.Watch?.Stop();
+        e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
+        e.Status = ActivityStatus.Canceled;
+        Persist();
+    });
+
     public void Clear() => OnUi(() =>
     {
         Items.Clear();

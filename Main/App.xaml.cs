@@ -7,6 +7,7 @@ using System.Threading;
 using System.Windows;
 using RainExplorer.Models;
 using RainExplorer.Services;
+using RainExplorer.Views;
 
 namespace RainExplorer;
 
@@ -81,7 +82,29 @@ public partial class App : Application
         settings.PropertyChanged += OnSettingsChanged;
 
         // Create the main window explicitly (no StartupUri) — see App.xaml.
-        new MainWindow().Show();
+        var window = new MainWindow();
+        window.Show();
+
+        // Quietly check GitHub for a newer release shortly after launch (if enabled).
+        if (settings.AutoUpdate) _ = CheckForUpdatesOnStartupAsync(window);
+    }
+
+    /// <summary>Background update check on launch: if a newer (non-skipped) release exists,
+    /// surface the update dialog. Silent on failure/offline.</summary>
+    private static async Task CheckForUpdatesOnStartupAsync(Window owner)
+    {
+        try
+        {
+            await Task.Delay(2500);   // let the window settle before interrupting
+            var settings = SettingsStore.Instance.Settings;
+            var info = await UpdateService.CheckAsync(settings.BetaUpdates);
+            if (info is null) return;
+            // Don't nag about a version the user explicitly chose to skip.
+            if (string.Equals(info.Version, settings.SkippedUpdateVersion, StringComparison.OrdinalIgnoreCase))
+                return;
+            owner.Dispatcher.Invoke(() => UpdateDialog.ShowFor(info, owner));
+        }
+        catch { /* never let an update check crash startup */ }
     }
 
     private static void LogCrash(Exception ex)

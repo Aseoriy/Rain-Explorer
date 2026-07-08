@@ -3,7 +3,7 @@ using RainExplorer.ViewModels;
 
 namespace RainExplorer.Models;
 
-public enum ActivityStatus { Running, Success, Failed }
+public enum ActivityStatus { Running, Success, Failed, Canceled }
 
 /// <summary>One logged file action shown in the activity center (top-right flyout).</summary>
 public sealed class ActivityEntry : ObservableObject
@@ -30,6 +30,7 @@ public sealed class ActivityEntry : ObservableObject
     {
         ActivityStatus.Running => "Working…",
         ActivityStatus.Success => "Done",
+        ActivityStatus.Canceled => "Cancelled",
         _ => "Failed",
     };
 

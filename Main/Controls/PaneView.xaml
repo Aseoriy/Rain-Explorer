@@ -325,37 +325,17 @@
                 <!-- Sort / View / Split -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
                     <!-- Sort menu -->
-                    <Button Style="{StaticResource IconButton}" Click="OpenButtonMenu_Click" ToolTip="Sort by">
+                    <Button x:Name="SortButton" Style="{StaticResource IconButton}"
+                            Click="OpenButtonMenu_Click" Tag="Sort" ToolTip="Sort by">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.sliders}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
-                                <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
-                                <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
-                                <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
-                                <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
-                                <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
-                                <Separator />
-                                <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
-                            </ContextMenu>
-                        </Button.ContextMenu>
                     </Button>
 
                     <!-- Layout menu -->
-                    <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
-                            Click="OpenButtonMenu_Click" ToolTip="Layout">
+                    <Button x:Name="LayoutButton" Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                            Click="OpenButtonMenu_Click" Tag="Layout" ToolTip="Layout">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.list}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
-                                <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
-                                <MenuItem Header="List" Tag="List" Click="Layout_Click" />
-                                <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
-                                <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
-                            </ContextMenu>
-                        </Button.ContextMenu>
                     </Button>
 
                     <!-- Preview pane toggle -->
@@ -637,5 +617,47 @@
             <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextMuted}"
                        VerticalAlignment="Center" Margin="14,0" FontSize="12" />
         </Border>
+
+        <!-- Sort / Layout toolbar dropdowns: plain Popups (not ContextMenu — a ContextMenu's
+             own mouse capture swallows the re-click on its own toggle button, see
+             OpenButtonMenu_Click) so the open/close toggle is fully reliable. -->
+        <Popup x:Name="SortPopup" PlacementTarget="{Binding ElementName=SortButton}"
+               Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+               PopupAnimation="Fade" VerticalOffset="4">
+            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                    CornerRadius="10" Padding="5" MinWidth="180">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                </Border.Effect>
+                <StackPanel>
+                    <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
+                    <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
+                    <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
+                    <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
+                    <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
+                    <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
+                    <Separator />
+                    <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <Popup x:Name="LayoutPopup" PlacementTarget="{Binding ElementName=LayoutButton}"
+               Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+               PopupAnimation="Fade" VerticalOffset="4">
+            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                    CornerRadius="10" Padding="5" MinWidth="140">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                </Border.Effect>
+                <StackPanel>
+                    <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
+                    <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
+                    <MenuItem Header="List" Tag="List" Click="Layout_Click" />
+                    <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
+                    <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </UserControl>

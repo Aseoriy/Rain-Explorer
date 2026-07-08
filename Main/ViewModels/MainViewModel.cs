@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
@@ -78,7 +81,67 @@ public sealed class MainViewModel : ObservableObject
     {
         SidebarNodes.Clear();
         foreach (var s in _fs.GetSidebarNodes()) SidebarNodes.Add(s);
+        SyncSidebarSelection();   // a rebuild drops selection state — restore it for the active tab
     }
+
+    // ===================== Sidebar selection sync =====================
+    // Keep the highlighted sidebar row in step with where the active tab actually is, no
+    // matter how it got there (file-list click, breadcrumb, Back/Up, a new tab). Without
+    // this the sidebar could keep "All drives" lit after you'd opened C:, so clicking
+    // "All drives" again did nothing (it was still the selected item).
+
+    private TabViewModel? _syncedTab;
+    private bool _suppressNav;
+
+    /// <summary>True while we're programmatically syncing the sidebar's selection, so the
+    /// TreeView's SelectionChanged handler doesn't treat it as a user navigation.</summary>
+    public bool SuppressSidebarNav => _suppressNav;
+
+    private void RefreshActiveTabHook()
+    {
+        var tab = ActivePane?.SelectedTab;
+        if (!ReferenceEquals(tab, _syncedTab))
+        {
+            if (_syncedTab is not null) _syncedTab.PropertyChanged -= OnActiveTabPropChanged;
+            _syncedTab = tab;
+            if (_syncedTab is not null) _syncedTab.PropertyChanged += OnActiveTabPropChanged;
+        }
+        SyncSidebarSelection();
+    }
+
+    private void OnActiveTabPropChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.Page))
+            SyncSidebarSelection();
+    }
+
+    private void SyncSidebarSelection()
+    {
+        var tab = ActivePane?.SelectedTab;
+        string? target = tab?.Page switch
+        {
+            PageKind.Home => TabViewModel.HomeToken,
+            PageKind.Drives => TabViewModel.DrivesToken,
+            PageKind.Folder => tab.CurrentPath,
+            _ => null,
+        };
+
+        _suppressNav = true;
+        foreach (var node in SidebarNodes) ApplyNodeSelection(node, target);
+        // Release after the binding-driven SelectionChanged has fired, so a genuine
+        // subsequent user click still navigates.
+        Application.Current?.Dispatcher.BeginInvoke(
+            () => _suppressNav = false, DispatcherPriority.Background);
+    }
+
+    private static void ApplyNodeSelection(SidebarNode node, string? target)
+    {
+        node.IsSelected = target is not null && node.IsSelectable && PathMatches(node.Path, target);
+        foreach (var c in node.Children) ApplyNodeSelection(c, target);
+    }
+
+    private static bool PathMatches(string a, string b) =>
+        string.Equals(a?.TrimEnd('\\', '/'), b?.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// On first run, seed the user's pin list with the standard Quick Access places
@@ -300,6 +363,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 LeftPane.IsActive = _activePane == LeftPane;
                 if (RightPane is not null) RightPane.IsActive = _activePane == RightPane;
+                RefreshActiveTabHook();
             }
         }
     }
@@ -321,6 +385,12 @@ public sealed class MainViewModel : ObservableObject
         var pane = new PaneViewModel(_fs);
         pane.RequestActivate += p => ActivePane = p;
         pane.EmptyRequested += OnPaneEmpty;
+        // When the active pane switches tabs, re-sync the sidebar to the new tab's location.
+        pane.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PaneViewModel.SelectedTab) && ReferenceEquals(pane, ActivePane))
+                RefreshActiveTabHook();
+        };
         return pane;
     }
 

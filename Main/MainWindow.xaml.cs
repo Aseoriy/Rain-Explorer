@@ -2,11 +2,13 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using Microsoft.Win32;
+using RainExplorer.Controls;
 using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
@@ -52,6 +54,26 @@ public partial class MainWindow : Window
 
         // Live-toggle the ambient orb when the setting changes.
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
+
+        // The activity popup owns its own dismiss logic (see ActivityButton_Click) — any
+        // click elsewhere in the window closes it.
+        AddHandler(PreviewMouseDownEvent, (MouseButtonEventHandler)Window_PreviewMouseDown, true);
+    }
+
+    private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ActivityPopup.IsOpen && !IsDescendantOf(e.OriginalSource as DependencyObject, ActivityButton))
+            ActivityPopup.IsOpen = false;
+    }
+
+    private static bool IsDescendantOf(DependencyObject? d, DependencyObject ancestor)
+    {
+        while (d is not null)
+        {
+            if (ReferenceEquals(d, ancestor)) return true;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return false;
     }
 
     private void AddShortcut(Key key, ModifierKeys mods, Action action) =>
@@ -141,10 +163,16 @@ public partial class MainWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
+    // StaysOpen="True" on ActivityPopup (see XAML) disables WPF's own outside-click
+    // light-dismiss, which otherwise always closes the popup before this Click even fires
+    // (it needs a MouseUp; the light-dismiss reacts to MouseDown), making a "close" click
+    // indistinguishable from a fresh one and instantly reopening it. Window_PreviewMouseDown
+    // handles the "click elsewhere closes it" half; this is purely the toggle.
     private void ActivityButton_Click(object sender, RoutedEventArgs e)
     {
-        ActivityPopup.IsOpen = !ActivityPopup.IsOpen;
-        if (ActivityPopup.IsOpen) ActivityService.Instance.MarkSeen();
+        if (ActivityPopup.IsOpen) { ActivityPopup.IsOpen = false; return; }
+        ActivityPopup.IsOpen = true;
+        ActivityService.Instance.MarkSeen();
     }
 
     private void ClearActivity_Click(object sender, RoutedEventArgs e) =>
@@ -157,6 +185,9 @@ public partial class MainWindow : Window
     // Navigate when a selectable node is chosen.
     private void Sidebar_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        // Ignore selection changes we made ourselves while syncing the highlight to the
+        // active tab — only a real user pick should navigate.
+        if (_vm.SuppressSidebarNav) return;
         if (e.NewValue is SidebarNode n && n.IsSelectable && !string.IsNullOrEmpty(n.Path))
             _vm.NavigateTo(n.Path);
     }
@@ -283,7 +314,37 @@ public partial class MainWindow : Window
         var data = new DataObject(PinDragFormat, node.GroupKey + "|" + node.Path);
         try { DragDrop.DoDragDrop(SidebarTree, data, DragDropEffects.Move); }
         catch { /* drag cancelled */ }
-        finally { SetSidebarDropTarget(null); }
+        finally { SetSidebarDropTarget(null); HideInsertion(); }
+    }
+
+    // ---- Insertion line shown while reordering a pin -----------------------
+    private InsertionAdorner? _insertion;
+
+    private void ShowInsertion(TreeViewItem tvi, bool after)
+    {
+        var layer = AdornerLayer.GetAdornerLayer(SidebarTree);
+        if (layer is null) return;
+        if (_insertion is null) { _insertion = new InsertionAdorner(SidebarTree); layer.Add(_insertion); }
+        try
+        {
+            double top = tvi.TransformToAncestor(SidebarTree).Transform(new Point(0, 0)).Y;
+            _insertion.SetY(after ? top + tvi.ActualHeight : top);
+        }
+        catch { /* container detached */ }
+    }
+
+    private void HideInsertion()
+    {
+        if (_insertion is null) return;
+        AdornerLayer.GetAdornerLayer(SidebarTree)?.Remove(_insertion);
+        _insertion = null;
+    }
+
+    private static TreeViewItem? TreeViewItemUnder(object? source)
+    {
+        DependencyObject? d = source as DependencyObject;
+        while (d is not null and not TreeViewItem) d = VisualTreeHelper.GetParent(d);
+        return d as TreeViewItem;
     }
 
     private static (string key, string path) ParsePinDrag(DragEventArgs e)
@@ -295,15 +356,19 @@ public partial class MainWindow : Window
 
     private void Sidebar_DragOver(object sender, DragEventArgs e)
     {
-        // Reordering a pin: only valid when hovering another pin in the SAME list.
+        // Reordering a pin: only valid when hovering another pin in the SAME list. Show an
+        // insertion line (not the "drop into" highlight) so it reads as a reorder, not a move.
         if (e.Data.GetDataPresent(PinDragFormat))
         {
             var (srcKey, srcPath) = ParsePinDrag(e);
-            var t = NodeUnder(e.OriginalSource);
+            var tvi = TreeViewItemUnder(e.OriginalSource);
+            var t = tvi?.DataContext as SidebarNode;
             bool ok = t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey
                       && !string.Equals(t.Path, srcPath, StringComparison.OrdinalIgnoreCase);
             e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
-            SetSidebarDropTarget(ok ? t : null);
+            SetSidebarDropTarget(null);   // never paint the folder-drop highlight while reordering
+            if (ok && tvi is not null) ShowInsertion(tvi, DropsAfter(e.OriginalSource, e));
+            else HideInsertion();
             e.Handled = true;
             return;
         }
@@ -317,12 +382,17 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void Sidebar_DragLeave(object sender, DragEventArgs e) => SetSidebarDropTarget(null);
+    private void Sidebar_DragLeave(object sender, DragEventArgs e)
+    {
+        SetSidebarDropTarget(null);
+        HideInsertion();
+    }
 
     private void Sidebar_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
         SetSidebarDropTarget(null);
+        HideInsertion();
 
         // Pin reorder within a list.
         if (e.Data.GetDataPresent(PinDragFormat))

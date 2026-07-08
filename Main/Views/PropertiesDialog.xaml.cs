@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Windows;
@@ -21,6 +22,7 @@ public partial class PropertiesDialog : Window
     private readonly string _originalName;
     private bool _detailsBuilt;
     private bool _hashesStarted;
+    private bool _securityBuilt;
 
     /// <summary>True when the name or attributes were changed and applied — caller should reload.</summary>
     public bool Changed { get; private set; }
@@ -93,15 +95,95 @@ public partial class PropertiesDialog : Window
         int idx = NavList.SelectedIndex;
 
         PaneGeneral.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
-        PaneDetails.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
-        PaneHashes.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
+        PaneSecurity.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
+        PaneDetails.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
+        PaneHashes.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
 
-        if (idx == 1 && !_detailsBuilt) BuildDetails();
-        if (idx == 2 && !_hashesStarted && !_isDir)
+        if (idx == 1 && !_securityBuilt) BuildSecurity();
+        if (idx == 2 && !_detailsBuilt) BuildDetails();
+        if (idx == 3 && !_hashesStarted && !_isDir)
         {
             _hashesStarted = true;
             _ = ComputeHashesAsync(_cts.Token);
         }
+    }
+
+    // ---- Security tab ---------------------------------------------------------
+    // A full write-capable ACL editor is high-risk (a wrong write can lock the user out of
+    // their own files), so this tab shows a real, live-read summary of who has what access,
+    // and hands off to Windows' own Security property page — the exact same one the shell
+    // shows — for anything that actually changes permissions (Advanced, add/remove, owner).
+    private sealed record SecurityPrincipal(string Name, List<FileSystemAccessRule> Rules);
+
+    private void BuildSecurity()
+    {
+        _securityBuilt = true;
+        var listRowVisibility = _isDir ? Visibility.Visible : Visibility.Collapsed;
+        ListFolderLabel.Visibility = ListAllow.Visibility = ListDeny.Visibility = listRowVisibility;
+        try
+        {
+            var security = _isDir
+                ? (FileSystemSecurity)new DirectoryInfo(_path).GetAccessControl()
+                : new FileInfo(_path).GetAccessControl();
+            var rules = security.GetAccessRules(true, true, typeof(System.Security.Principal.NTAccount))
+                .Cast<FileSystemAccessRule>();
+
+            var principals = rules
+                .GroupBy(r => r.IdentityReference.Value)
+                .Select(g => new SecurityPrincipal(g.Key, g.ToList()))
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            SecurityPrincipalsList.ItemsSource = principals;
+            if (principals.Count > 0) SecurityPrincipalsList.SelectedIndex = 0;
+            else ShowSecurityStatus("No permission information available.");
+        }
+        catch (Exception ex)
+        {
+            SecurityPrincipalsList.ItemsSource = null;
+            ShowSecurityStatus($"Couldn't read permissions: {ex.Message}");
+        }
+    }
+
+    private void ShowSecurityStatus(string msg)
+    {
+        SecurityStatus.Text = msg;
+        SecurityStatus.Visibility = Visibility.Visible;
+    }
+
+    private void SecurityPrincipalsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var rules = (SecurityPrincipalsList.SelectedItem as SecurityPrincipal)?.Rules;
+        SetPermRow(FullControlAllow, FullControlDeny, rules, FileSystemRights.FullControl);
+        SetPermRow(ModifyAllow, ModifyDeny, rules, FileSystemRights.Modify);
+        SetPermRow(ReadExecuteAllow, ReadExecuteDeny, rules, FileSystemRights.ReadAndExecute);
+        SetPermRow(ListAllow, ListDeny, rules, FileSystemRights.ListDirectory);
+        SetPermRow(ReadAllow, ReadDeny, rules, FileSystemRights.Read);
+        SetPermRow(WriteAllow, WriteDeny, rules, FileSystemRights.Write);
+    }
+
+    private static void SetPermRow(CheckBox allow, CheckBox deny,
+        List<FileSystemAccessRule>? rules, FileSystemRights right)
+    {
+        allow.IsChecked = rules is not null && rules.Any(r =>
+            r.AccessControlType == AccessControlType.Allow && (r.FileSystemRights & right) == right);
+        deny.IsChecked = rules is not null && rules.Any(r =>
+            r.AccessControlType == AccessControlType.Deny && (r.FileSystemRights & right) != 0);
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool SHObjectProperties(IntPtr hwnd, uint shopObjectType, string pszObjectName, string? pszPropertyPage);
+
+    private const uint SHOP_FILEPATH = 0x2;
+
+    // Opens the real native Windows Security property page (the same UI the shell itself
+    // uses) for actually changing permissions, adding/removing principals, or ownership.
+    private void AdvancedSecurity_Click(object sender, RoutedEventArgs e)
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (!SHObjectProperties(hwnd, SHOP_FILEPATH, _path, "Security"))
+            ShowSecurityStatus("Couldn't open the Windows permissions dialog.");
+        else if (_securityBuilt) { _securityBuilt = false; BuildSecurity(); }   // refresh after editing
     }
 
     // ---- Details tab --------------------------------------------------------

@@ -3,6 +3,20 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace RainExplorer.Services;
 
+/// <summary>Outcome of a mutating file operation, distinguishing a user cancellation (e.g.
+/// clicking "No" on the Windows confirm dialog) from a genuine success or failure — so the
+/// activity center never reports "done" for something that didn't actually happen.</summary>
+public enum OpOutcome { Ok, Canceled, Failed }
+
+public readonly record struct OpResult(OpOutcome Outcome, string? Error)
+{
+    public bool Ok => Outcome == OpOutcome.Ok;
+    public bool Canceled => Outcome == OpOutcome.Canceled;
+    public static readonly OpResult Success = new(OpOutcome.Ok, null);
+    public static readonly OpResult Cancelled = new(OpOutcome.Canceled, null);
+    public static OpResult Fail(string? error) => new(OpOutcome.Failed, error);
+}
+
 /// <summary>
 /// Mutating file operations. These intentionally delegate to the Windows shell
 /// engine via <see cref="Microsoft.VisualBasic.FileIO.FileSystem"/>, which gives
@@ -14,8 +28,10 @@ namespace RainExplorer.Services;
 /// </summary>
 public sealed class FileOperationsService
 {
-    /// <summary>Send paths to the Recycle Bin (never a permanent delete). Shows the OS confirm + progress.</summary>
-    public string? Delete(IEnumerable<string> paths)
+    /// <summary>Send paths to the Recycle Bin (never a permanent delete). Shows the OS confirm + progress.
+    /// Uses ThrowException so cancelling the confirm dialog is reported as a real cancellation
+    /// (rather than being silently treated as success).</summary>
+    public OpResult Delete(IEnumerable<string> paths)
     {
         try
         {
@@ -23,19 +39,20 @@ public sealed class FileOperationsService
             {
                 if (Directory.Exists(p))
                     FileSystem.DeleteDirectory(p, UIOption.AllDialogs, RecycleOption.SendToRecycleBin,
-                        UICancelOption.DoNothing);
+                        UICancelOption.ThrowException);
                 else if (File.Exists(p))
                     FileSystem.DeleteFile(p, UIOption.AllDialogs, RecycleOption.SendToRecycleBin,
-                        UICancelOption.DoNothing);
+                        UICancelOption.ThrowException);
             }
-            return null;
+            return OpResult.Success;
         }
-        catch (OperationCanceledException) { return null; }
-        catch (Exception ex) { return ex.Message; }
+        catch (OperationCanceledException) { return OpResult.Cancelled; }
+        catch (Exception ex) { return OpResult.Fail(ex.Message); }
     }
 
-    /// <summary>Permanently delete paths (bypasses the Recycle Bin — not undoable). Shows the OS confirm + progress.</summary>
-    public string? DeletePermanent(IEnumerable<string> paths)
+    /// <summary>Permanently delete paths (bypasses the Recycle Bin — not undoable). Shows the OS confirm + progress.
+    /// Cancelling the confirm dialog is reported as a cancellation, not a success.</summary>
+    public OpResult DeletePermanent(IEnumerable<string> paths)
     {
         try
         {
@@ -43,15 +60,15 @@ public sealed class FileOperationsService
             {
                 if (Directory.Exists(p))
                     FileSystem.DeleteDirectory(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
-                        UICancelOption.DoNothing);
+                        UICancelOption.ThrowException);
                 else if (File.Exists(p))
                     FileSystem.DeleteFile(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
-                        UICancelOption.DoNothing);
+                        UICancelOption.ThrowException);
             }
-            return null;
+            return OpResult.Success;
         }
-        catch (OperationCanceledException) { return null; }
-        catch (Exception ex) { return ex.Message; }
+        catch (OperationCanceledException) { return OpResult.Cancelled; }
+        catch (Exception ex) { return OpResult.Fail(ex.Message); }
     }
 
     public string? CopyInto(IEnumerable<string> sources, string destDir) => Transfer(sources, destDir, move: false);

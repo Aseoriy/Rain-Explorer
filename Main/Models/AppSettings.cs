@@ -32,6 +32,10 @@ public enum DeleteBehavior
 [JsonConverter(typeof(JsonStringEnumConverter<ViewLayout>))]
 public enum ViewLayout { Details, List, Tiles, Grid }
 
+/// <summary>Which shell "Open in Terminal" launches.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<TerminalApp>))]
+public enum TerminalApp { Cmd, PowerShell }
+
 /// <summary>
 /// User preferences, persisted as JSON. Observable so the settings panel and
 /// the rest of the app react live to changes.
@@ -75,6 +79,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool _openFoldersInNewTab;
     /// <summary>Double-clicking a folder opens it in a new tab instead of navigating.</summary>
     public bool OpenFoldersInNewTab { get => _openFoldersInNewTab; set => Set(ref _openFoldersInNewTab, value); }
+
+    private TerminalApp _terminalApp = TerminalApp.Cmd;
+    /// <summary>Which shell "Open in Terminal" launches (cmd by default).</summary>
+    public TerminalApp TerminalApp { get => _terminalApp; set => Set(ref _terminalApp, value); }
 
     private bool _registerShellIntegration;
     /// <summary>"Open in Rain Explorer" verb registered in HKCU for folders/drives.</summary>
@@ -123,6 +131,19 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool _showPreviewPane;
     /// <summary>Whether the right-hand file preview pane is shown (toggle with Space).</summary>
     public bool ShowPreviewPane { get => _showPreviewPane; set => Set(ref _showPreviewPane, value); }
+
+    private bool _autoUpdate = true;
+    /// <summary>Automatically check GitHub for a newer release on launch and offer to install it.</summary>
+    public bool AutoUpdate { get => _autoUpdate; set => Set(ref _autoUpdate, value); }
+
+    private bool _betaUpdates;
+    /// <summary>Also accept pre-release ("-beta"/"-pre") builds when checking for updates.</summary>
+    public bool BetaUpdates { get => _betaUpdates; set => Set(ref _betaUpdates, value); }
+
+    private string _skippedUpdateVersion = "";
+    /// <summary>A version the user chose to skip; the auto-check won't nag about it again
+    /// (a manual "Check for updates" still surfaces it).</summary>
+    public string SkippedUpdateVersion { get => _skippedUpdateVersion; set => Set(ref _skippedUpdateVersion, value); }
 
     private bool _rememberActivity = true;
     /// <summary>Persist the activity center log across restarts. When off, the log is

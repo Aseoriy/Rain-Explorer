@@ -7,8 +7,10 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using RainExplorer.Models;
 using RainExplorer.Services;
 using RainExplorer.ViewModels;
+using RainExplorer.Views;
 
 namespace RainExplorer.Controls;
 
@@ -122,6 +124,7 @@ public partial class BreadcrumbBar : UserControl
             btn.FontWeight = FontWeights.SemiBold;
         }
         btn.Click += Crumb_Click;
+        btn.ContextMenu = CrumbMenu;   // right-click a segment => folder actions
         CrumbStrip.Children.Add(btn);
     }
 
@@ -180,6 +183,111 @@ public partial class BreadcrumbBar : UserControl
     private void Chevron_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string dir } b) OpenChildPopup(dir, b);
+    }
+
+    // ===================== Crumb right-click menu =====================
+    // Right-clicking a path segment offers the same kinds of actions Explorer gives a
+    // folder (open, new tab, terminal, copy path, pin, properties) plus the native
+    // "Show more options" shell submenu — mirroring the file list's context menu.
+
+    private ContextMenu? _crumbMenu;
+    private ContextMenu CrumbMenu => _crumbMenu ??= (ContextMenu)FindResource("CrumbMenu");
+    private ShellContextMenu? _crumbShellSession;
+
+    /// <summary>The folder path of the segment that was right-clicked.</summary>
+    private string? MenuTargetPath => (CrumbMenu.PlacementTarget as Button)?.Tag as string;
+
+    private MenuItem? FindMenuItem(string tag) =>
+        CrumbMenu.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Tag as string) == tag);
+
+    private void CrumbMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        string? path = MenuTargetPath;
+        bool isDir = path is not null && Directory.Exists(path);
+        if (FindMenuItem("pin") is { } pin)
+        {
+            pin.IsEnabled = isDir;
+            pin.Header = isDir && MainViewModel.IsPinned(path!)
+                ? "Unpin from Quick Access" : "Pin to Quick Access";
+        }
+    }
+
+    private void CrumbOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is { } p) _ = Tab?.NavigateAsync(p, true);
+    }
+
+    private void CrumbOpenNewTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is { } p) FindPane()?.OpenInNewTab(p);
+    }
+
+    private void CrumbCopyPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is not { } p) return;
+        try { Clipboard.SetText(p); } catch { /* clipboard busy */ }
+    }
+
+    private void CrumbPin_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is not { } p || !Directory.Exists(p)) return;
+        if (MainViewModel.IsPinned(p)) MainViewModel.Unpin(p);
+        else MainViewModel.Pin(p, System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)));
+    }
+
+    private void CrumbTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is not { } dir || !Directory.Exists(dir)) return;
+        if (!TerminalLauncher.TryOpen(dir, out var err) && Tab is not null) Tab.Status = $"⚠️ {err}";
+    }
+
+    private void CrumbProperties_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuTargetPath is not { } p || !Directory.Exists(p)) return;
+        var item = new FileItem
+        {
+            Name = System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)),
+            FullPath = p,
+            IsDirectory = true,
+        };
+        new PropertiesDialog(item) { Owner = Window.GetWindow(this) }.ShowDialog();
+    }
+
+    // Lazily build the native shell submenu the first time it's opened this session.
+    private void CrumbShowMore_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem more || _crumbShellSession is not null) return;
+        if (MenuTargetPath is not { } p) return;
+
+        more.Items.Clear();
+        var owner = Window.GetWindow(this);
+        _crumbShellSession = owner is null ? null : ShellContextMenu.Create(new List<string> { p }, owner);
+        if (_crumbShellSession is null)
+        {
+            more.Items.Add(new MenuItem { Header = "Unavailable", IsEnabled = false });
+            return;
+        }
+        var items = _crumbShellSession.BuildItems();
+        if (items.Count == 0) { more.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false }); return; }
+        foreach (var c in items) more.Items.Add(c);
+    }
+
+    private void CrumbMenu_Closed(object sender, RoutedEventArgs e)
+    {
+        _crumbShellSession?.Dispose();
+        _crumbShellSession = null;
+        if (FindMenuItem("more") is { } more)
+        {
+            more.Items.Clear();
+            more.Items.Add(new MenuItem { Header = "Loading…", IsEnabled = false });
+        }
+    }
+
+    private PaneView? FindPane()
+    {
+        DependencyObject? d = this;
+        while (d is not null and not PaneView) d = VisualTreeHelper.GetParent(d);
+        return d as PaneView;
     }
 
     /// <summary>Build the segment list from root → current using the parent chain.</summary>
@@ -268,9 +376,27 @@ public partial class BreadcrumbBar : UserControl
         EditBox.Text = tab.Page == PageKind.Folder ? tab.CurrentPath : string.Empty;
         CrumbHost.Visibility = Visibility.Collapsed;
         EditHost.Visibility = Visibility.Visible;
-        EditBox.Focus();
-        EditBox.SelectAll();
+
+        // A click anywhere else in the window (not just one that steals keyboard focus,
+        // e.g. blank toolbar space) should back out of edit mode exactly like Escape.
+        _editWindow = Window.GetWindow(this);
+        if (_editWindow is not null)
+            _editWindow.AddHandler(UIElement.PreviewMouseDownEvent,
+                (MouseButtonEventHandler)Window_PreviewMouseDown, true);
+
+        // Defer focus until the current mouse-down finishes — otherwise the click that
+        // opened edit mode steals focus straight back, LostKeyboardFocus fires, and we
+        // revert to the breadcrumb before the user can type ("nothing happens").
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_editing) return;
+            EditBox.Focus();
+            Keyboard.Focus(EditBox);
+            EditBox.SelectAll();
+        }), DispatcherPriority.Input);
     }
+
+    private Window? _editWindow;
 
     private void ExitEdit()
     {
@@ -280,6 +406,33 @@ public partial class BreadcrumbBar : UserControl
         AcPopup.IsOpen = false;
         EditHost.Visibility = Visibility.Collapsed;
         CrumbHost.Visibility = Visibility.Visible;
+        if (_editWindow is not null)
+        {
+            _editWindow.RemoveHandler(UIElement.PreviewMouseDownEvent,
+                (MouseButtonEventHandler)Window_PreviewMouseDown);
+            _editWindow = null;
+        }
+    }
+
+    // Clicking inside the edit box (to reposition the caret) shouldn't exit; the
+    // autocomplete/child popups live in their own top-level window so clicks inside
+    // them never reach this handler at all — only "somewhere else" does.
+    private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_editing) return;
+        if (IsDescendantOf(e.OriginalSource as DependencyObject, EditHost)) return;
+        ExitEdit();
+        Rebuild();
+    }
+
+    private static bool IsDescendantOf(DependencyObject? d, DependencyObject ancestor)
+    {
+        while (d is not null)
+        {
+            if (ReferenceEquals(d, ancestor)) return true;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return false;
     }
 
     private void CrumbHost_MouseDown(object sender, MouseButtonEventArgs e)

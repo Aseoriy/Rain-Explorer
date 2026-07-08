@@ -101,6 +101,14 @@
                     <ListBoxItem>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16" Margin="0,0,11,0"
+                                  Data="{StaticResource Ic.shield}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="Security" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16" Margin="0,0,11,0"
                                   Data="{StaticResource Ic.list}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                             <TextBlock Text="Details" VerticalAlignment="Center" FontWeight="SemiBold" />
@@ -222,6 +230,93 @@
 
                             <TextBlock x:Name="ErrorText" Foreground="{StaticResource Danger}" FontSize="12"
                                        TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ===== SECURITY ===== -->
+                    <ScrollViewer x:Name="PaneSecurity" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel>
+                            <TextBlock Text="GROUP OR USER NAMES" Foreground="{StaticResource TextFaint}"
+                                       FontSize="11" FontWeight="Bold" Margin="0,2,0,8" />
+                            <Border BorderBrush="{StaticResource Line1}" BorderThickness="1" CornerRadius="8" Height="130">
+                                <ListBox x:Name="SecurityPrincipalsList" Background="Transparent" BorderThickness="0"
+                                         SelectionChanged="SecurityPrincipalsList_SelectionChanged">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" Margin="6,4" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+
+                            <TextBlock Text="PERMISSIONS" Foreground="{StaticResource TextFaint}" FontSize="11"
+                                       FontWeight="Bold" Margin="0,16,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="60" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Allow" HorizontalAlignment="Center"
+                                           FontWeight="SemiBold" Foreground="{StaticResource TextMuted}" FontSize="11" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Deny" HorizontalAlignment="Center"
+                                           FontWeight="SemiBold" Foreground="{StaticResource TextMuted}" FontSize="11" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Full control" Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="FullControlAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="1" Grid.Column="2" x:Name="FullControlDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Modify" Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ModifyAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="2" Grid.Column="2" x:Name="ModifyDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Read &amp; execute" Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="3" Grid.Column="1" x:Name="ReadExecuteAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="3" Grid.Column="2" x:Name="ReadExecuteDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" x:Name="ListFolderLabel" Text="List folder contents"
+                                           Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="4" Grid.Column="1" x:Name="ListAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="4" Grid.Column="2" x:Name="ListDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Read" Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="5" Grid.Column="1" x:Name="ReadAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="5" Grid.Column="2" x:Name="ReadDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Write" Style="{StaticResource FieldValue}" />
+                                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="WriteAllow" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                                <CheckBox Grid.Row="6" Grid.Column="2" x:Name="WriteDeny" HorizontalAlignment="Center"
+                                          IsHitTestVisible="False" Focusable="False" />
+                            </Grid>
+
+                            <TextBlock Text="For special permissions, adding/removing users, or ownership changes, use Advanced."
+                                       Foreground="{StaticResource TextMuted}" FontSize="12" TextWrapping="Wrap" Margin="0,14,0,0" />
+                            <Button Content="Advanced permissions…" Style="{StaticResource DialogButton}"
+                                    HorizontalAlignment="Left" Margin="0,10,0,0" Click="AdvancedSecurity_Click" />
+                            <TextBlock x:Name="SecurityStatus" Foreground="{StaticResource TextMuted}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,10,0,0" Visibility="Collapsed" />
                         </StackPanel>
                     </ScrollViewer>
 

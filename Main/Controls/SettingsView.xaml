@@ -328,6 +328,19 @@
                                               IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
+
+                            <TextBlock Text="TERMINAL" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Open in Terminal" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Which shell opens for &quot;Open in Terminal&quot; and address-bar commands."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="TerminalAppBox" Width="160" HorizontalAlignment="Right"
+                                              SelectedItem="{Binding TerminalApp, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -548,6 +561,44 @@
                                                    Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Check for updates" Style="{StaticResource RowTitle}" />
+                                        <TextBlock x:Name="UpdateStatusText" Style="{StaticResource RowHint}"
+                                                   Text="Fetches the latest release from GitHub." />
+                                    </StackPanel>
+                                    <Button x:Name="CheckUpdatesButton" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            Content="Check now" Style="{StaticResource PrimaryButton}"
+                                            MinWidth="0" Padding="16,7" Click="CheckUpdates_Click" />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Automatic updates" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Check for a newer release on launch and offer to install it."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding AutoUpdate, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Beta updates" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Also receive pre-release (beta) builds. Earlier features, but less tested."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding BetaUpdates, Mode=TwoWay}" />
+                                </Grid>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>

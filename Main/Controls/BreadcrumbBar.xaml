@@ -72,6 +72,57 @@
             </Setter>
         </Style>
 
+        <!-- Right-click menu for a path segment: the same kinds of actions Explorer offers
+             for a folder, plus a native "Show more options" shell submenu. -->
+        <ContextMenu x:Key="CrumbMenu" Opened="CrumbMenu_Opened" Closed="CrumbMenu_Closed">
+            <MenuItem Header="Open" Click="CrumbOpen_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.arrow-right}" Stroke="{StaticResource AccentBright}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Open in new tab" Click="CrumbOpenNewTab_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Open in Terminal" Click="CrumbTerminal_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.terminal}" Stroke="{StaticResource TextMuted}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="Copy path" Click="CrumbCopyPath_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.copy}" Stroke="{StaticResource TextMuted}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Tag="pin" Header="Pin to Quick Access" Click="CrumbPin_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.star}" Stroke="{StaticResource AccentBright}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="Properties" Click="CrumbProperties_Click">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.sliders}" Stroke="{StaticResource TextMuted}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Tag="more" Header="Show more options"
+                      SubmenuOpened="CrumbShowMore_SubmenuOpened">
+                <MenuItem.Icon>
+                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                          Data="{StaticResource Ic.list}" Stroke="{StaticResource TextMuted}" />
+                </MenuItem.Icon>
+                <MenuItem Header="Loading…" IsEnabled="False" />
+            </MenuItem>
+        </ContextMenu>
+
         <!-- The chevron that opens a segment's subfolder list -->
         <Style x:Key="CrumbChevronStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
@@ -101,8 +152,9 @@
         <!-- ===== Breadcrumb mode ===== -->
         <Border x:Name="CrumbHost" Background="{StaticResource Glass2}"
                 BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="8" Height="30"
-                MouseLeftButtonDown="CrumbHost_MouseDown">
-            <ScrollViewer x:Name="CrumbScroll" Padding="6,0"
+                Cursor="IBeam"
+                PreviewMouseLeftButtonDown="CrumbHost_MouseDown">
+            <ScrollViewer x:Name="CrumbScroll" Padding="6,0" Background="Transparent" Focusable="False"
                           HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
                 <StackPanel x:Name="CrumbStrip" Orientation="Horizontal" VerticalAlignment="Center" />
             </ScrollViewer>

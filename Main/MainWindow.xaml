@@ -167,7 +167,7 @@
 
                     <!-- ===== Activity center flyout ===== -->
                     <Popup x:Name="ActivityPopup" PlacementTarget="{Binding ElementName=ActivityButton}"
-                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                           Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
                            PopupAnimation="Fade" HorizontalOffset="-300" VerticalOffset="4"
                            DataContext="{x:Static svc:ActivityService.Instance}">
                         <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
@@ -247,6 +247,10 @@
                                                     <DataTrigger Binding="{Binding Status}" Value="Failed">
                                                         <Setter TargetName="dot" Property="Fill" Value="{StaticResource Danger}" />
                                                         <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Danger}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Canceled">
+                                                        <Setter TargetName="dot" Property="Fill" Value="{StaticResource TextMuted}" />
+                                                        <Setter TargetName="stext" Property="Foreground" Value="{StaticResource TextMuted}" />
                                                     </DataTrigger>
                                                 </DataTemplate.Triggers>
                                             </DataTemplate>

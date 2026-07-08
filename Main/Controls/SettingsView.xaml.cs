@@ -6,6 +6,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using RainExplorer.Models;
 using RainExplorer.Services;
+using RainExplorer.Views;
 
 namespace RainExplorer.Controls;
 
@@ -32,6 +33,7 @@ public partial class SettingsView : UserControl
         SizeFormatBox.ItemsSource = Enum.GetValues(typeof(SizeFormat));
         LayoutBox.ItemsSource = Enum.GetValues(typeof(ViewLayout));
         DeleteBehaviorBox.ItemsSource = Enum.GetValues(typeof(DeleteBehavior));
+        TerminalAppBox.ItemsSource = Enum.GetValues(typeof(TerminalApp));
 
         // Installed UI fonts, alphabetised.
         FontBox.ItemsSource = System.Windows.Media.Fonts.SystemFontFamilies
@@ -80,6 +82,35 @@ public partial class SettingsView : UserControl
         if (Directory.Exists(current)) dlg.InitialDirectory = current;
         if (dlg.ShowDialog() == true)
             SettingsStore.Instance.Settings.DefaultFolder = dlg.FolderName;
+    }
+
+    // ---- Manual "Check for updates" ----------------------------------------
+    private async void CheckUpdates_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        UpdateStatusText.Text = "Checking for updates…";
+        try
+        {
+            bool beta = SettingsStore.Instance.Settings.BetaUpdates;
+            var info = await UpdateService.CheckAsync(beta);
+            if (info is null)
+            {
+                UpdateStatusText.Text = $"You're on the latest version (v{UpdateService.CurrentVersionString}).";
+            }
+            else
+            {
+                UpdateStatusText.Text = $"Version {info.Version} is available.";
+                UpdateDialog.ShowFor(info, System.Windows.Window.GetWindow(this));
+            }
+        }
+        catch
+        {
+            UpdateStatusText.Text = "Couldn't check for updates. Check your connection and try again.";
+        }
+        finally
+        {
+            CheckUpdatesButton.IsEnabled = true;
+        }
     }
 
     private void OpenConfigFolder_Click(object sender, System.Windows.RoutedEventArgs e)
