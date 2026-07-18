@@ -80,6 +80,13 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Double-clicking a folder opens it in a new tab instead of navigating.</summary>
     public bool OpenFoldersInNewTab { get => _openFoldersInNewTab; set => Set(ref _openFoldersInNewTab, value); }
 
+    private bool _preserveOpenTabsOnClose;
+    /// <summary>Restore every open pane/tab after the app or computer is restarted.</summary>
+    public bool PreserveOpenTabsOnClose { get => _preserveOpenTabsOnClose; set => Set(ref _preserveOpenTabsOnClose, value); }
+
+    /// <summary>Last window session. Written on close when tab preservation is enabled.</summary>
+    public ExplorerSession? SavedSession { get; set; }
+
     private TerminalApp _terminalApp = TerminalApp.Cmd;
     /// <summary>Which shell "Open in Terminal" launches (cmd by default).</summary>
     public TerminalApp TerminalApp { get => _terminalApp; set => Set(ref _terminalApp, value); }
@@ -163,6 +170,18 @@ public sealed class AppSettings : INotifyPropertyChanged
 
     /// <summary>Extra user-created sidebar lists (e.g. "Quick access 2"), each with its own pins.</summary>
     public List<SidebarGroup> CustomGroups { get; set; } = new();
+
+    /// <summary>Stable order of sidebar section keys ("quick", "drives", and "custom:&lt;id&gt;").</summary>
+    public List<string> SidebarOrder { get; set; } = new();
+
+    private bool _showQuickAccessInSidebar = true;
+    public bool ShowQuickAccessInSidebar { get => _showQuickAccessInSidebar; set => Set(ref _showQuickAccessInSidebar, value); }
+
+    private string _quickAccessName = "Quick access";
+    public string QuickAccessName { get => _quickAccessName; set => Set(ref _quickAccessName, value); }
+
+    private string _drivesName = "Drives";
+    public string DrivesName { get => _drivesName; set => Set(ref _drivesName, value); }
 
     private bool _showDrivesInSidebar = true;
     /// <summary>Whether the Drives section is shown in the sidebar.</summary>

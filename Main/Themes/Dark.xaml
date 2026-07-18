@@ -695,20 +695,33 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="Transparent">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track x:Name="PART_Track"
+                               Orientation="{TemplateBinding Orientation}"
+                               Minimum="{TemplateBinding Minimum}"
+                               Maximum="{TemplateBinding Maximum}"
+                               Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                               ViewportSize="{TemplateBinding ViewportSize}"
+                               IsDirectionReversed="True">
                             <Track.Thumb>
                                 <Thumb Style="{StaticResource ScrollThumb}" />
                             </Track.Thumb>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0"
+                                <RepeatButton Command="ScrollBar.PageDownCommand"
+                                              CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" Opacity="0"
                                               Background="Transparent" />
                             </Track.IncreaseRepeatButton>
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0"
+                                <RepeatButton Command="ScrollBar.PageUpCommand"
+                                              CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" Opacity="0"
                                               Background="Transparent" />
                             </Track.DecreaseRepeatButton>
                         </Track>
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

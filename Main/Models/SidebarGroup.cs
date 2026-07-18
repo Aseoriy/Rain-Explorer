@@ -7,6 +7,9 @@ namespace RainExplorer.Models;
 /// </summary>
 public sealed class SidebarGroup
 {
+    /// <summary>Stable identifier used by persisted sidebar ordering and pin targets.</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Name { get; set; } = "New list";
     public bool Collapsed { get; set; }
     public List<PinnedItem> Items { get; set; } = new();

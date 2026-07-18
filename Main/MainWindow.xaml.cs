@@ -19,6 +19,7 @@ namespace RainExplorer;
 
 public partial class MainWindow : Window
 {
+    private sealed record NodePinMenuTarget(string Key, string Name, bool Dynamic);
     private readonly MainViewModel _vm = new();
 
     public MainWindow()
@@ -163,6 +164,12 @@ public partial class MainWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        _vm.SaveSession();
+        base.OnClosing(e);
+    }
+
     // StaysOpen="True" on ActivityPopup (see XAML) disables WPF's own outside-click
     // light-dismiss, which otherwise always closes the popup before this Click even fires
     // (it needs a MouseUp; the light-dismiss reacts to MouseDown), making a "close" click
@@ -216,7 +223,7 @@ public partial class MainWindow : Window
     private void NewList_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new InputDialog("New list", "List name:", "") { Owner = this };
-        MainViewModel.AddCustomGroup(dlg.ShowDialog() == true ? dlg.Value : null);
+        if (dlg.ShowDialog() == true) MainViewModel.AddCustomGroup(dlg.Value);
     }
 
     private void RenameList_Click(object sender, RoutedEventArgs e)
@@ -229,11 +236,12 @@ public partial class MainWindow : Window
 
     private void DeleteList_Click(object sender, RoutedEventArgs e)
     {
-        if (NodeFrom(sender) is { } n) MainViewModel.DeleteGroup(n.GroupKey);
+        if (NodeFrom(sender) is not { } n) return;
+        if (n.IsCustomHeader && !ConfirmDialog.Ask(this, "Delete sidebar list",
+                $"Delete “{n.Name}” and its pinned shortcuts? The folders themselves will not be deleted.",
+                "Delete")) return;
+        MainViewModel.DeleteGroup(n.GroupKey);
     }
-
-    private void HideDrives_Click(object sender, RoutedEventArgs e) =>
-        SettingsStore.Instance.Settings.ShowDrivesInSidebar = false;
 
     // ---- Sidebar collapse toggle (animated) --------------------------------
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
@@ -260,8 +268,67 @@ public partial class MainWindow : Window
 
     private void NodePin_Click(object sender, RoutedEventArgs e)
     {
-        if (NodeFrom(sender) is { } n && !string.IsNullOrEmpty(n.Path))
-            MainViewModel.Pin(n.Path, n.Name, n.IconKey);
+        if (sender is not MenuItem item || NodeFrom(sender) is not { } n || !Directory.Exists(n.Path)) return;
+        e.Handled = true;
+        var target = item.Tag as NodePinMenuTarget
+                     ?? new NodePinMenuTarget("quick", SettingsStore.Instance.Settings.QuickAccessName, false);
+        if (MainViewModel.IsPinnedTo(target.Key, n.Path)) MainViewModel.UnpinFrom(target.Key, n.Path);
+        else MainViewModel.PinTo(target.Key, n.Path, n.Name, n.IconKey);
+    }
+
+    private void NodeContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu || menu.DataContext is not SidebarNode node || node.IsPinned) return;
+        var fixedItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m =>
+            Equals(m.Tag, "pinTarget") || m.Tag is NodePinMenuTarget { Dynamic: false });
+        if (fixedItem is null) return;
+
+        foreach (var old in menu.Items.OfType<MenuItem>()
+                     .Where(m => m.Tag is NodePinMenuTarget { Dynamic: true }).ToList())
+            menu.Items.Remove(old);
+        fixedItem.Items.Clear();
+        var targets = MainViewModel.PinTargets();
+        bool isDir = Directory.Exists(node.Path);
+        if (targets.Count == 0)
+        {
+            fixedItem.Header = "No sidebar lists";
+            fixedItem.IsEnabled = false;
+            return;
+        }
+
+        if (targets.Count(t => t.Key != "quick") > 2)
+        {
+            fixedItem.Header = "Pin to sidebar";
+            fixedItem.IsEnabled = isDir;
+            fixedItem.Tag = new NodePinMenuTarget("", "", false);
+            foreach (var target in targets)
+                fixedItem.Items.Add(CreateNodePinItem(target, node, dynamic: false));
+            return;
+        }
+
+        var primary = targets.FirstOrDefault(t => t.Key == "quick") ?? targets[0];
+        ConfigureNodePinItem(fixedItem, primary, node, dynamic: false);
+        int insert = menu.Items.IndexOf(fixedItem) + 1;
+        foreach (var target in targets.Where(t => t.Key != primary.Key))
+            menu.Items.Insert(insert++, CreateNodePinItem(target, node, dynamic: true));
+    }
+
+    private MenuItem CreateNodePinItem(MainViewModel.SidebarPinTarget target,
+        SidebarNode node, bool dynamic)
+    {
+        var item = new MenuItem { DataContext = node };
+        ConfigureNodePinItem(item, target, node, dynamic);
+        item.Click += NodePin_Click;
+        return item;
+    }
+
+    private static void ConfigureNodePinItem(MenuItem item, MainViewModel.SidebarPinTarget target,
+        SidebarNode node, bool dynamic)
+    {
+        bool pinned = MainViewModel.IsPinnedTo(target.Key, node.Path);
+        item.Header = pinned ? $"Unpin from {target.Name}" : $"Pin to {target.Name}";
+        item.IsEnabled = Directory.Exists(node.Path);
+        item.Tag = new NodePinMenuTarget(target.Key, target.Name, dynamic);
     }
 
     private void NodeUnpin_Click(object sender, RoutedEventArgs e)
@@ -274,7 +341,7 @@ public partial class MainWindow : Window
         if (NodeFrom(sender) is not { } n) return;
         var dlg = new IconPickerDialog(n.IconKey) { Owner = this };
         if (dlg.ShowDialog() == true && dlg.SelectedKey is { } key)
-            MainViewModel.SetPinnedIcon(n.Path, key);
+            MainViewModel.SetPinnedIcon(n.GroupKey, n.Path, key);
     }
 
     private void NodeRename_Click(object sender, RoutedEventArgs e)
@@ -282,7 +349,7 @@ public partial class MainWindow : Window
         if (NodeFrom(sender) is not { } n) return;
         var dlg = new InputDialog("Rename pin", "Display name:", n.Name) { Owner = this };
         if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Value))
-            MainViewModel.RenamePinned(n.Path, dlg.Value);
+            MainViewModel.RenamePinned(n.GroupKey, n.Path, dlg.Value);
     }
 
     private void NodeRefresh_Click(object sender, RoutedEventArgs e) => NodeFrom(sender)?.Refresh();
@@ -292,26 +359,33 @@ public partial class MainWindow : Window
 
     // ---- Drag a pinned item to reorder it within its list ------------------
     private const string PinDragFormat = "RainExplorerPinReorder";
+    private const string SectionDragFormat = "RainExplorerSectionReorder";
     private Point _pinDragStart;
     private SidebarNode? _pinDragNode;
+    private SidebarNode? _sectionDragNode;
 
     private void SidebarTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _pinDragStart = e.GetPosition(null);
         var n = NodeUnder(e.OriginalSource);
         _pinDragNode = n is { Kind: NodeKind.Pinned } ? n : null;
+        _sectionDragNode = n is { IsHeader: true } ? n : null;
     }
 
     private void SidebarTree_MouseMove(object sender, MouseEventArgs e)
     {
-        if (_pinDragNode is null || e.LeftButton != MouseButtonState.Pressed) return;
+        if ((_pinDragNode is null && _sectionDragNode is null)
+            || e.LeftButton != MouseButtonState.Pressed) return;
         var pos = e.GetPosition(null);
         if (Math.Abs(pos.X - _pinDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(pos.Y - _pinDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
-        var node = _pinDragNode;
+        var node = _pinDragNode ?? _sectionDragNode!;
         _pinDragNode = null;
-        var data = new DataObject(PinDragFormat, node.GroupKey + "|" + node.Path);
+        _sectionDragNode = null;
+        var data = node.IsHeader
+            ? new DataObject(SectionDragFormat, node.GroupKey)
+            : new DataObject(PinDragFormat, node.GroupKey + "|" + node.Path);
         try { DragDrop.DoDragDrop(SidebarTree, data, DragDropEffects.Move); }
         catch { /* drag cancelled */ }
         finally { SetSidebarDropTarget(null); HideInsertion(); }
@@ -356,6 +430,23 @@ public partial class MainWindow : Window
 
     private void Sidebar_DragOver(object sender, DragEventArgs e)
     {
+        // Reorder complete sidebar sections by dragging their headers.
+        if (e.Data.GetDataPresent(SectionDragFormat))
+        {
+            string sourceKey = e.Data.GetData(SectionDragFormat) as string ?? "";
+            var tvi = TreeViewItemUnder(e.OriginalSource);
+            var target = tvi?.DataContext as SidebarNode;
+            string targetKey = target?.GroupKey ?? "";
+            bool ok = !string.IsNullOrEmpty(targetKey)
+                      && !string.Equals(sourceKey, targetKey, StringComparison.OrdinalIgnoreCase);
+            e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
+            SetSidebarDropTarget(null);
+            if (ok && tvi is not null) ShowInsertion(tvi, DropsAfter(e.OriginalSource, e));
+            else HideInsertion();
+            e.Handled = true;
+            return;
+        }
+
         // Reordering a pin: only valid when hovering another pin in the SAME list. Show an
         // insertion line (not the "drop into" highlight) so it reads as a reorder, not a move.
         if (e.Data.GetDataPresent(PinDragFormat))
@@ -363,19 +454,30 @@ public partial class MainWindow : Window
             var (srcKey, srcPath) = ParsePinDrag(e);
             var tvi = TreeViewItemUnder(e.OriginalSource);
             var t = tvi?.DataContext as SidebarNode;
-            bool ok = t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey
-                      && !string.Equals(t.Path, srcPath, StringComparison.OrdinalIgnoreCase);
+            bool reorder = t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey
+                           && !string.Equals(t.Path, srcPath, StringComparison.OrdinalIgnoreCase);
+            bool moveToList = t is { IsHeader: true, IsPinnedHeader: true }
+                              && t.GroupKey != srcKey;
+            bool ok = reorder || moveToList;
             e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
             SetSidebarDropTarget(null);   // never paint the folder-drop highlight while reordering
-            if (ok && tvi is not null) ShowInsertion(tvi, DropsAfter(e.OriginalSource, e));
+            if (reorder && tvi is not null) ShowInsertion(tvi, DropsAfter(e.OriginalSource, e));
             else HideInsertion();
             e.Handled = true;
             return;
         }
 
         var node = NodeUnder(e.OriginalSource);
-        string? dest = SidebarDropDir(node);
         var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        if (node is { IsHeader: true, IsPinnedHeader: true }
+            && files is { Length: > 0 } && files.All(Directory.Exists))
+        {
+            e.Effects = DragDropEffects.Link;
+            SetSidebarDropTarget(node);
+            e.Handled = true;
+            return;
+        }
+        string? dest = SidebarDropDir(node);
         var eff = FileDropService.EffectFor(files, dest, e.KeyStates);
         e.Effects = eff;
         SetSidebarDropTarget(eff == DragDropEffects.None ? null : node);
@@ -394,6 +496,16 @@ public partial class MainWindow : Window
         SetSidebarDropTarget(null);
         HideInsertion();
 
+        // Complete section reorder.
+        if (e.Data.GetDataPresent(SectionDragFormat))
+        {
+            string sourceKey = e.Data.GetData(SectionDragFormat) as string ?? "";
+            string targetKey = NodeUnder(e.OriginalSource)?.GroupKey ?? "";
+            if (!string.IsNullOrEmpty(targetKey))
+                MainViewModel.ReorderGroup(sourceKey, targetKey, DropsAfter(e.OriginalSource, e));
+            return;
+        }
+
         // Pin reorder within a list.
         if (e.Data.GetDataPresent(PinDragFormat))
         {
@@ -401,10 +513,19 @@ public partial class MainWindow : Window
             var t = NodeUnder(e.OriginalSource);
             if (t is { Kind: NodeKind.Pinned } && t.GroupKey == srcKey)
                 MainViewModel.ReorderPin(srcKey, srcPath, t.Path, DropsAfter(e.OriginalSource, e));
+            else if (t is { IsHeader: true, IsPinnedHeader: true })
+                MainViewModel.MovePin(srcKey, t.GroupKey, srcPath);
             return;
         }
 
         var node = NodeUnder(e.OriginalSource);
+        if (node is { IsHeader: true, IsPinnedHeader: true }
+            && e.Data.GetData(DataFormats.FileDrop) is string[] pinFolders
+            && pinFolders.Length > 0 && pinFolders.All(Directory.Exists))
+        {
+            foreach (string folder in pinFolders) MainViewModel.PinTo(node.GroupKey, folder);
+            return;
+        }
         string? dest = SidebarDropDir(node);
         if (dest is null) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;

@@ -390,7 +390,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Grid.Column="0" Orientation="Horizontal"
                                                             Background="Transparent" Cursor="Hand"
-                                                            MouseLeftButtonDown="Header_Click">
+                                                            MouseLeftButtonUp="Header_Click">
                                                     <StackPanel.ContextMenu>
                                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
                                                                      RelativeSource={RelativeSource Self}}">
@@ -400,25 +400,16 @@
                                                                           Data="{StaticResource Ic.plus}" Stroke="{StaticResource AccentBright}" />
                                                                 </MenuItem.Icon>
                                                             </MenuItem>
-                                                            <MenuItem Header="Rename list…" Click="RenameList_Click"
-                                                                      Visibility="{Binding IsCustomHeader, Converter={StaticResource BoolToVis}}">
+                                                            <MenuItem Header="Rename list…" Click="RenameList_Click">
                                                                 <MenuItem.Icon>
                                                                     <Path Style="{StaticResource IconPath}" Width="15" Height="15"
                                                                           Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
                                                                 </MenuItem.Icon>
                                                             </MenuItem>
-                                                            <MenuItem Header="Delete list" Click="DeleteList_Click"
-                                                                      Visibility="{Binding IsCustomHeader, Converter={StaticResource BoolToVis}}">
+                                                            <MenuItem Header="Delete / hide list" Click="DeleteList_Click">
                                                                 <MenuItem.Icon>
                                                                     <Path Style="{StaticResource IconPath}" Width="15" Height="15"
                                                                           Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
-                                                                </MenuItem.Icon>
-                                                            </MenuItem>
-                                                            <MenuItem Header="Hide drives" Click="HideDrives_Click"
-                                                                      Visibility="{Binding IsDrivesHeader, Converter={StaticResource BoolToVis}}">
-                                                                <MenuItem.Icon>
-                                                                    <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                          Data="{StaticResource Ic.x}" Stroke="{StaticResource TextMuted}" />
                                                                 </MenuItem.Icon>
                                                             </MenuItem>
                                                         </ContextMenu>
@@ -454,7 +445,8 @@
                                             <StackPanel x:Name="itm" Orientation="Horizontal" Margin="2,5">
                                                 <StackPanel.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
-                                                                 RelativeSource={RelativeSource Self}}">
+                                                                 RelativeSource={RelativeSource Self}}"
+                                                                 Opened="NodeContextMenu_Opened">
                                                         <MenuItem Header="Open" Click="NodeOpen_Click">
                                                             <MenuItem.Icon>
                                                                 <Path Style="{StaticResource IconPath}" Width="15" Height="15"
@@ -489,7 +481,7 @@
                                                                       Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
                                                             </MenuItem.Icon>
                                                         </MenuItem>
-                                                        <MenuItem Header="Pin to Quick Access" Click="NodePin_Click"
+                                                        <MenuItem Header="Pin to Quick Access" Click="NodePin_Click" Tag="pinTarget"
                                                                   Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVis}}">
                                                             <MenuItem.Icon>
                                                                 <Path Style="{StaticResource IconPath}" Width="15" Height="15"
@@ -520,6 +512,9 @@
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
                                                 <Setter TargetName="hchev" Property="Data" Value="{StaticResource Ic.chevron-right}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                                <Setter TargetName="hdr" Property="Background" Value="{StaticResource AccentWash}" />
                                             </DataTrigger>
                                         </HierarchicalDataTemplate.Triggers>
                                     </HierarchicalDataTemplate>

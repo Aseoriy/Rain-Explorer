@@ -6,6 +6,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using RainExplorer.Models;
 using RainExplorer.Services;
+using RainExplorer.ViewModels;
 using RainExplorer.Views;
 
 namespace RainExplorer.Controls;
@@ -41,7 +42,7 @@ public partial class SettingsView : UserControl
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Prefer the informational version (e.g. "1.0.0-PreRelease"); fall back to the numeric one.
+        // Prefer the informational version (e.g. "1.0.1-PreRelease"); fall back to the numeric one.
         var info = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(info))
@@ -82,6 +83,16 @@ public partial class SettingsView : UserControl
         if (Directory.Exists(current)) dlg.InitialDirectory = current;
         if (dlg.ShowDialog() == true)
             SettingsStore.Instance.Settings.DefaultFolder = dlg.FolderName;
+    }
+
+    private void NewSidebarList_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var dlg = new InputDialog("New sidebar list", "List name:", "")
+        {
+            Owner = System.Windows.Window.GetWindow(this),
+        };
+        if (dlg.ShowDialog() == true)
+            MainViewModel.AddCustomGroup(dlg.Value);
     }
 
     // ---- Manual "Check for updates" ----------------------------------------

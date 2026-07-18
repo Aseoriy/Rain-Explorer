@@ -293,6 +293,17 @@
                                     </DockPanel>
                                 </Grid>
                             </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Preserve open tabs on close" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Restore all open tabs and split panes after reopening Rain Explorer or restarting your PC."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding PreserveOpenTabsOnClose, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
 
                             <TextBlock Text="EDITING" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
@@ -385,12 +396,35 @@
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Show Quick access in sidebar" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Show the built-in Quick access section in the sidebar list."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding ShowQuickAccessInSidebar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Show drives in sidebar" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show the Drives section in the sidebar list."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
                                     <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Custom sidebar lists" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Create another collapsible list. Rename, delete, or drag its header directly in the sidebar."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <Button Content="New list…" Style="{StaticResource DialogButton}"
+                                            HorizontalAlignment="Right" Padding="14,7" MinWidth="0"
+                                            Click="NewSidebarList_Click" />
                                 </Grid>
                             </Border>
 

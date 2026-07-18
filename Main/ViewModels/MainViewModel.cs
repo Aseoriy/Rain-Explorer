@@ -60,6 +60,7 @@ public sealed class MainViewModel : ObservableObject
         NextTabCommand = new RelayCommand(_ => ActivePane.CycleTab(+1));
         PrevTabCommand = new RelayCommand(_ => ActivePane.CycleTab(-1));
         SeedQuickAccessDefaults();
+        NormalizeSidebarSections();
         RebuildSidebar();
 
         // Toggling "show hidden files" re-reads every open tab; pin changes rebuild the sidebar.
@@ -70,10 +71,21 @@ public sealed class MainViewModel : ObservableObject
                 or nameof(AppSettings.ShowFileExtensions) or nameof(AppSettings.CalculateFolderSizes))
                 ReloadAllTabs();
             if (e.PropertyName is nameof(AppSettings.Pinned)
+                or nameof(AppSettings.CustomGroups)
+                or nameof(AppSettings.SidebarOrder)
+                or nameof(AppSettings.ShowQuickAccessInSidebar)
                 or nameof(AppSettings.ShowDrivesInSidebar)
+                or nameof(AppSettings.QuickAccessName)
+                or nameof(AppSettings.DrivesName)
                 or nameof(AppSettings.QuickAccessCollapsed)
                 or nameof(AppSettings.DrivesCollapsed))
                 RebuildSidebar();
+            if (e.PropertyName == nameof(AppSettings.PreserveOpenTabsOnClose)
+                && !SettingsStore.Instance.Settings.PreserveOpenTabsOnClose)
+            {
+                SettingsStore.Instance.Settings.SavedSession = null;
+                SettingsStore.Instance.Flush();
+            }
         };
     }
 
@@ -185,21 +197,71 @@ public sealed class MainViewModel : ObservableObject
 
     // ---- Sidebar list helpers (default "quick" + custom lists) -------------
 
-    /// <summary>The pin list for a sidebar group key ("quick"/""→default, "custom:N"→a custom list).</summary>
+    /// <summary>The pin list for a sidebar group key ("quick"/empty = default, "custom:&lt;id&gt;" = custom).</summary>
+    public sealed record SidebarPinTarget(string Key, string Name);
+
+    private static string CustomKey(SidebarGroup group) => "custom:" + group.Id;
+
+    /// <summary>Upgrade legacy/index-based data and ensure every section appears once in the persisted order.</summary>
+    private static void NormalizeSidebarSections()
+    {
+        var s = SettingsStore.Instance.Settings;
+        bool changed = false;
+        foreach (var group in s.CustomGroups)
+        {
+            if (!string.IsNullOrWhiteSpace(group.Id)) continue;
+            group.Id = Guid.NewGuid().ToString("N");
+            changed = true;
+        }
+
+        var valid = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "quick", "drives" };
+        foreach (var group in s.CustomGroups) valid.Add(CustomKey(group));
+
+        var normalized = new List<string>();
+        foreach (string raw in s.SidebarOrder)
+        {
+            string key = raw;
+            if (raw.StartsWith("custom:", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(raw.AsSpan(7), out int legacy)
+                && legacy >= 0 && legacy < s.CustomGroups.Count)
+                key = CustomKey(s.CustomGroups[legacy]);
+            if (valid.Contains(key) && !normalized.Contains(key, StringComparer.OrdinalIgnoreCase))
+                normalized.Add(key);
+        }
+
+        if (!normalized.Contains("quick", StringComparer.OrdinalIgnoreCase)) normalized.Insert(0, "quick");
+        foreach (var group in s.CustomGroups)
+        {
+            string key = CustomKey(group);
+            if (normalized.Contains(key, StringComparer.OrdinalIgnoreCase)) continue;
+            int drives = normalized.FindIndex(k => k.Equals("drives", StringComparison.OrdinalIgnoreCase));
+            normalized.Insert(drives < 0 ? normalized.Count : drives, key);
+        }
+        if (!normalized.Contains("drives", StringComparer.OrdinalIgnoreCase)) normalized.Add("drives");
+
+        if (!s.SidebarOrder.SequenceEqual(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            s.SidebarOrder = normalized;
+            changed = true;
+        }
+        if (changed) s.NotifyPinnedChanged();
+    }
+
     public static List<PinnedItem>? GroupItems(string key)
     {
         var s = SettingsStore.Instance.Settings;
         if (string.IsNullOrEmpty(key) || key == "quick") return s.Pinned;
-        if (TryCustomIndex(key, out int i)) return s.CustomGroups[i].Items;
-        return null;
+        return TryCustomGroup(key, out var group) ? group.Items : null;
     }
 
-    private static bool TryCustomIndex(string key, out int i)
+    private static bool TryCustomGroup(string key, out SidebarGroup group)
     {
-        i = -1;
-        if (key is null || !key.StartsWith("custom:")) return false;
-        return int.TryParse(key.AsSpan(7), out i)
-               && i >= 0 && i < SettingsStore.Instance.Settings.CustomGroups.Count;
+        group = null!;
+        if (key is null || !key.StartsWith("custom:", StringComparison.OrdinalIgnoreCase)) return false;
+        string id = key[7..];
+        group = SettingsStore.Instance.Settings.CustomGroups
+            .FirstOrDefault(g => string.Equals(g.Id, id, StringComparison.OrdinalIgnoreCase))!;
+        return group is not null;
     }
 
     /// <summary>Find a pin by path across the default list and every custom list.</summary>
@@ -221,9 +283,9 @@ public sealed class MainViewModel : ObservableObject
         var s = SettingsStore.Instance.Settings;
         if (key == "quick") s.QuickAccessCollapsed = !s.QuickAccessCollapsed;
         else if (key == "drives") s.DrivesCollapsed = !s.DrivesCollapsed;
-        else if (TryCustomIndex(key, out int i))
+        else if (TryCustomGroup(key, out var group))
         {
-            s.CustomGroups[i].Collapsed = !s.CustomGroups[i].Collapsed;
+            group.Collapsed = !group.Collapsed;
             s.NotifyPinnedChanged();
         }
     }
@@ -232,10 +294,12 @@ public sealed class MainViewModel : ObservableObject
     public static void AddCustomGroup(string? name = null)
     {
         var s = SettingsStore.Instance.Settings;
-        s.CustomGroups.Add(new SidebarGroup
+        var group = new SidebarGroup
         {
             Name = string.IsNullOrWhiteSpace(name) ? UniqueGroupName(s) : name!,
-        });
+        };
+        s.CustomGroups.Add(group);
+        NormalizeSidebarSections();
         s.NotifyPinnedChanged();
     }
 
@@ -250,16 +314,44 @@ public sealed class MainViewModel : ObservableObject
 
     public static void RenameGroup(string key, string newName)
     {
-        if (!TryCustomIndex(key, out int i) || string.IsNullOrWhiteSpace(newName)) return;
-        SettingsStore.Instance.Settings.CustomGroups[i].Name = newName.Trim();
-        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        var s = SettingsStore.Instance.Settings;
+        string name = newName.Trim();
+        if (key == "quick") s.QuickAccessName = name;
+        else if (key == "drives") s.DrivesName = name;
+        else if (TryCustomGroup(key, out var group))
+        {
+            group.Name = name;
+            s.NotifyPinnedChanged();
+        }
     }
 
     public static void DeleteGroup(string key)
     {
-        if (!TryCustomIndex(key, out int i)) return;
-        SettingsStore.Instance.Settings.CustomGroups.RemoveAt(i);
-        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+        var s = SettingsStore.Instance.Settings;
+        if (key == "quick") { s.ShowQuickAccessInSidebar = false; return; }
+        if (key == "drives") { s.ShowDrivesInSidebar = false; return; }
+        if (!TryCustomGroup(key, out var group)) return;
+        s.CustomGroups.Remove(group);
+        s.SidebarOrder.RemoveAll(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+        s.NotifyPinnedChanged();
+    }
+
+    /// <summary>Move an entire sidebar section before or after another one.</summary>
+    public static void ReorderGroup(string fromKey, string toKey, bool after)
+    {
+        if (Same(fromKey, toKey)) return;
+        var s = SettingsStore.Instance.Settings;
+        NormalizeSidebarSections();
+        int from = s.SidebarOrder.FindIndex(k => Same(k, fromKey));
+        int to = s.SidebarOrder.FindIndex(k => Same(k, toKey));
+        if (from < 0 || to < 0) return;
+        string moved = s.SidebarOrder[from];
+        s.SidebarOrder.RemoveAt(from);
+        to = s.SidebarOrder.FindIndex(k => Same(k, toKey));
+        if (after) to++;
+        s.SidebarOrder.Insert(Math.Clamp(to, 0, s.SidebarOrder.Count), moved);
+        s.NotifyPinnedChanged();
     }
 
     /// <summary>Reorder a pin within its list, dropping it before/after the target pin.</summary>
@@ -280,18 +372,18 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>Change a pinned item's custom icon (any list).</summary>
-    public static void SetPinnedIcon(string path, string iconKey)
+    public static void SetPinnedIcon(string key, string path, string iconKey)
     {
-        var pin = FindPin(path);
+        var pin = GroupItems(key)?.FirstOrDefault(p => Same(p.Path, path));
         if (pin is null || string.Equals(pin.IconKey, iconKey, StringComparison.Ordinal)) return;
         pin.IconKey = iconKey;
         SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
     /// <summary>Rename a pinned item's display label (any list).</summary>
-    public static void RenamePinned(string path, string newName)
+    public static void RenamePinned(string key, string path, string newName)
     {
-        var pin = FindPin(path);
+        var pin = GroupItems(key)?.FirstOrDefault(p => Same(p.Path, path));
         if (pin is null || string.IsNullOrWhiteSpace(newName) ||
             string.Equals(pin.Name, newName, StringComparison.Ordinal)) return;
         pin.Name = newName;
@@ -305,7 +397,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Pin a folder to a specific sidebar list (no-op if already pinned there).</summary>
     public static void PinTo(string key, string path, string? name = null, string iconKey = "folder")
     {
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
         var items = GroupItems(key);
         if (items is null || items.Any(p => Same(p.Path, path))) return;
         items.Add(new PinnedItem
@@ -335,6 +427,38 @@ public sealed class MainViewModel : ObservableObject
     public static void Unpin(string path) => UnpinFrom("quick", path);
 
     public static bool IsPinned(string path) => FindPin(path) is not null;
+
+    public static bool IsPinnedTo(string key, string path) =>
+        GroupItems(key)?.Any(p => Same(p.Path, path)) == true;
+
+    /// <summary>Visible pin-capable sections, in their current sidebar order.</summary>
+    public static IReadOnlyList<SidebarPinTarget> PinTargets()
+    {
+        NormalizeSidebarSections();
+        var s = SettingsStore.Instance.Settings;
+        var result = new List<SidebarPinTarget>();
+        foreach (string key in s.SidebarOrder)
+        {
+            if (key == "quick" && s.ShowQuickAccessInSidebar)
+                result.Add(new SidebarPinTarget(key, s.QuickAccessName));
+            else if (TryCustomGroup(key, out var group))
+                result.Add(new SidebarPinTarget(key, group.Name));
+        }
+        return result;
+    }
+
+    /// <summary>Move a pin between lists (used when a pinned row is dropped on another header).</summary>
+    public static void MovePin(string fromKey, string toKey, string path)
+    {
+        if (Same(fromKey, toKey)) return;
+        var source = GroupItems(fromKey);
+        var target = GroupItems(toKey);
+        var pin = source?.FirstOrDefault(p => Same(p.Path, path));
+        if (pin is null || target is null) return;
+        source!.Remove(pin);
+        if (!target.Any(p => Same(p.Path, path))) target.Add(pin);
+        SettingsStore.Instance.Settings.NotifyPinnedChanged();
+    }
 
     private void ReloadAllTabs()
     {
@@ -398,10 +522,81 @@ public sealed class MainViewModel : ObservableObject
     {
         if (LeftPane.Tabs.Count == 0)
         {
+            if (App.LaunchFolder is null && RestoreSavedSession()) return ActivePane;
             string start = App.LaunchFolder is { } f && Directory.Exists(f) ? f : StartTarget;
             LeftPane.NewTab(start, activate: true);
         }
         return LeftPane;
+    }
+
+    private bool RestoreSavedSession()
+    {
+        var settings = SettingsStore.Instance.Settings;
+        var session = settings.PreserveOpenTabsOnClose ? settings.SavedSession : null;
+        if (session is null) return false;
+
+        RestorePane(LeftPane, session.LeftTabs, session.LeftSelectedIndex);
+        if (LeftPane.Tabs.Count == 0) return false;
+
+        if (session.RightTabs.Any(IsRestorableTarget))
+        {
+            var right = CreatePane();
+            RestorePane(right, session.RightTabs, session.RightSelectedIndex);
+            if (right.Tabs.Count > 0)
+            {
+                RightPane = right;
+                OnPropertyChanged(nameof(IsSplit));
+            }
+        }
+
+        ActivePane = session.ActivePaneIsRight && RightPane is not null ? RightPane : LeftPane;
+        return true;
+    }
+
+    private static void RestorePane(PaneViewModel pane, IEnumerable<string> paths, int selectedIndex)
+    {
+        foreach (string path in paths.Where(IsRestorableTarget))
+            pane.NewTab(path, activate: false);
+        if (pane.Tabs.Count > 0)
+            pane.SelectedTab = pane.Tabs[Math.Clamp(selectedIndex, 0, pane.Tabs.Count - 1)];
+    }
+
+    private static bool IsRestorableTarget(string? path) =>
+        path is TabViewModel.HomeToken or TabViewModel.DrivesToken
+        || (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path));
+
+    /// <summary>Persist the current pane/tab snapshot immediately before the window closes.</summary>
+    public void SaveSession()
+    {
+        var settings = SettingsStore.Instance.Settings;
+        if (!settings.PreserveOpenTabsOnClose) return;
+
+        var left = CapturePane(LeftPane);
+        var right = CapturePane(RightPane);
+
+        settings.SavedSession = new ExplorerSession
+        {
+            LeftTabs = left.Paths,
+            LeftSelectedIndex = left.SelectedIndex,
+            RightTabs = right.Paths,
+            RightSelectedIndex = right.SelectedIndex,
+            ActivePaneIsRight = RightPane is not null && ReferenceEquals(ActivePane, RightPane),
+        };
+        SettingsStore.Instance.Flush();
+    }
+
+    private static (List<string> Paths, int SelectedIndex) CapturePane(PaneViewModel? pane)
+    {
+        var paths = new List<string>();
+        int selected = 0;
+        if (pane is null) return (paths, selected);
+        foreach (var tab in pane.Tabs)
+        {
+            if (!IsRestorableTarget(tab.CurrentPath)) continue;
+            if (ReferenceEquals(tab, pane.SelectedTab)) selected = paths.Count;
+            paths.Add(tab.CurrentPath);
+        }
+        return (paths, selected);
     }
 
     private void ToggleSplit()

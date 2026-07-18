@@ -21,6 +21,7 @@ namespace RainExplorer.Controls;
 /// </summary>
 public partial class BreadcrumbBar : UserControl
 {
+    private sealed record CrumbPinTarget(string Key, string Name, bool Dynamic);
     private TabViewModel? _tab;
     private bool _editing;
     private CancellationTokenSource? _childCts;
@@ -193,6 +194,7 @@ public partial class BreadcrumbBar : UserControl
     private ContextMenu? _crumbMenu;
     private ContextMenu CrumbMenu => _crumbMenu ??= (ContextMenu)FindResource("CrumbMenu");
     private ShellContextMenu? _crumbShellSession;
+    private MenuItem? _crumbPinItem;
 
     /// <summary>The folder path of the segment that was right-clicked.</summary>
     private string? MenuTargetPath => (CrumbMenu.PlacementTarget as Button)?.Tag as string;
@@ -204,12 +206,56 @@ public partial class BreadcrumbBar : UserControl
     {
         string? path = MenuTargetPath;
         bool isDir = path is not null && Directory.Exists(path);
-        if (FindMenuItem("pin") is { } pin)
+        _crumbPinItem ??= FindMenuItem("pin");
+        if (_crumbPinItem is { } pin)
         {
-            pin.IsEnabled = isDir;
-            pin.Header = isDir && MainViewModel.IsPinned(path!)
-                ? "Unpin from Quick Access" : "Pin to Quick Access";
+            foreach (var old in CrumbMenu.Items.OfType<MenuItem>()
+                         .Where(m => m.Tag is CrumbPinTarget { Dynamic: true }).ToList())
+                CrumbMenu.Items.Remove(old);
+            pin.Items.Clear();
+            var targets = MainViewModel.PinTargets();
+            if (targets.Count == 0)
+            {
+                pin.Header = "No sidebar lists";
+                pin.IsEnabled = false;
+            }
+            else if (targets.Count(t => t.Key != "quick") > 2)
+            {
+                pin.Header = "Pin to sidebar";
+                pin.IsEnabled = isDir;
+                pin.Tag = null;
+                foreach (var target in targets)
+                {
+                    var child = CreateCrumbPinItem(target, path, dynamic: false);
+                    pin.Items.Add(child);
+                }
+            }
+            else
+            {
+                var primary = targets.FirstOrDefault(t => t.Key == "quick") ?? targets[0];
+                ConfigureCrumbPinItem(pin, primary, path, dynamic: false);
+                int insert = CrumbMenu.Items.IndexOf(pin) + 1;
+                foreach (var target in targets.Where(t => t.Key != primary.Key))
+                    CrumbMenu.Items.Insert(insert++, CreateCrumbPinItem(target, path, dynamic: true));
+            }
         }
+    }
+
+    private MenuItem CreateCrumbPinItem(MainViewModel.SidebarPinTarget target, string? path, bool dynamic)
+    {
+        var item = new MenuItem();
+        ConfigureCrumbPinItem(item, target, path, dynamic);
+        item.Click += CrumbPin_Click;
+        return item;
+    }
+
+    private static void ConfigureCrumbPinItem(MenuItem item, MainViewModel.SidebarPinTarget target,
+        string? path, bool dynamic)
+    {
+        bool pinned = path is not null && MainViewModel.IsPinnedTo(target.Key, path);
+        item.Header = pinned ? $"Unpin from {target.Name}" : $"Pin to {target.Name}";
+        item.IsEnabled = path is not null && Directory.Exists(path);
+        item.Tag = new CrumbPinTarget(target.Key, target.Name, dynamic);
     }
 
     private void CrumbOpen_Click(object sender, RoutedEventArgs e)
@@ -230,9 +276,12 @@ public partial class BreadcrumbBar : UserControl
 
     private void CrumbPin_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is not MenuItem { Tag: CrumbPinTarget target }) return;
+        e.Handled = true;
         if (MenuTargetPath is not { } p || !Directory.Exists(p)) return;
-        if (MainViewModel.IsPinned(p)) MainViewModel.Unpin(p);
-        else MainViewModel.Pin(p, System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)));
+        if (MainViewModel.IsPinnedTo(target.Key, p)) MainViewModel.UnpinFrom(target.Key, p);
+        else MainViewModel.PinTo(target.Key, p,
+            System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)));
     }
 
     private void CrumbTerminal_Click(object sender, RoutedEventArgs e)

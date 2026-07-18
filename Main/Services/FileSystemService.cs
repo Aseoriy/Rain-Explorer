@@ -141,45 +141,52 @@ public sealed class FileSystemService
         var settings = SettingsStore.Instance.Settings;
         var nodes = new List<SidebarNode>();
 
-        // Quick access = the Home dashboard + every user pin (defaults seeded on first run).
-        // The header carries the inline add (+) affordance, and every pin can be
-        // renamed / re-iconed / unpinned from its context menu.
-        bool quickCollapsed = settings.QuickAccessCollapsed;
-        nodes.Add(SidebarNode.HeaderNode("Quick access", pinnedHeader: true,
-            groupKey: "quick", collapsed: quickCollapsed));
-        if (!quickCollapsed)
+        foreach (string key in settings.SidebarOrder)
         {
-            nodes.Add(SidebarNode.SpecialNode("Home", "Home", "home"));
-            AddPins(nodes, settings.Pinned, "quick");
-        }
-
-        // User-created custom lists, each independently collapsible.
-        for (int i = 0; i < settings.CustomGroups.Count; i++)
-        {
-            var g = settings.CustomGroups[i];
-            string key = "custom:" + i;
-            nodes.Add(SidebarNode.HeaderNode(g.Name, pinnedHeader: true,
-                groupKey: key, collapsed: g.Collapsed, customHeader: true));
-            if (!g.Collapsed) AddPins(nodes, g.Items, key);
-        }
-
-        // Drives section (optional + collapsible).
-        if (settings.ShowDrivesInSidebar)
-        {
-            bool drivesCollapsed = settings.DrivesCollapsed;
-            nodes.Add(SidebarNode.HeaderNode("Drives", groupKey: "drives", collapsed: drivesCollapsed));
-            if (!drivesCollapsed)
+            if (key.Equals("quick", StringComparison.OrdinalIgnoreCase))
             {
-                nodes.Add(SidebarNode.SpecialNode("All drives", "Drives", "hard-drive"));
-                foreach (var drive in DriveInfo.GetDrives())
+                if (!settings.ShowQuickAccessInSidebar) continue;
+                bool collapsed = settings.QuickAccessCollapsed;
+                nodes.Add(SidebarNode.HeaderNode(settings.QuickAccessName, pinnedHeader: true,
+                    groupKey: "quick", collapsed: collapsed));
+                if (!collapsed)
                 {
-                    if (!drive.IsReady) continue;
-                    string label = string.IsNullOrWhiteSpace(drive.VolumeLabel)
-                        ? drive.Name
-                        : $"{drive.VolumeLabel} ({drive.Name.TrimEnd('\\')})";
-                    nodes.Add(SidebarNode.Folder(label, drive.RootDirectory.FullName, "hard-drive", NodeKind.Drive));
+                    nodes.Add(SidebarNode.SpecialNode("Home", "Home", "home", "quick"));
+                    AddPins(nodes, settings.Pinned, "quick");
                 }
+                continue;
             }
+
+            if (key.Equals("drives", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!settings.ShowDrivesInSidebar) continue;
+                bool collapsed = settings.DrivesCollapsed;
+                nodes.Add(SidebarNode.HeaderNode(settings.DrivesName,
+                    groupKey: "drives", collapsed: collapsed));
+                if (!collapsed)
+                {
+                    nodes.Add(SidebarNode.SpecialNode("All drives", "Drives", "hard-drive", "drives"));
+                    foreach (var drive in DriveInfo.GetDrives())
+                    {
+                        if (!drive.IsReady) continue;
+                        string label = string.IsNullOrWhiteSpace(drive.VolumeLabel)
+                            ? drive.Name
+                            : $"{drive.VolumeLabel} ({drive.Name.TrimEnd('\\')})";
+                        nodes.Add(SidebarNode.Folder(label, drive.RootDirectory.FullName,
+                            "hard-drive", NodeKind.Drive, "drives"));
+                    }
+                }
+                continue;
+            }
+
+            if (!key.StartsWith("custom:", StringComparison.OrdinalIgnoreCase)) continue;
+            string id = key[7..];
+            var group = settings.CustomGroups.FirstOrDefault(g =>
+                string.Equals(g.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (group is null) continue;
+            nodes.Add(SidebarNode.HeaderNode(group.Name, pinnedHeader: true,
+                groupKey: key, collapsed: group.Collapsed, customHeader: true));
+            if (!group.Collapsed) AddPins(nodes, group.Items, key);
         }
 
         return nodes;

@@ -28,7 +28,7 @@ public sealed class SidebarNode : ObservableObject
     /// <summary>True for headers — they shouldn't be selectable/navigable.</summary>
     public bool IsSelectable => Kind != NodeKind.Header;
 
-    /// <summary>Which sidebar list this node belongs to: "quick", "drives", or "custom:&lt;index&gt;".
+    /// <summary>Which sidebar list this node belongs to: "quick", "drives", or "custom:&lt;stable id&gt;".
     /// Carried by both section headers and pinned items so handlers know the target list.</summary>
     public string GroupKey { get; init; } = "";
 
@@ -80,8 +80,8 @@ public sealed class SidebarNode : ObservableObject
             GroupKey = groupKey, IsCollapsed = collapsed, IsCustomHeader = customHeader,
         };
 
-    public static SidebarNode SpecialNode(string name, string token, string iconKey) =>
-        new() { Name = name, Path = token, IconKey = iconKey, Kind = NodeKind.Special };
+    public static SidebarNode SpecialNode(string name, string token, string iconKey, string groupKey = "") =>
+        new() { Name = name, Path = token, IconKey = iconKey, Kind = NodeKind.Special, GroupKey = groupKey };
 
     private void LoadChildren()
     {
@@ -101,7 +101,7 @@ public sealed class SidebarNode : ObservableObject
                         (di.Attributes.HasFlag(FileAttributes.Hidden) ||
                          di.Attributes.HasFlag(FileAttributes.System)))
                         continue;
-                    Children.Add(Folder(di.Name, di.FullName, "folder", NodeKind.Folder));
+                    Children.Add(Folder(di.Name, di.FullName, "folder", NodeKind.Folder, GroupKey));
                 }
                 catch { /* entry vanished — skip */ }
             }

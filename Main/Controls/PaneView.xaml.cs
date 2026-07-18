@@ -24,6 +24,7 @@ namespace RainExplorer.Controls;
 /// </summary>
 public partial class PaneView : UserControl
 {
+    private sealed record PinMenuTarget(string Key, string Name, bool Dynamic);
     private PaneViewModel? _vm;
     private TabViewModel? _tab;
     private readonly FileOperationsService _ops = new();
@@ -513,7 +514,8 @@ public partial class PaneView : UserControl
         ShowDragGhost(items);
         try
         {
-            var result = DragDrop.DoDragDrop(FileList, data, DragDropEffects.Copy | DragDropEffects.Move);
+            var result = DragDrop.DoDragDrop(FileList, data,
+                DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
             // If the drop target moved the files out, our folder is now stale.
             if (result == DragDropEffects.Move) _ = _tab?.ReloadAsync();
         }
@@ -787,10 +789,7 @@ public partial class PaneView : UserControl
         MenuOpenWith.IsEnabled = singleFile;
         MenuOpenTerminal.IsEnabled = _tab is not null;
 
-        // Pin toggles label/enabled based on whether the (folder) selection is pinned.
-        MenuPin.IsEnabled = anyDir;
-        bool allPinned = anyDir && items.Where(i => i.IsDirectory).All(i => MainViewModel.IsPinned(i.FullPath));
-        MenuPin.Header = allPinned ? "Unpin from Quick Access" : "Pin to Quick Access";
+        BuildPinMenu(items.Where(i => i.IsDirectory).ToList());
         MenuCut.IsEnabled = has;
         MenuCopy.IsEnabled = has;
         MenuCopyPath.IsEnabled = has;
@@ -801,6 +800,62 @@ public partial class PaneView : UserControl
         MenuRename.IsEnabled = n == 1;
         MenuDelete.IsEnabled = has;
         MenuProperties.IsEnabled = n == 1;
+    }
+
+    private void BuildPinMenu(IReadOnlyList<FileItem> dirs)
+    {
+        var targets = MainViewModel.PinTargets();
+        var owner = ItemsControl.ItemsControlFromItemContainer(MenuPin);
+        if (owner is not null)
+        {
+            foreach (var old in owner.Items.OfType<MenuItem>()
+                         .Where(m => m.Tag is PinMenuTarget { Dynamic: true }).ToList())
+                owner.Items.Remove(old);
+        }
+        MenuPin.Items.Clear();
+        MenuPin.Tag = null;
+
+        if (targets.Count == 0)
+        {
+            MenuPin.Header = "No sidebar lists";
+            MenuPin.IsEnabled = false;
+            return;
+        }
+
+        bool useSubmenu = targets.Count(t => t.Key != "quick") > 2;
+        if (useSubmenu)
+        {
+            MenuPin.Header = "Pin to sidebar";
+            MenuPin.IsEnabled = dirs.Count > 0;
+            foreach (var target in targets)
+                MenuPin.Items.Add(CreatePinMenuItem(target, dirs, dynamic: false));
+            return;
+        }
+
+        var primary = targets.FirstOrDefault(t => t.Key == "quick") ?? targets[0];
+        ConfigurePinMenuItem(MenuPin, primary, dirs, dynamic: false);
+        if (owner is null) return;
+        int insert = owner.Items.IndexOf(MenuPin) + 1;
+        foreach (var target in targets.Where(t => t.Key != primary.Key))
+            owner.Items.Insert(insert++, CreatePinMenuItem(target, dirs, dynamic: true));
+    }
+
+    private MenuItem CreatePinMenuItem(MainViewModel.SidebarPinTarget target,
+        IReadOnlyList<FileItem> dirs, bool dynamic)
+    {
+        var item = new MenuItem();
+        ConfigurePinMenuItem(item, target, dirs, dynamic);
+        item.Click += Pin_Click;
+        return item;
+    }
+
+    private static void ConfigurePinMenuItem(MenuItem item, MainViewModel.SidebarPinTarget target,
+        IReadOnlyList<FileItem> dirs, bool dynamic)
+    {
+        bool allPinned = dirs.Count > 0 && dirs.All(d => MainViewModel.IsPinnedTo(target.Key, d.FullPath));
+        item.Header = allPinned ? $"Unpin from {target.Name}" : $"Pin to {target.Name}";
+        item.IsEnabled = dirs.Count > 0;
+        item.Tag = new PinMenuTarget(target.Key, target.Name, dynamic);
     }
 
     private static bool ClipboardHasFiles()
@@ -1085,18 +1140,20 @@ public partial class PaneView : UserControl
         if (Window.GetWindow(this) is { } owner) ShellContextMenu.Show(paths, owner);
     }
 
-    // ---- Pin / unpin selected folders to Quick Access ----------------------
+    // ---- Pin / unpin selected folders to a chosen sidebar list ------------
     private void Pin_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is not MenuItem { Tag: PinMenuTarget target }) return;
+        e.Handled = true;
         var dirs = SelectedItems().Where(i => i.IsDirectory).ToList();
         if (dirs.Count == 0) return;
-        bool allPinned = dirs.All(i => MainViewModel.IsPinned(i.FullPath));
+        bool allPinned = dirs.All(i => MainViewModel.IsPinnedTo(target.Key, i.FullPath));
         foreach (var d in dirs)
         {
-            if (allPinned) MainViewModel.Unpin(d.FullPath);
-            else MainViewModel.Pin(d.FullPath, d.Name, d.IconKey);
+            if (allPinned) MainViewModel.UnpinFrom(target.Key, d.FullPath);
+            else MainViewModel.PinTo(target.Key, d.FullPath, d.Name, d.IconKey);
         }
-        SetStatus(allPinned ? "Unpinned from Quick Access" : "Pinned to Quick Access");
+        SetStatus(allPinned ? $"Unpinned from {target.Name}" : $"Pinned to {target.Name}");
     }
 
     // ---- Open in new tab / open with / terminal ----------------------------
