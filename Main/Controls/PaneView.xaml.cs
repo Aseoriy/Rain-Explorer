@@ -450,6 +450,15 @@ public partial class PaneView : UserControl
     // where the list should rubber-band select instead).
     private void FileList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        // The ListView's ScrollBar lives inside the ListView template, so its mouse
+        // events also route through this handler. Never arm file dragging or the
+        // empty-space selection marquee for scrollbar chrome; otherwise the marquee
+        // captures the mouse after a few pixels and steals an in-progress thumb drag.
+        _maybeDrag = false;
+        _maybeMarquee = false;
+        _pendingSingleSelect = null;
+        if (IsWithin<System.Windows.Controls.Primitives.ScrollBar>(e.OriginalSource)) return;
+
         _dragStart = e.GetPosition(null);
         var hit = ItemFromPoint<FileItem>(e);
         _maybeDrag = hit is not null;
@@ -461,7 +470,6 @@ public partial class PaneView : UserControl
         // Pressing a row that's already part of a multi-selection (no Ctrl/Shift) must NOT
         // collapse the selection — otherwise a drag would only carry this one row. Suppress
         // the default and remember to collapse on mouse-up if the press turns out to be a click.
-        _pendingSingleSelect = null;
         if (hit is not null && FileList.SelectedItems.Count > 1
             && FileList.SelectedItems.Contains(hit)
             && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == 0)
