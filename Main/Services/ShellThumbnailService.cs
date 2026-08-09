@@ -14,6 +14,56 @@ namespace RainExplorer.Services;
 /// </summary>
 public static class ShellThumbnailService
 {
+    private static readonly Dictionary<string, BitmapSource> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, List<Action<BitmapSource>>> InFlight =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SemaphoreSlim LoadGate = new(3);
+    private static readonly object Gate = new();
+
+    /// <summary>
+    /// Lazily load and cache a thumbnail for a grid tile. Native work is bounded so
+    /// opening a photo-heavy folder cannot create an STA thread for every tile at once.
+    /// </summary>
+    public static void LoadAsync(string path, int size, Action<BitmapSource> onLoaded)
+    {
+        string key = $"{size}:{path}";
+        lock (Gate)
+        {
+            if (Cache.TryGetValue(key, out var cached))
+            {
+                onLoaded(cached);
+                return;
+            }
+            if (InFlight.TryGetValue(key, out var waiters))
+            {
+                waiters.Add(onLoaded);
+                return;
+            }
+            InFlight[key] = new List<Action<BitmapSource>> { onLoaded };
+        }
+
+        _ = Task.Run(async () =>
+        {
+            BitmapSource? image = null;
+            await LoadGate.WaitAsync();
+            try { image = await GetThumbnailAsync(path, size, CancellationToken.None); }
+            catch { /* the tile keeps its normal icon */ }
+            finally { LoadGate.Release(); }
+
+            List<Action<BitmapSource>>? waiters;
+            lock (Gate)
+            {
+                if (image is not null) Cache[key] = image;
+                InFlight.Remove(key, out waiters);
+            }
+            if (image is not null && waiters is not null)
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    foreach (var callback in waiters) callback(image);
+                });
+        });
+    }
+
     /// <summary>Get a thumbnail no larger than <paramref name="size"/>px, or null if none/error.</summary>
     public static Task<BitmapSource?> GetThumbnailAsync(string path, int size, CancellationToken ct)
     {

@@ -8,12 +8,16 @@ namespace RainExplorer.Services;
 /// activity center never reports "done" for something that didn't actually happen.</summary>
 public enum OpOutcome { Ok, Canceled, Failed }
 
-public readonly record struct OpResult(OpOutcome Outcome, string? Error)
+public readonly record struct OpResult(
+    OpOutcome Outcome,
+    string? Error,
+    IReadOnlyList<string>? CompletedPaths = null)
 {
     public bool Ok => Outcome == OpOutcome.Ok;
     public bool Canceled => Outcome == OpOutcome.Canceled;
-    public static readonly OpResult Success = new(OpOutcome.Ok, null);
-    public static readonly OpResult Cancelled = new(OpOutcome.Canceled, null);
+    public IReadOnlyList<string> Completed => CompletedPaths ?? Array.Empty<string>();
+    public static readonly OpResult Success = new(OpOutcome.Ok, null, Array.Empty<string>());
+    public static readonly OpResult Cancelled = new(OpOutcome.Canceled, null, Array.Empty<string>());
     public static OpResult Fail(string? error) => new(OpOutcome.Failed, error);
 }
 
@@ -28,47 +32,60 @@ public readonly record struct OpResult(OpOutcome Outcome, string? Error)
 /// </summary>
 public sealed class FileOperationsService
 {
-    /// <summary>Send paths to the Recycle Bin (never a permanent delete). Shows the OS confirm + progress.
-    /// Uses ThrowException so cancelling the confirm dialog is reported as a real cancellation
-    /// (rather than being silently treated as success).</summary>
+    /// <summary>Send paths to the Recycle Bin without Windows asking once per item.
+    /// Windows still owns genuine error dialogs.</summary>
     public OpResult Delete(IEnumerable<string> paths)
     {
+        var completed = new List<string>();
         try
         {
             foreach (string p in paths)
             {
                 if (Directory.Exists(p))
-                    FileSystem.DeleteDirectory(p, UIOption.AllDialogs, RecycleOption.SendToRecycleBin,
+                {
+                    FileSystem.DeleteDirectory(p, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin,
                         UICancelOption.ThrowException);
+                    completed.Add(p);
+                }
                 else if (File.Exists(p))
-                    FileSystem.DeleteFile(p, UIOption.AllDialogs, RecycleOption.SendToRecycleBin,
+                {
+                    FileSystem.DeleteFile(p, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin,
                         UICancelOption.ThrowException);
+                    completed.Add(p);
+                }
             }
-            return OpResult.Success;
+            return new OpResult(OpOutcome.Ok, null, completed);
         }
-        catch (OperationCanceledException) { return OpResult.Cancelled; }
-        catch (Exception ex) { return OpResult.Fail(ex.Message); }
+        catch (OperationCanceledException) { return new(OpOutcome.Canceled, null, completed); }
+        catch (Exception ex) { return new(OpOutcome.Failed, ex.Message, completed); }
     }
 
-    /// <summary>Permanently delete paths (bypasses the Recycle Bin — not undoable). Shows the OS confirm + progress.
-    /// Cancelling the confirm dialog is reported as a cancellation, not a success.</summary>
+    /// <summary>Permanently delete paths (bypasses the Recycle Bin — not undoable).
+    /// The caller supplies the single themed confirmation; Windows only surfaces errors.</summary>
     public OpResult DeletePermanent(IEnumerable<string> paths)
     {
+        var completed = new List<string>();
         try
         {
             foreach (string p in paths)
             {
                 if (Directory.Exists(p))
-                    FileSystem.DeleteDirectory(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
+                {
+                    FileSystem.DeleteDirectory(p, UIOption.OnlyErrorDialogs, RecycleOption.DeletePermanently,
                         UICancelOption.ThrowException);
+                    completed.Add(p);
+                }
                 else if (File.Exists(p))
-                    FileSystem.DeleteFile(p, UIOption.AllDialogs, RecycleOption.DeletePermanently,
+                {
+                    FileSystem.DeleteFile(p, UIOption.OnlyErrorDialogs, RecycleOption.DeletePermanently,
                         UICancelOption.ThrowException);
+                    completed.Add(p);
+                }
             }
-            return OpResult.Success;
+            return new OpResult(OpOutcome.Ok, null, completed);
         }
-        catch (OperationCanceledException) { return OpResult.Cancelled; }
-        catch (Exception ex) { return OpResult.Fail(ex.Message); }
+        catch (OperationCanceledException) { return new(OpOutcome.Canceled, null, completed); }
+        catch (Exception ex) { return new(OpOutcome.Failed, ex.Message, completed); }
     }
 
     public string? CopyInto(IEnumerable<string> sources, string destDir) => Transfer(sources, destDir, move: false);

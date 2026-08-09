@@ -11,8 +11,19 @@ namespace RainExplorer.Models;
 /// </summary>
 public sealed class FileItem : INotifyPropertyChanged
 {
-    public required string Name { get; init; }
-    public required string FullPath { get; init; }
+    private string _name = "";
+    public required string Name
+    {
+        get => _name;
+        init => _name = value;
+    }
+
+    private string _fullPath = "";
+    public required string FullPath
+    {
+        get => _fullPath;
+        init => _fullPath = value;
+    }
     public bool IsDirectory { get; init; }
     public long Size { get; init; }
     public DateTime Modified { get; init; }
@@ -64,6 +75,33 @@ public sealed class FileItem : INotifyPropertyChanged
         }
     }
 
+    // ---- Grid thumbnail (lazy, photos only) --------------------------------
+    private static readonly HashSet<string> PhotoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "avif",
+    };
+
+    private ImageSource? _gridThumbnail;
+    private bool _gridThumbnailRequested;
+    /// <summary>A larger photo preview requested only when grid view binds to it.</summary>
+    public ImageSource? GridThumbnail
+    {
+        get
+        {
+            if (!IsDirectory && PhotoExtensions.Contains(Extension) &&
+                _gridThumbnail is null && !_gridThumbnailRequested)
+            {
+                _gridThumbnailRequested = true;
+                ShellThumbnailService.LoadAsync(FullPath, 160, img =>
+                {
+                    _gridThumbnail = img;
+                    OnPropertyChanged(nameof(GridThumbnail));
+                });
+            }
+            return _gridThumbnail;
+        }
+    }
+
     public string TypeLabel =>
         IsDirectory ? "Folder" : (Extension.Length > 0 ? $"{Extension} file" : "File");
 
@@ -97,6 +135,28 @@ public sealed class FileItem : INotifyPropertyChanged
     {
         get => _editName ?? Name;
         set { _editName = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Apply a successful same-folder rename without re-reading the directory.</summary>
+    public void ApplyRename(string newPath)
+    {
+        _fullPath = newPath;
+        _name = Path.GetFileName(newPath);
+        _editName = _name;
+        _icon = null;
+        _iconRequested = false;
+        _gridThumbnail = null;
+        _gridThumbnailRequested = false;
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(FullPath));
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(Extension));
+        OnPropertyChanged(nameof(IconKey));
+        OnPropertyChanged(nameof(IconBrush));
+        OnPropertyChanged(nameof(Icon));
+        OnPropertyChanged(nameof(GridThumbnail));
+        OnPropertyChanged(nameof(TypeLabel));
+        OnPropertyChanged(nameof(EditName));
     }
 
     // ---- Drag-and-drop highlight (UI only) ---------------------------------

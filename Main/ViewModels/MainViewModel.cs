@@ -460,15 +460,17 @@ public sealed class MainViewModel : ObservableObject
         SettingsStore.Instance.Settings.NotifyPinnedChanged();
     }
 
-    private void ReloadAllTabs()
+    private void ReloadAllTabs(bool afterKnownOperation = false)
     {
-        foreach (var t in LeftPane.Tabs) _ = t.ReloadAsync();
+        foreach (var t in LeftPane.Tabs)
+            _ = afterKnownOperation ? t.ReloadAfterOperationAsync() : t.ReloadAsync();
         if (RightPane is not null)
-            foreach (var t in RightPane.Tabs) _ = t.ReloadAsync();
+            foreach (var t in RightPane.Tabs)
+                _ = afterKnownOperation ? t.ReloadAfterOperationAsync() : t.ReloadAsync();
     }
 
     /// <summary>Re-read every open tab (e.g. after an undo/redo touched the filesystem).</summary>
-    public void RefreshAll() => ReloadAllTabs();
+    public void RefreshAll(bool afterKnownOperation = false) => ReloadAllTabs(afterKnownOperation);
 
     public PaneViewModel LeftPane { get; }
 
@@ -509,6 +511,7 @@ public sealed class MainViewModel : ObservableObject
         var pane = new PaneViewModel(_fs);
         pane.RequestActivate += p => ActivePane = p;
         pane.EmptyRequested += OnPaneEmpty;
+        pane.ProjectStateChanged += SaveActiveProject;
         // When the active pane switches tabs, re-sync the sidebar to the new tab's location.
         pane.PropertyChanged += (_, e) =>
         {
@@ -535,13 +538,17 @@ public sealed class MainViewModel : ObservableObject
         var session = settings.PreserveOpenTabsOnClose ? settings.SavedSession : null;
         if (session is null) return false;
 
-        RestorePane(LeftPane, session.LeftTabs, session.LeftSelectedIndex);
+        RestorePane(LeftPane, session.LeftTabs, session.LeftPinnedTabs,
+            session.LeftTabGroups, session.LeftTabGroupNames, session.LeftSelectedIndex);
+        LeftPane.ActiveProjectId = session.LeftProjectId;
         if (LeftPane.Tabs.Count == 0) return false;
 
         if (session.RightTabs.Any(IsRestorableTarget))
         {
             var right = CreatePane();
-            RestorePane(right, session.RightTabs, session.RightSelectedIndex);
+            RestorePane(right, session.RightTabs, session.RightPinnedTabs,
+                session.RightTabGroups, session.RightTabGroupNames, session.RightSelectedIndex);
+            right.ActiveProjectId = session.RightProjectId;
             if (right.Tabs.Count > 0)
             {
                 RightPane = right;
@@ -553,10 +560,19 @@ public sealed class MainViewModel : ObservableObject
         return true;
     }
 
-    private static void RestorePane(PaneViewModel pane, IEnumerable<string> paths, int selectedIndex)
+    private static void RestorePane(PaneViewModel pane, IReadOnlyList<string> paths,
+        IReadOnlyList<bool>? pinnedTabs, IReadOnlyList<string?>? tabGroups,
+        IReadOnlyList<string?>? tabGroupNames, int selectedIndex)
     {
-        foreach (string path in paths.Where(IsRestorableTarget))
-            pane.NewTab(path, activate: false);
+        for (int index = 0; index < paths.Count; index++)
+        {
+            string path = paths[index];
+            if (!IsRestorableTarget(path)) continue;
+            bool pinned = pinnedTabs is not null && index < pinnedTabs.Count && pinnedTabs[index];
+            string? groupId = tabGroups is not null && index < tabGroups.Count ? tabGroups[index] : null;
+            string? groupName = tabGroupNames is not null && index < tabGroupNames.Count ? tabGroupNames[index] : null;
+            pane.NewTab(path, activate: false, pinned: pinned, groupId: groupId, groupName: groupName);
+        }
         if (pane.Tabs.Count > 0)
             pane.SelectedTab = pane.Tabs[Math.Clamp(selectedIndex, 0, pane.Tabs.Count - 1)];
     }
@@ -569,7 +585,14 @@ public sealed class MainViewModel : ObservableObject
     public void SaveSession()
     {
         var settings = SettingsStore.Instance.Settings;
-        if (!settings.PreserveOpenTabsOnClose) return;
+
+        SaveActiveProject(LeftPane);
+        SaveActiveProject(RightPane);
+        if (!settings.PreserveOpenTabsOnClose)
+        {
+            SettingsStore.Instance.Flush();
+            return;
+        }
 
         var left = CapturePane(LeftPane);
         var right = CapturePane(RightPane);
@@ -577,26 +600,53 @@ public sealed class MainViewModel : ObservableObject
         settings.SavedSession = new ExplorerSession
         {
             LeftTabs = left.Paths,
+            LeftPinnedTabs = left.Pinned,
+            LeftTabGroups = left.Groups,
+            LeftTabGroupNames = left.GroupNames,
             LeftSelectedIndex = left.SelectedIndex,
+            LeftProjectId = LeftPane.ActiveProjectId,
             RightTabs = right.Paths,
+            RightPinnedTabs = right.Pinned,
+            RightTabGroups = right.Groups,
+            RightTabGroupNames = right.GroupNames,
             RightSelectedIndex = right.SelectedIndex,
+            RightProjectId = RightPane?.ActiveProjectId,
             ActivePaneIsRight = RightPane is not null && ReferenceEquals(ActivePane, RightPane),
         };
         SettingsStore.Instance.Flush();
     }
 
-    private static (List<string> Paths, int SelectedIndex) CapturePane(PaneViewModel? pane)
+    private static void SaveActiveProject(PaneViewModel? pane)
+    {
+        if (pane?.ActiveProjectId is not { Length: > 0 } id) return;
+        var settings = SettingsStore.Instance.Settings;
+        var project = settings.TabProjects.FirstOrDefault(p => p.Id == id);
+        if (project is null) return;
+        var snapshot = pane.CaptureProject();
+        project.Tabs = snapshot.Tabs;
+        project.SelectedIndex = snapshot.SelectedIndex;
+        settings.NotifyTabProjectsChanged();
+    }
+
+    private static (List<string> Paths, List<bool> Pinned, List<string?> Groups,
+        List<string?> GroupNames, int SelectedIndex) CapturePane(PaneViewModel? pane)
     {
         var paths = new List<string>();
+        var pinned = new List<bool>();
+        var groups = new List<string?>();
+        var groupNames = new List<string?>();
         int selected = 0;
-        if (pane is null) return (paths, selected);
+        if (pane is null) return (paths, pinned, groups, groupNames, selected);
         foreach (var tab in pane.Tabs)
         {
             if (!IsRestorableTarget(tab.CurrentPath)) continue;
             if (ReferenceEquals(tab, pane.SelectedTab)) selected = paths.Count;
             paths.Add(tab.CurrentPath);
+            pinned.Add(tab.IsPinned);
+            groups.Add(tab.GroupId);
+            groupNames.Add(tab.IsGrouped ? tab.GroupName : null);
         }
-        return (paths, selected);
+        return (paths, pinned, groups, groupNames, selected);
     }
 
     private void ToggleSplit()
@@ -604,6 +654,7 @@ public sealed class MainViewModel : ObservableObject
         if (IsSplit)
         {
             // Collapse: drop the right pane, focus the left.
+            RightPane?.Dispose();
             RightPane = null;
             OnPropertyChanged(nameof(IsSplit));
             ActivePane = LeftPane;
@@ -630,13 +681,12 @@ public sealed class MainViewModel : ObservableObject
             if (pane == LeftPane)
             {
                 // Move the right pane's tabs into the left so LeftPane is always present.
-                var tabs = RightPane!.Tabs.ToList();
-                RightPane.Tabs.Clear();
-                foreach (var t in tabs) LeftPane.Tabs.Add(t);
-                LeftPane.SelectedTab = LeftPane.Tabs.FirstOrDefault();
+                LeftPane.AdoptTabsFrom(RightPane!);
                 survivor = LeftPane;
             }
 
+            if (RightPane is not null && !ReferenceEquals(RightPane, survivor))
+                RightPane.Dispose();
             RightPane = null;
             OnPropertyChanged(nameof(IsSplit));
             ActivePane = survivor;

@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Threading;
+using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using RainExplorer.Helpers;
 using RainExplorer.Models;
@@ -15,7 +18,7 @@ namespace RainExplorer.ViewModels;
 /// </summary>
 public enum PageKind { Folder, Home, Drives }
 
-public sealed class TabViewModel : ObservableObject
+public sealed class TabViewModel : ObservableObject, IDisposable
 {
     /// <summary>Sentinel paths for the special dashboard pages.</summary>
     public const string HomeToken = "Home";
@@ -26,6 +29,13 @@ public sealed class TabViewModel : ObservableObject
     private readonly List<string> _history = new();
     private int _histIndex = -1;
     private CancellationTokenSource? _driveCountCts;
+    private FileSystemWatcher? _folderWatcher;
+    private DispatcherTimer? _watchRefreshTimer;
+    private DateTime _suppressWatchedRefreshUntilUtc;
+    private int _inlineEditDepth;
+    private bool _watchedRefreshPending;
+    private bool _reloadAfterBusy;
+    private bool _disposed;
 
     private string _sortKey = "Name";
     private int _sortDir = 1;                            // 1 asc, -1 desc
@@ -69,6 +79,7 @@ public sealed class TabViewModel : ObservableObject
     public TabViewModel(FileSystemService fs)
     {
         _fs = fs;
+        SettingsStore.Instance.Settings.PropertyChanged += OnSettingsChanged;
         BackCommand = new RelayCommand(_ => GoBack(), _ => CanGoBack);
         ForwardCommand = new RelayCommand(_ => GoForward(), _ => CanGoForward);
         UpCommand = new RelayCommand(_ => GoUp(), _ => CanGoUp);
@@ -96,7 +107,64 @@ public sealed class TabViewModel : ObservableObject
     public string CurrentPath { get => _currentPath; set => Set(ref _currentPath, value); }
 
     private string _title = "New Tab";
-    public string Title { get => _title; private set => Set(ref _title, value); }
+    public string Title
+    {
+        get => _title;
+        private set
+        {
+            if (Set(ref _title, value)) OnPropertyChanged(nameof(TopLevelTitle));
+        }
+    }
+
+    private bool _isPinned;
+    /// <summary>Whether this tab is kept while using bulk-close commands.</summary>
+    public bool IsPinned { get => _isPinned; set => Set(ref _isPinned, value); }
+
+    private string? _groupId;
+    public string? GroupId
+    {
+        get => _groupId;
+        set
+        {
+            if (!Set(ref _groupId, value)) return;
+            OnPropertyChanged(nameof(IsGrouped));
+        }
+    }
+
+    private string _groupName = "Tab group";
+    public string GroupName
+    {
+        get => _groupName;
+        set
+        {
+            if (Set(ref _groupName, value)) OnPropertyChanged(nameof(TopLevelTitle));
+        }
+    }
+    public bool IsGrouped => !string.IsNullOrWhiteSpace(GroupId);
+
+    private bool _isGroupLeader;
+    public bool IsGroupLeader
+    {
+        get => _isGroupLeader;
+        set
+        {
+            if (Set(ref _isGroupLeader, value)) OnPropertyChanged(nameof(TopLevelTitle));
+        }
+    }
+
+    private int _groupCount;
+    public int GroupCount { get => _groupCount; set => Set(ref _groupCount, value); }
+    public string TopLevelTitle => IsGroupLeader ? GroupName : Title;
+
+    private bool _isGroupDropTarget;
+    public bool IsGroupDropTarget { get => _isGroupDropTarget; set => Set(ref _isGroupDropTarget, value); }
+
+    private bool _isDragging;
+    public bool IsDragging { get => _isDragging; set => Set(ref _isDragging, value); }
+
+    private ImageSource? _previewImage;
+    /// <summary>Last rendered snapshot shown when the user hovers this tab.</summary>
+    public ImageSource? PreviewImage { get => _previewImage; set => Set(ref _previewImage, value); }
 
     private string _filter = string.Empty;
     public string Filter
@@ -196,6 +264,7 @@ public sealed class TabViewModel : ObservableObject
             CurrentPath = path;
             Title = FolderDisplayName(path);
             RecentsStore.Instance.Add(path, isDirectory: true);
+            WatchFolder(path);
 
             // Restore this folder's remembered sort.
             var pref = SortStore.Instance.Get(path);
@@ -240,6 +309,7 @@ public sealed class TabViewModel : ObservableObject
     // ---- Dashboard pages ----------------------------------------------------
     private void ShowPage(PageKind kind, string token, bool pushHistory)
     {
+        StopWatchingFolder();
         _searchCts?.Cancel();
         _isSearchView = false;
         _filter = string.Empty;
@@ -393,10 +463,284 @@ public sealed class TabViewModel : ObservableObject
         if (parent is not null) _ = NavigateAsync(parent, true);
     }
 
-    private void Refresh() => _ = NavigateAsync(CurrentPath, false);
+    private void Refresh() => _ = ReloadAsync();
 
     /// <summary>Re-read the current folder (used after a file operation).</summary>
-    public Task ReloadAsync() => NavigateAsync(CurrentPath, false);
+    public async Task ReloadAsync(bool animate = true, bool automatic = false)
+    {
+        if (automatic && !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+
+        if (Page != PageKind.Folder || !Directory.Exists(CurrentPath))
+        {
+            await NavigateAsync(CurrentPath, false);
+            return;
+        }
+
+        if (Busy)
+        {
+            if (automatic) QueueWatchedRefresh();
+            else _reloadAfterBusy = true;
+            return;
+        }
+
+        string path = CurrentPath;
+        Busy = true;
+        try
+        {
+            var entries = await _fs.ReadDirectoryAsync(path);
+            if (_disposed || Page != PageKind.Folder ||
+                !string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _all.Clear();
+            _all.AddRange(entries);
+            if (Recursive && !string.IsNullOrWhiteSpace(Filter))
+                OnQueryChanged();
+            else
+                ApplyView();
+            if (animate) ContentsChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Status = $"⚠️ {ex.Message}";
+        }
+        finally
+        {
+            Busy = false;
+            if (_reloadAfterBusy && !_disposed)
+            {
+                _reloadAfterBusy = false;
+                _ = ReloadAsync(animate: false);
+            }
+        }
+    }
+
+    private void WatchFolder(string path)
+    {
+        if (_disposed) return;
+        if (!SettingsStore.Instance.Settings.AutoRefreshFolders)
+        {
+            StopWatchingFolder();
+            return;
+        }
+        if (_folderWatcher is not null &&
+            string.Equals(_folderWatcher.Path, path, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        StopWatchingFolder();
+        try
+        {
+            _folderWatcher = new FileSystemWatcher(path)
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
+                               NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime,
+                IncludeSubdirectories = false,
+                EnableRaisingEvents = true,
+            };
+            _folderWatcher.Changed += OnWatchedFolderChanged;
+            _folderWatcher.Created += OnWatchedFolderChanged;
+            _folderWatcher.Deleted += OnWatchedFolderChanged;
+            _folderWatcher.Renamed += OnWatchedFolderChanged;
+            _folderWatcher.Error += OnWatchedFolderError;
+        }
+        catch
+        {
+            StopWatchingFolder();
+        }
+    }
+
+    /// <summary>
+    /// Re-read after an operation Rain performed itself. The folder watcher will also see
+    /// that operation, so briefly suppress its duplicate animated refresh.
+    /// </summary>
+    public Task ReloadAfterOperationAsync()
+    {
+        BeginKnownFileOperation();
+        return ReloadAsync(animate: false);
+    }
+
+    /// <summary>Suppress watcher echoes before Rain changes the folder itself.</summary>
+    public void BeginKnownFileOperation()
+    {
+        _suppressWatchedRefreshUntilUtc = DateTime.UtcNow.AddSeconds(2);
+        _watchedRefreshPending = false;
+        _watchRefreshTimer?.Stop();
+    }
+
+    /// <summary>Keep watcher refreshes from replacing the row that owns an active rename box.</summary>
+    public void BeginInlineEdit()
+    {
+        _inlineEditDepth++;
+        _watchRefreshTimer?.Stop();
+    }
+
+    public void EndInlineEdit()
+    {
+        if (_inlineEditDepth > 0) _inlineEditDepth--;
+        if (_inlineEditDepth == 0 && _watchedRefreshPending &&
+            DateTime.UtcNow >= _suppressWatchedRefreshUntilUtc)
+        {
+            _watchedRefreshPending = false;
+            QueueWatchedRefresh();
+        }
+    }
+
+    /// <summary>Update and re-sort one successfully renamed row without enumerating the folder.</summary>
+    public void ApplyLocalRename(FileItem item, string newPath)
+    {
+        BeginKnownFileOperation();
+        item.ApplyRename(newPath);
+        if (!string.IsNullOrWhiteSpace(Filter))
+        {
+            ApplyView();
+            return;
+        }
+
+        // A rename only changes one row. Reposition that row instead of clearing and
+        // rebuilding the entire directory, which can stall the UI in large folders.
+        if (!Items.Remove(item)) return;
+        int insertAt = 0;
+        while (insertAt < Items.Count && Compare(Items[insertAt], item) <= 0) insertAt++;
+        Items.Insert(insertAt, item);
+    }
+
+    /// <summary>Remove successfully deleted rows without re-enumerating the whole folder.</summary>
+    public void ApplyLocalDelete(IReadOnlyList<string> completedPaths)
+    {
+        if (completedPaths.Count == 0) return;
+        BeginKnownFileOperation();
+
+        var deleted = completedPaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .ToArray();
+        if (deleted.Length == 0) return;
+
+        static bool IsDeleted(string candidate, IReadOnlyList<string> roots)
+        {
+            string path = candidate.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            foreach (string root in roots)
+            {
+                if (string.Equals(path, root, StringComparison.OrdinalIgnoreCase)) return true;
+                if (path.Length > root.Length && path.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                    && (path[root.Length] == Path.DirectorySeparatorChar
+                        || path[root.Length] == Path.AltDirectorySeparatorChar))
+                    return true;
+            }
+            return false;
+        }
+
+        _all.RemoveAll(item => IsDeleted(item.FullPath, deleted));
+        foreach (var item in Items.Where(item => IsDeleted(item.FullPath, deleted)).ToList())
+            Items.Remove(item);
+
+        int total = _all.Count;
+        Status = !string.IsNullOrWhiteSpace(Filter) && Items.Count != total
+            ? $"{Items.Count} of {total} items"
+            : $"{total} item{(total == 1 ? "" : "s")}";
+    }
+
+    private void OnWatchedFolderChanged(object sender, FileSystemEventArgs e)
+    {
+        if (!SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+        if (DateTime.UtcNow < _suppressWatchedRefreshUntilUtc) return;
+        if (_inlineEditDepth > 0)
+        {
+            _watchedRefreshPending = true;
+            return;
+        }
+        QueueWatchedRefresh();
+    }
+
+    private void OnWatchedFolderError(object sender, ErrorEventArgs e)
+    {
+        if (_disposed || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_disposed || Page != PageKind.Folder
+                || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+            StopWatchingFolder();
+            WatchFolder(CurrentPath);
+        });
+    }
+
+    private void QueueWatchedRefresh()
+    {
+        if (_disposed || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_disposed || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
+            if (_inlineEditDepth > 0)
+            {
+                _watchedRefreshPending = true;
+                return;
+            }
+            _watchRefreshTimer ??= CreateWatchRefreshTimer();
+            _watchRefreshTimer.Stop();
+            _watchRefreshTimer.Start();
+        });
+    }
+
+    private DispatcherTimer CreateWatchRefreshTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!SettingsStore.Instance.Settings.AutoRefreshFolders
+                || DateTime.UtcNow < _suppressWatchedRefreshUntilUtc) return;
+            if (_inlineEditDepth > 0)
+            {
+                _watchedRefreshPending = true;
+                return;
+            }
+            _ = ReloadAsync(automatic: true);
+        };
+        return timer;
+    }
+
+    private void StopWatchingFolder()
+    {
+        if (_folderWatcher is null) return;
+        _folderWatcher.EnableRaisingEvents = false;
+        _folderWatcher.Changed -= OnWatchedFolderChanged;
+        _folderWatcher.Created -= OnWatchedFolderChanged;
+        _folderWatcher.Deleted -= OnWatchedFolderChanged;
+        _folderWatcher.Renamed -= OnWatchedFolderChanged;
+        _folderWatcher.Error -= OnWatchedFolderError;
+        _folderWatcher.Dispose();
+        _folderWatcher = null;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
+        StopWatchingFolder();
+        _watchRefreshTimer?.Stop();
+        _statusClearTimer?.Stop();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _driveCountCts?.Cancel();
+        _driveCountCts?.Dispose();
+    }
+
+    private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AppSettings.AutoRefreshFolders)) return;
+
+        _watchedRefreshPending = false;
+        _watchRefreshTimer?.Stop();
+        if (!SettingsStore.Instance.Settings.AutoRefreshFolders)
+        {
+            StopWatchingFolder();
+            return;
+        }
+
+        if (Page == PageKind.Folder && Directory.Exists(CurrentPath))
+            WatchFolder(CurrentPath);
+    }
 
     /// <summary>Find a currently-shown item by full path (e.g. a just-created folder).</summary>
     public FileItem? Find(string fullPath) =>

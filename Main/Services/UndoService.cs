@@ -153,14 +153,29 @@ public sealed class UndoService : ObservableObject
     {
         if (from.Count == 0) return null;
         var action = from[^1];
-        from.RemoveAt(from.Count - 1);
 
         var entry = ActivityService.Instance.Begin(
             ReferenceEquals(from, _undo) ? "Undo" : "Redo", action.Label, "undo");
-        var (err, inverse) = action.Invoke();
+        string? err = null;
+        UndoAction? inverse = null;
+        try
+        {
+            (err, inverse) = action.Invoke();
+        }
+        catch (Exception ex)
+        {
+            err = ex.Message;
+        }
         ActivityService.Instance.Complete(entry, err is null, err);
 
-        if (inverse is not null) to.Add(inverse);
+        // Keep a failed action available for another attempt. An inverse may describe
+        // only a partial operation, so it must not be promoted to the other stack when
+        // the original action did not finish successfully.
+        if (err is null)
+        {
+            from.RemoveAt(from.Count - 1);
+            if (inverse is not null) to.Add(inverse);
+        }
         Changed();
         return err;
     }

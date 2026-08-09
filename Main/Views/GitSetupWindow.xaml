@@ -1,0 +1,99 @@
+<Window
+    x:Class="RainExplorer.Views.GitSetupWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="700" Height="560" MinWidth="620" MinHeight="520"
+    WindowStyle="None" AllowsTransparency="True" Background="#FF16161F"
+    ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
+    ShowInTaskbar="False" FontFamily="{DynamicResource AppFont}"
+    FontSize="13" Foreground="{StaticResource Text}">
+
+    <Border Background="#FF16161F" BorderBrush="{StaticResource Line2}"
+            BorderThickness="1" CornerRadius="13">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border BorderBrush="{StaticResource Line1}" BorderThickness="0,0,0,1"
+                    Padding="20,15" MouseLeftButtonDown="Title_Drag">
+                <Grid>
+                    <StackPanel>
+                        <TextBlock Text="Git &amp; GitHub" FontSize="19" FontWeight="Bold" />
+                        <TextBlock Text="{Binding FolderPath}" Margin="0,3,0,0"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                   Foreground="{StaticResource TextMuted}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Content="Close" Style="{StaticResource DialogButton}"
+                            HorizontalAlignment="Right" Click="Close_Click" />
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="20">
+                    <TextBlock Text="This folder is not a Git repository yet."
+                               FontSize="17" FontWeight="SemiBold" />
+                    <TextBlock Text="Choose whether to clone an existing GitHub repository safely or start a new local repository here."
+                               Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                               Margin="0,5,0,16" />
+
+                    <Border Background="#FF1D1D27" BorderBrush="{StaticResource Line1}"
+                            BorderThickness="1" CornerRadius="10" Padding="17">
+                        <StackPanel>
+                            <TextBlock Text="Clone a GitHub repository" FontSize="15"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Paste a GitHub repository link. Rain creates a new child folder and never merges the clone into files already here."
+                                       Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                                       Margin="0,4,0,12" />
+                            <TextBox x:Name="RepositoryUrlBox" Style="{StaticResource FieldBox}"
+                                     Height="36" Tag="https://github.com/owner/repository" />
+                            <TextBlock Text="Private repositories use your existing Git Credential Manager or SSH configuration. Never paste a token into the URL."
+                                       Foreground="{StaticResource TextFaint}" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,8,0,12" />
+                            <Button x:Name="CloneButton" Content="Clone into a new folder"
+                                    Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Click="Clone_Click" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#FF1D1D27" BorderBrush="{StaticResource Line1}"
+                            BorderThickness="1" CornerRadius="10" Padding="17"
+                            Margin="0,12,0,0">
+                        <Grid>
+                            <StackPanel Margin="0,0,165,0">
+                                <TextBlock Text="Start a local repository here" FontSize="15"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Creates only Git metadata. It does not stage, commit, add a remote, or upload files."
+                                           Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                            <Button x:Name="InitializeButton"
+                                    Content="Initialize repository"
+                                    Style="{StaticResource DialogButton}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Click="Initialize_Click" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Background="{StaticResource Glass2}"
+                    BorderBrush="{StaticResource Line1}" BorderThickness="0,1,0,0"
+                    Padding="18,10">
+                <Grid>
+                    <TextBlock x:Name="StatusText"
+                               Text="No local files will be changed until you choose an action."
+                               Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                               VerticalAlignment="Center" Margin="0,0,150,0" />
+                    <Button x:Name="CancelButton" Content="Cancel operation"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Right" Visibility="Collapsed"
+                            Click="Cancel_Click" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

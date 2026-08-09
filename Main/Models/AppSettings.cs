@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace RainExplorer.Models;
@@ -24,7 +25,7 @@ public enum DeleteBehavior
     Prompt,
     /// <summary>Always send to the Recycle Bin, no prompt.</summary>
     Recycle,
-    /// <summary>Always delete permanently, no prompt.</summary>
+    /// <summary>Always delete permanently after one final in-app confirmation.</summary>
     Permanent,
 }
 
@@ -84,12 +85,49 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Restore every open pane/tab after the app or computer is restarted.</summary>
     public bool PreserveOpenTabsOnClose { get => _preserveOpenTabsOnClose; set => Set(ref _preserveOpenTabsOnClose, value); }
 
+    private bool _autoRefreshFolders = true;
+    /// <summary>Refresh open folder views when their contents change outside Rain Explorer.</summary>
+    public bool AutoRefreshFolders { get => _autoRefreshFolders; set => Set(ref _autoRefreshFolders, value); }
+
     /// <summary>Last window session. Written on close when tab preservation is enabled.</summary>
     public ExplorerSession? SavedSession { get; set; }
 
     private TerminalApp _terminalApp = TerminalApp.Cmd;
     /// <summary>Which shell "Open in Terminal" launches (cmd by default).</summary>
     public TerminalApp TerminalApp { get => _terminalApp; set => Set(ref _terminalApp, value); }
+
+    private bool _gitIntegrationEnabled = true;
+    /// <summary>Show Rain Explorer's local Git integration when a supported Git installation is available.</summary>
+    public bool GitIntegrationEnabled
+    {
+        get => _gitIntegrationEnabled;
+        set => Set(ref _gitIntegrationEnabled, value);
+    }
+
+    private string _gitExecutablePath = "";
+    /// <summary>Optional full path to git.exe. Empty means automatic Git for Windows discovery.</summary>
+    public string GitExecutablePath
+    {
+        get => _gitExecutablePath;
+        set => Set(ref _gitExecutablePath, value);
+    }
+
+    private bool _gitAutoRefreshWhenViewOpen = true;
+    public bool GitAutoRefreshWhenViewOpen
+    {
+        get => _gitAutoRefreshWhenViewOpen;
+        set => Set(ref _gitAutoRefreshWhenViewOpen, value);
+    }
+
+    private string _gitDefaultCloneFolder = "";
+    public string GitDefaultCloneFolder
+    {
+        get => _gitDefaultCloneFolder;
+        set => Set(ref _gitDefaultCloneFolder, value);
+    }
+
+    public List<GitHubAccountMetadata> GitHubAccounts { get; set; } = new();
+    public long? SelectedGitHubAccountId { get; set; }
 
     private bool _registerShellIntegration;
     /// <summary>"Open in Rain Explorer" verb registered in HKCU for folders/drives.</summary>
@@ -115,12 +153,16 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Show a selection checkbox on each row.</summary>
     public bool ShowCheckboxes { get => _showCheckboxes; set => Set(ref _showCheckboxes, value); }
 
+    private bool _showCheckboxesOnSelectionOnly;
+    /// <summary>Only reveal item checkboxes for rows that are currently selected.</summary>
+    public bool ShowCheckboxesOnSelectionOnly { get => _showCheckboxesOnSelectionOnly; set => Set(ref _showCheckboxesOnSelectionOnly, value); }
+
     private bool _singleClickToOpen;
     /// <summary>Open items with a single click instead of a double-click.</summary>
     public bool SingleClickToOpen { get => _singleClickToOpen; set => Set(ref _singleClickToOpen, value); }
 
     private DeleteBehavior _deleteBehavior = DeleteBehavior.Prompt;
-    /// <summary>Whether deleting prompts each time, always recycles, or always permanently deletes.</summary>
+    /// <summary>Whether deleting prompts each time, always recycles, or permanently deletes after confirmation.</summary>
     public DeleteBehavior DeleteBehavior { get => _deleteBehavior; set => Set(ref _deleteBehavior, value); }
 
     private bool _warnOnExtensionChange = true;
@@ -161,6 +203,28 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Remembered width of the preview pane (px), restored across restarts.</summary>
     public double PreviewPaneWidth { get => _previewPaneWidth; set => Set(ref _previewPaneWidth, value); }
 
+    private double _windowWidth = 1140;
+    public double WindowWidth { get => _windowWidth; set => Set(ref _windowWidth, value); }
+
+    private double _windowHeight = 720;
+    public double WindowHeight { get => _windowHeight; set => Set(ref _windowHeight, value); }
+
+    private double? _windowLeft;
+    public double? WindowLeft { get => _windowLeft; set => Set(ref _windowLeft, value); }
+
+    private double? _windowTop;
+    public double? WindowTop { get => _windowTop; set => Set(ref _windowTop, value); }
+
+    private bool _windowMaximized;
+    public bool WindowMaximized { get => _windowMaximized; set => Set(ref _windowMaximized, value); }
+
+    // Native pixel bounds avoid WPF's cross-monitor DPI conversion changing the saved
+    // monitor or shrinking the window when displays use different scaling.
+    public int? WindowPixelLeft { get; set; }
+    public int? WindowPixelTop { get; set; }
+    public int? WindowPixelWidth { get; set; }
+    public int? WindowPixelHeight { get; set; }
+
     /// <summary>One-time flag: the default Quick Access places have been seeded into <see cref="Pinned"/>.
     /// Once set, removed defaults stay removed.</summary>
     public bool QuickAccessSeeded { get; set; }
@@ -170,6 +234,9 @@ public sealed class AppSettings : INotifyPropertyChanged
 
     /// <summary>Extra user-created sidebar lists (e.g. "Quick access 2"), each with its own pins.</summary>
     public List<SidebarGroup> CustomGroups { get; set; } = new();
+
+    /// <summary>Named tab workspaces. Each project retains its own tab list and selected tab.</summary>
+    public List<TabProject> TabProjects { get; set; } = new();
 
     /// <summary>Stable order of sidebar section keys ("quick", "drives", and "custom:&lt;id&gt;").</summary>
     public List<string> SidebarOrder { get; set; } = new();
@@ -197,6 +264,13 @@ public sealed class AppSettings : INotifyPropertyChanged
 
     /// <summary>Raise a change for <see cref="Pinned"/> (list mutations don't auto-notify) to trigger save + sidebar rebuild.</summary>
     public void NotifyPinnedChanged() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Pinned)));
+
+    /// <summary>Raise a change after editing a project list entry so it is persisted.</summary>
+    public void NotifyTabProjectsChanged() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TabProjects)));
+
+    /// <summary>Keep settings written by newer Rain versions or optional components intact.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

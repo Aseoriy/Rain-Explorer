@@ -1,11 +1,14 @@
 using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
+using System.Windows.Interop;
 using System.Windows.Media.Effects;
 using Microsoft.Win32;
 using RainExplorer.Controls;
@@ -20,12 +23,55 @@ namespace RainExplorer;
 public partial class MainWindow : Window
 {
     private sealed record NodePinMenuTarget(string Key, string Name, bool Dynamic);
-    private readonly MainViewModel _vm = new();
+    private readonly MainViewModel _vm;
+    private readonly DispatcherTimer _windowPlacementTimer;
+    private readonly bool _skipInitialTab;
+    private readonly bool _persistWindowPlacement;
+    private NativeRect? _lastNormalPixelBounds;
 
-    public MainWindow()
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
     {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+        public readonly int Width => Right - Left;
+        public readonly int Height => Bottom - Top;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y,
+        int width, int height, uint flags);
+
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+
+    public MainWindow() : this(skipInitialTab: false, persistWindowPlacement: true)
+    {
+    }
+
+    private MainWindow(bool skipInitialTab, bool persistWindowPlacement)
+    {
+        _skipInitialTab = skipInitialTab;
+        _persistWindowPlacement = persistWindowPlacement;
+        _vm = new MainViewModel();
         InitializeComponent();
         DataContext = _vm;
+        ApplySavedWindowPlacement();
+        SourceInitialized += (_, _) => ApplyNativeWindowPlacement();
+        _windowPlacementTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        _windowPlacementTimer.Tick += (_, _) =>
+        {
+            _windowPlacementTimer.Stop();
+            SaveWindowPlacement();
+        };
         _vm.CloseWindowRequested += Close;
         _vm.PropertyChanged += (_, e) =>
         {
@@ -45,13 +91,19 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            _vm.EnsureFirstTab();
+            if (!_skipInitialTab) _vm.EnsureFirstTab();
             UpdateSplitLayout();
             ApplyAmbient();
             // Restore the collapsed sidebar state without animating on first paint.
             if (SettingsStore.Instance.Settings.SidebarCollapsed) Sidebar.Width = 0;
         };
-        StateChanged += (_, _) => UpdateMaximizeState();
+        LocationChanged += (_, _) => OnWindowPlacementChanged();
+        SizeChanged += (_, _) => OnWindowPlacementChanged();
+        StateChanged += (_, _) =>
+        {
+            UpdateMaximizeState();
+            OnWindowPlacementChanged();
+        };
 
         // Live-toggle the ambient orb when the setting changes.
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
@@ -63,7 +115,9 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (ActivityPopup.IsOpen && !IsDescendantOf(e.OriginalSource as DependencyObject, ActivityButton))
+        bool insideFlyout = ActivityPopup.Child?.IsMouseOver == true;
+        if (ActivityPopup.IsOpen && !insideFlyout
+            && !IsDescendantOf(e.OriginalSource as DependencyObject, ActivityButton))
             ActivityPopup.IsOpen = false;
     }
 
@@ -77,6 +131,118 @@ public partial class MainWindow : Window
         return false;
     }
 
+    private void OnWindowPlacementChanged()
+    {
+        RepositionPopup(ActivityPopup);
+        CaptureNormalPixelBounds();
+        if (!_persistWindowPlacement || !IsLoaded || WindowState != WindowState.Normal) return;
+        _windowPlacementTimer.Stop();
+        _windowPlacementTimer.Start();
+    }
+
+    private static void RepositionPopup(System.Windows.Controls.Primitives.Popup popup)
+    {
+        if (!popup.IsOpen) return;
+        double offset = popup.HorizontalOffset;
+        popup.HorizontalOffset = offset + 0.1;
+        popup.HorizontalOffset = offset;
+    }
+
+    private void ApplySavedWindowPlacement()
+    {
+        var settings = SettingsStore.Instance.Settings;
+        bool hasNativeBounds = settings.WindowPixelLeft.HasValue && settings.WindowPixelTop.HasValue
+            && settings.WindowPixelWidth is > 0 && settings.WindowPixelHeight is > 0;
+        if (hasNativeBounds)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            return;
+        }
+
+        double virtualWidth = SystemParameters.VirtualScreenWidth;
+        double virtualHeight = SystemParameters.VirtualScreenHeight;
+        Width = Math.Clamp(settings.WindowWidth, MinWidth, Math.Max(MinWidth, virtualWidth));
+        Height = Math.Clamp(settings.WindowHeight, MinHeight, Math.Max(MinHeight, virtualHeight));
+
+        if (settings.WindowLeft is double left && settings.WindowTop is double top)
+        {
+            var saved = new Rect(left, top, Width, Height);
+            var virtualScreen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                virtualWidth, virtualHeight);
+            if (saved.IntersectsWith(virtualScreen))
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = Math.Clamp(left, virtualScreen.Left, virtualScreen.Right - Width);
+                Top = Math.Clamp(top, virtualScreen.Top, virtualScreen.Bottom - Height);
+            }
+        }
+
+        if (settings.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void ApplyNativeWindowPlacement()
+    {
+        var settings = SettingsStore.Instance.Settings;
+        if (settings.WindowPixelLeft is not int left || settings.WindowPixelTop is not int top
+            || settings.WindowPixelWidth is not > 0 || settings.WindowPixelHeight is not > 0)
+            return;
+
+        var rect = new NativeRect
+        {
+            Left = left,
+            Top = top,
+            Right = left + settings.WindowPixelWidth.Value,
+            Bottom = top + settings.WindowPixelHeight.Value,
+        };
+        // If that monitor was disconnected, use WPF's safe default placement instead of
+        // resurrecting the window off-screen.
+        if (MonitorFromRect(ref rect, 0) == IntPtr.Zero)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            return;
+        }
+
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        SetWindowPos(handle, IntPtr.Zero, rect.Left, rect.Top, rect.Width, rect.Height,
+            SwpNoZOrder | SwpNoActivate);
+        _lastNormalPixelBounds = rect;
+        if (settings.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void CaptureNormalPixelBounds()
+    {
+        if (WindowState != WindowState.Normal) return;
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && GetWindowRect(handle, out var rect)
+            && rect.Width > 0 && rect.Height > 0)
+            _lastNormalPixelBounds = rect;
+    }
+
+    private void SaveWindowPlacement()
+    {
+        CaptureNormalPixelBounds();
+        Rect bounds = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, ActualWidth, ActualHeight)
+            : RestoreBounds;
+        if (bounds.Width < MinWidth || bounds.Height < MinHeight ||
+            double.IsNaN(bounds.Left) || double.IsNaN(bounds.Top))
+            return;
+
+        var settings = SettingsStore.Instance.Settings;
+        if (_lastNormalPixelBounds is { } pixels)
+        {
+            settings.WindowPixelLeft = pixels.Left;
+            settings.WindowPixelTop = pixels.Top;
+            settings.WindowPixelWidth = pixels.Width;
+            settings.WindowPixelHeight = pixels.Height;
+        }
+        settings.WindowLeft = bounds.Left;
+        settings.WindowTop = bounds.Top;
+        settings.WindowWidth = bounds.Width;
+        settings.WindowHeight = bounds.Height;
+        settings.WindowMaximized = WindowState == WindowState.Maximized;
+    }
+
     private void AddShortcut(Key key, ModifierKeys mods, Action action) =>
         InputBindings.Add(new KeyBinding(new RelayCommand(_ => action()), key, mods));
 
@@ -87,6 +253,33 @@ public partial class MainWindow : Window
     {
         App.SelectPath = select;
         _vm.ActivePane.NewTab(folder, activate: true);
+    }
+
+    /// <summary>Create a second Rain Explorer window and move the live tab into it.</summary>
+    internal static void OpenDetachedTab(PaneViewModel source, TabViewModel tab, Point screenPosition)
+    {
+        var window = new MainWindow(skipInitialTab: true, persistWindowPlacement: false)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            WindowState = WindowState.Normal,
+        };
+        double width = double.IsNaN(window.Width) ? 1120 : window.Width;
+        double maxLeft = SystemParameters.VirtualScreenLeft
+            + Math.Max(0, SystemParameters.VirtualScreenWidth - width);
+        window.Left = Math.Clamp(screenPosition.X - 120,
+            SystemParameters.VirtualScreenLeft,
+            maxLeft);
+        window.Top = Math.Clamp(screenPosition.Y - 22,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 80);
+        window.Show();
+        if (!window._vm.LeftPane.TransferTabFrom(source, tab,
+                activate: true, preserveGroup: false))
+        {
+            window.Close();
+            return;
+        }
+        window.Activate();
     }
 
     // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs in the active pane.
@@ -123,12 +316,13 @@ public partial class MainWindow : Window
     }
 
     private void UndoButton_Click(object sender, RoutedEventArgs e) => DoUndo();
+    private void RedoButton_Click(object sender, RoutedEventArgs e) => DoRedo();
 
     private void DoUndo()
     {
         if (!UndoService.Instance.CanUndo) return;
         string? err = UndoService.Instance.Undo();
-        _vm.RefreshAll();
+        _vm.RefreshAll(afterKnownOperation: true);
         if (err is not null && _vm.ActivePane.SelectedTab is { } t) t.Status = $"⚠️ {err}";
     }
 
@@ -136,7 +330,7 @@ public partial class MainWindow : Window
     {
         if (!UndoService.Instance.CanRedo) return;
         string? err = UndoService.Instance.Redo();
-        _vm.RefreshAll();
+        _vm.RefreshAll(afterKnownOperation: true);
         if (err is not null && _vm.ActivePane.SelectedTab is { } t) t.Status = $"⚠️ {err}";
     }
 
@@ -166,7 +360,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        _vm.SaveSession();
+        _windowPlacementTimer.Stop();
+        bool isLastWindow = Application.Current.Windows.OfType<MainWindow>()
+            .All(window => ReferenceEquals(window, this) || !window.IsVisible);
+        if (_persistWindowPlacement || isLastWindow) SaveWindowPlacement();
+        if (isLastWindow) _vm.SaveSession();
         base.OnClosing(e);
     }
 

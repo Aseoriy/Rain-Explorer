@@ -31,6 +31,7 @@ public sealed class ShellContextMenu : IDisposable
     private IContextMenu? _ctx;
     private IContextMenu2? _ctx2;
     private IContextMenu3? _ctx3;
+    private readonly HashSet<MenuItem> _loadedSubmenus = new();
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -143,6 +144,7 @@ public sealed class ShellContextMenu : IDisposable
         if (_ctx is not null) { Marshal.ReleaseComObject(_ctx); _ctx = null; }
         if (_parent is not null) { Marshal.ReleaseComObject(_parent); _parent = null; }
         _ctx2 = null; _ctx3 = null;
+        _loadedSubmenus.Clear();
     }
 
     // ---- Menu enumeration ---------------------------------------------------
@@ -187,9 +189,11 @@ public sealed class ShellContextMenu : IDisposable
 
             if (!isLeaf && depth < 5)
             {
-                try { _ctx2?.HandleMenuMsg(WM_INITMENUPOPUP, mii.hSubMenu, (IntPtr)pos); } catch { }
-                foreach (var child in Walk(mii.hSubMenu, depth + 1)) item.Items.Add(child);
-                if (item.Items.Count == 0) continue;   // empty submenu — drop it
+                // Defer submenu initialization until the pointer actually reaches it.
+                IntPtr submenu = mii.hSubMenu;
+                int submenuPosition = pos;
+                item.Items.Add(new MenuItem { Header = "Loading…", IsEnabled = false });
+                item.SubmenuOpened += (_, _) => PopulateSubmenu(item, submenu, submenuPosition, depth + 1);
             }
             else
             {
@@ -201,6 +205,17 @@ public sealed class ShellContextMenu : IDisposable
 
         while (items.Count > 0 && items[^1] is Separator) items.RemoveAt(items.Count - 1);
         return items;
+    }
+
+    private void PopulateSubmenu(MenuItem item, IntPtr submenu, int position, int depth)
+    {
+        if (!_loadedSubmenus.Add(item)) return;
+
+        item.Items.Clear();
+        try { _ctx2?.HandleMenuMsg(WM_INITMENUPOPUP, submenu, (IntPtr)position); } catch { }
+        foreach (var child in Walk(submenu, depth)) item.Items.Add(child);
+        if (item.Items.Count == 0)
+            item.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false });
     }
 
     private static string ReadText(IntPtr menu, int pos)

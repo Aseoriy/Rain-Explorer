@@ -7,10 +7,14 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
+using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
 using RainExplorer.ViewModels;
@@ -44,6 +48,38 @@ public partial class PaneView : UserControl
     private ItemsPanelTemplate? _detailsPanel;
     private Style? _detailsRowStyle;
     private bool _clearSelectionAfterNav;
+    private bool _fileContextMenuOpen;
+    private bool _fileOperationInProgress;
+    private CancellationTokenSource? _gitMenuCts;
+    private GitRepositoryContext? _gitMenuRepository;
+    private GitRepositoryStatus? _gitMenuStatus;
+    private const string TabDragTokenFormat = "RainExplorer.TabDragToken";
+    private sealed record TabDragPayload(PaneViewModel SourcePane, TabViewModel Tab);
+    private sealed record TabDragSlot(TabViewModel Tab, ListBoxItem Container, double X, double Width);
+    private static readonly Dictionary<string, TabDragPayload> ActiveTabDrags = new();
+    private TabViewModel? _tabDragCandidate;
+    private ListBoxItem? _tabDragCandidateContainer;
+    private Point _tabDragStart;
+    private Popup? _tabDragPopup;
+    private HwndSource? _tabDragPopupSource;
+    private bool _tabDragCancelled;
+    private TabViewModel? _tabGroupTarget;
+    private TabViewModel? _tabGroupSource;
+    private TabViewModel? _tabGroupHoverCandidate;
+    private TabViewModel? _tabGroupHoverSource;
+    private DispatcherTimer? _tabGroupHoverTimer;
+    private TabInsertionAdorner? _tabInsertionAdorner;
+    private TabViewModel? _tabPreviewSource;
+    private TabViewModel? _tabPreviewTarget;
+    private bool _tabPreviewAfter;
+    private int _tabPreviewIndex = -1;
+    private readonly List<TabDragSlot> _tabDragSlots = new();
+    private static readonly TimeSpan TabGroupHoverDelay = TimeSpan.FromSeconds(1);
+    private const double TabGroupHoverStartRatio = 0.15;
+    private const double TabGroupHoverEndRatio = 0.85;
+    private Window? _ownerWindow;
+    private ContextMenu? _openTabContextMenu;
+    private int _projectsAnimationVersion;
     private static readonly ActivityService Activity = ActivityService.Instance;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -66,20 +102,35 @@ public partial class PaneView : UserControl
         DataContextChanged += OnDataContextChanged;
         FileList.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler(OnHeaderClick));
         FileList.GiveFeedback += FileList_GiveFeedback;
-        Loaded += (_, _) =>
-        {
-            ApplyLayout();
-            ApplyPreviewVisibility();
-            Window.GetWindow(this)?.AddHandler(UIElement.PreviewMouseDownEvent,
-                (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick, true);
-        };
+        Loaded += PaneView_Loaded;
+        Unloaded += PaneView_Unloaded;
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
+    }
+
+    private void PaneView_Loaded(object sender, RoutedEventArgs e)
+    {
+        ApplyLayout();
+        ApplyPreviewVisibility();
+        _ownerWindow = Window.GetWindow(this);
+        if (_ownerWindow is null) return;
+        _ownerWindow.AddHandler(UIElement.PreviewMouseDownEvent,
+            (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick, true);
+    }
+
+    private void PaneView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ResetTabGroupHover();
+        if (_ownerWindow is null) return;
+        _ownerWindow.RemoveHandler(UIElement.PreviewMouseDownEvent,
+            (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick);
+        _ownerWindow = null;
     }
 
     private void OnSettingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AppSettings.ViewLayout)) ApplyLayout();
         else if (e.PropertyName == nameof(AppSettings.ShowPreviewPane)) ApplyPreviewVisibility();
+        else if (e.PropertyName == nameof(AppSettings.TabProjects)) RefreshProjectsButton();
     }
 
     // ---- Preview pane ------------------------------------------------------
@@ -176,17 +227,44 @@ public partial class PaneView : UserControl
     // (handled below) closes it.
     private void OpenButtonMenu_Click(object sender, RoutedEventArgs e)
     {
-        var popup = sender == SortButton ? SortPopup : sender == LayoutButton ? LayoutPopup : null;
-        if (popup is null) return;
-        if (popup.IsOpen) { popup.IsOpen = false; return; }
+        var flyout = sender == SortButton ? SortPopup : sender == LayoutButton ? LayoutPopup : null;
+        if (flyout is null) return;
+        if (flyout.Visibility == Visibility.Visible)
+        {
+            SetToolbarFlyoutOpen(flyout, false);
+            return;
+        }
         CloseToolbarPopups();
-        popup.IsOpen = true;
+        SetToolbarFlyoutOpen(flyout, true);
+    }
+
+    private static void SetToolbarFlyoutOpen(Border flyout, bool open)
+    {
+        flyout.BeginAnimation(OpacityProperty, null);
+        if (flyout.RenderTransform is not TranslateTransform transform) return;
+        transform.BeginAnimation(TranslateTransform.YProperty, null);
+        if (!open)
+        {
+            flyout.Visibility = Visibility.Collapsed;
+            flyout.Opacity = 0;
+            transform.Y = -6;
+            return;
+        }
+
+        flyout.Visibility = Visibility.Visible;
+        flyout.Opacity = 0;
+        transform.Y = -6;
+        flyout.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1,
+            TimeSpan.FromMilliseconds(150)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+        transform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-6, 0,
+            TimeSpan.FromMilliseconds(170)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
     }
 
     private void CloseToolbarPopups()
     {
-        SortPopup.IsOpen = false;
-        LayoutPopup.IsOpen = false;
+        SetToolbarFlyoutOpen(SortPopup, false);
+        SetToolbarFlyoutOpen(LayoutPopup, false);
+        SetProjectsFlyoutOpen(false);
     }
 
     // A click anywhere else in the window closes whichever dropdown is open (popup content
@@ -194,8 +272,15 @@ public partial class PaneView : UserControl
     private void DismissToolbarPopupsOnOutsideClick(object sender, MouseButtonEventArgs e)
     {
         var src = e.OriginalSource as DependencyObject;
-        if (SortPopup.IsOpen && !IsWithin(src, SortButton)) SortPopup.IsOpen = false;
-        if (LayoutPopup.IsOpen && !IsWithin(src, LayoutButton)) LayoutPopup.IsOpen = false;
+        if (SortPopup.Visibility == Visibility.Visible
+            && !IsWithin(src, SortButton) && !IsWithin(src, SortPopup))
+            SetToolbarFlyoutOpen(SortPopup, false);
+        if (LayoutPopup.Visibility == Visibility.Visible
+            && !IsWithin(src, LayoutButton) && !IsWithin(src, LayoutPopup))
+            SetToolbarFlyoutOpen(LayoutPopup, false);
+        if (ProjectsFlyout.Visibility == Visibility.Visible
+            && !IsWithin(src, ProjectsButton) && !IsWithin(src, ProjectsFlyout))
+            SetProjectsFlyoutOpen(false);
     }
 
     private static bool IsWithin(DependencyObject? d, DependencyObject ancestor)
@@ -211,21 +296,26 @@ public partial class PaneView : UserControl
     private void Sort_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: string key }) _tab?.SortCommand.Execute(key);
-        SortPopup.IsOpen = false;
+        SetToolbarFlyoutOpen(SortPopup, false);
     }
 
     private void ReverseSort_Click(object sender, RoutedEventArgs e)
     {
         _tab?.SortCommand.Execute(_tab.SortKey);   // re-selecting the same key flips direction
-        SortPopup.IsOpen = false;
+        SetToolbarFlyoutOpen(SortPopup, false);
     }
 
     private void Layout_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: string name } &&
             Enum.TryParse<ViewLayout>(name, out var layout))
+        {
             SettingsStore.Instance.Settings.ViewLayout = layout;
-        LayoutPopup.IsOpen = false;
+            // Apply directly as well as through the settings notification. This also
+            // repairs the view when the selected setting already matches the clicked item.
+            ApplyLayout();
+        }
+        SetToolbarFlyoutOpen(LayoutPopup, false);
     }
 
     // ---- Single-click to open (when enabled) -------------------------------
@@ -272,11 +362,13 @@ public partial class PaneView : UserControl
             _vm.PropertyChanged += OnPanePropertyChanged;
             OnSelectedTabChanged();
         }
+        RefreshProjectsButton();
     }
 
     private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(PaneViewModel.SelectedTab)) OnSelectedTabChanged();
+        else if (e.PropertyName == nameof(PaneViewModel.ActiveProjectId)) RefreshProjectsButton();
     }
 
     // Re-target sort-indicator + animation when the active tab changes.
@@ -422,12 +514,630 @@ public partial class PaneView : UserControl
     // ---- Middle-click a tab -> close it ------------------------------------
     private void TabBar_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.ChangedButton == MouseButton.Right
+            && TabUnder(e.OriginalSource) is { } contextTab)
+        {
+            OpenTabContextMenu(contextTab, e.OriginalSource);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ChangedButton == MouseButton.Left && !IsWithin<Button>(e.OriginalSource))
+        {
+            if (_vm?.SelectedTab is { } current
+                && ItemFromPoint<TabViewModel>(e) is { } clicked
+                && !ReferenceEquals(current, clicked))
+                CaptureTabPreview(current);
+            _tabDragCandidate = ItemFromPoint<TabViewModel>(e);
+            _tabDragCandidateContainer = TabContainer(e.OriginalSource);
+            _tabDragStart = e.GetPosition(sender as ListBox ?? TabBar);
+        }
+
         if (e.ChangedButton != MouseButton.Middle) return;
         if (ItemFromPoint<TabViewModel>(e) is { } tab)
         {
             _vm?.CloseTab(tab);
             e.Handled = true;
         }
+    }
+
+    private void TabBar_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_tabDragCandidate is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var sourceBar = sender as ListBox ?? TabBar;
+        Point here = e.GetPosition(sourceBar);
+        if (Math.Abs(here.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(here.Y - _tabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        var tab = _tabDragCandidate;
+        _tabDragCandidate = null;
+        _tabDragCancelled = false;
+        tab.IsDragging = true;
+        CaptureTabDragSlots(sourceBar);
+        ShowTabDragGhost(tab);
+        string? dragToken = null;
+        try
+        {
+            if (_vm is null) return;
+            dragToken = Guid.NewGuid().ToString("N");
+            ActiveTabDrags[dragToken] = new TabDragPayload(_vm, tab);
+            var data = new DataObject();
+            data.SetData(TabDragTokenFormat, dragToken);
+            var result = DragDrop.DoDragDrop(sourceBar, data, DragDropEffects.Move);
+            if (result == DragDropEffects.None && !_tabDragCancelled
+                && GetCursorPos(out var cursor) && CursorIsOutsideOwner(cursor))
+                MainWindow.OpenDetachedTab(_vm, tab,
+                    DevicePixelsToDips(new Point(cursor.X, cursor.Y)));
+        }
+        catch { /* a cancelled tab drag is harmless */ }
+        finally
+        {
+            if (dragToken is not null) ActiveTabDrags.Remove(dragToken);
+            HideTabDragGhost();
+            ClearTabDragPreview();
+            _tabDragSlots.Clear();
+            tab.IsDragging = false;
+            _tabDragCandidateContainer = null;
+            ResetTabGroupHover();
+            SetTabGroupTarget(null, null);
+        }
+    }
+
+    private void TabItem_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TabViewModel tab
+            || !ReferenceEquals(tab, _vm?.SelectedTab))
+            return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, () => CaptureTabPreview(tab));
+    }
+
+    private void CaptureTabPreview(TabViewModel? tab)
+    {
+        if (tab is null || !ReferenceEquals(tab, _vm?.SelectedTab)
+            || TabContentHost.ActualWidth < 1 || TabContentHost.ActualHeight < 1)
+            return;
+
+        const int width = 960;
+        const int height = 540;
+        try
+        {
+            var visual = new DrawingVisual();
+            using (DrawingContext dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle((Brush)FindResource("Bg"), null, new Rect(0, 0, width, height));
+                var brush = new VisualBrush(TabContentHost)
+                {
+                    Stretch = Stretch.UniformToFill,
+                    AlignmentX = AlignmentX.Center,
+                    AlignmentY = AlignmentY.Top,
+                };
+                dc.DrawRectangle(brush, null, new Rect(0, 0, width, height));
+            }
+
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            bitmap.Freeze();
+            tab.PreviewImage = bitmap;
+        }
+        catch
+        {
+            // A layout can detach while the pointer crosses tabs; the next hover retries.
+        }
+    }
+
+    private void ShowTabDragGhost(TabViewModel tab)
+    {
+        HideTabDragGhost();
+        double width = Math.Clamp(_tabDragCandidateContainer?.ActualWidth ?? 154, 112, 220);
+        var row = new DockPanel { LastChildFill = true };
+        if (TryFindResource("Ic.folder") is Geometry folder)
+            row.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = folder,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                Stroke = (Brush)FindResource("AccentBright"),
+                StrokeThickness = 1.7,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        row.Children.Add(new TextBlock
+        {
+            Text = tab.Title,
+            Foreground = (Brush)FindResource("Text"),
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        _tabDragPopup = new Popup
+        {
+            AllowsTransparency = true,
+            IsHitTestVisible = false,
+            Focusable = false,
+            Placement = PlacementMode.AbsolutePoint,
+            Child = new Border
+            {
+                Width = width,
+                Height = 34,
+                Padding = new Thickness(11, 0, 11, 0),
+                Background = (Brush)FindResource("Glass4"),
+                BorderBrush = (Brush)FindResource("AccentLine"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8, 8, 3, 3),
+                Effect = new DropShadowEffect
+                {
+                    Color = Colors.Black,
+                    Opacity = 0.55,
+                    BlurRadius = 18,
+                    ShadowDepth = 4,
+                },
+                Child = row,
+            },
+        };
+        _tabDragPopup.Opened += TabDragPopup_Opened;
+        if (GetCursorPos(out var cursor))
+        {
+            Point screen = DevicePixelsToDips(new Point(cursor.X, cursor.Y));
+            _tabDragPopup.HorizontalOffset = screen.X - 24;
+            _tabDragPopup.VerticalOffset = screen.Y - 18;
+        }
+        _tabDragPopup.IsOpen = true;
+    }
+
+    private void TabDragPopup_Opened(object? sender, EventArgs e)
+    {
+        if (_tabDragPopup?.Child is not Visual child) return;
+        _tabDragPopupSource = PresentationSource.FromVisual(child) as HwndSource;
+        _tabDragPopupSource?.AddHook(TabDragPopupWndProc);
+    }
+
+    private static IntPtr TabDragPopupWndProc(
+        IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WmNcHitTest = 0x0084;
+        const int HtTransparent = -1;
+        if (message != WmNcHitTest) return IntPtr.Zero;
+        handled = true;
+        return new IntPtr(HtTransparent);
+    }
+
+    private void HideTabDragGhost()
+    {
+        if (_tabDragPopup is null) return;
+        _tabDragPopupSource?.RemoveHook(TabDragPopupWndProc);
+        _tabDragPopupSource = null;
+        _tabDragPopup.Opened -= TabDragPopup_Opened;
+        _tabDragPopup.IsOpen = false;
+        _tabDragPopup.Child = null;
+        _tabDragPopup = null;
+    }
+
+    private void TabBar_GiveFeedback(object sender, GiveFeedbackEventArgs e)
+    {
+        if (_tabDragPopup is null || !GetCursorPos(out var p)) return;
+        Point screen = DevicePixelsToDips(new Point(p.X, p.Y));
+        _tabDragPopup.HorizontalOffset = screen.X - 24;
+        _tabDragPopup.VerticalOffset = screen.Y - 18;
+        e.UseDefaultCursors = false;
+        Mouse.SetCursor(Cursors.Hand);
+        e.Handled = true;
+    }
+
+    private void TabBar_QueryContinueDrag(object sender, QueryContinueDragEventArgs e)
+    {
+        if (e.EscapePressed) _tabDragCancelled = true;
+    }
+
+    private void TabClose_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var bar = IsWithin(sender as DependencyObject, GroupTabBar) ? GroupTabBar : TabBar;
+        FindVisualChild<AdaptiveTabPanel>(bar)?.LockCurrentWidths();
+    }
+
+    private void TabClose_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var bar = IsWithin(sender as DependencyObject, GroupTabBar) ? GroupTabBar : TabBar;
+        // Let the Button click remove the tab, then release the temporary width lock
+        // almost immediately. This keeps a second close click stable without making
+        // an overflowing strip wait for MouseLeave before it expands again.
+        Dispatcher.BeginInvoke(() => FindVisualChild<AdaptiveTabPanel>(bar)?.UnlockWidths(),
+            DispatcherPriority.Input);
+    }
+
+    private void TabBar_MouseLeave(object sender, MouseEventArgs e) =>
+        FindVisualChild<AdaptiveTabPanel>(sender as DependencyObject)?.UnlockWidths();
+
+    private static T? FindVisualChild<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null) return null;
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (FindVisualChild<T>(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
+    private Point DevicePixelsToDips(Point point)
+    {
+        var source = PresentationSource.FromVisual(this);
+        return source?.CompositionTarget?.TransformFromDevice.Transform(point) ?? point;
+    }
+
+    private bool CursorIsOutsideOwner(POINT cursor)
+    {
+        var owner = _ownerWindow ?? Window.GetWindow(this);
+        if (owner is null) return false;
+        try
+        {
+            Point topLeft = owner.PointToScreen(new Point(0, 0));
+            Point bottomRight = owner.PointToScreen(new Point(owner.ActualWidth, owner.ActualHeight));
+            return cursor.X < topLeft.X || cursor.X > bottomRight.X
+                || cursor.Y < topLeft.Y || cursor.Y > bottomRight.Y;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Use an explicit menu open here rather than a Style setter. WPF can otherwise route
+    // the ListBox's own header menu before a templated tab item's menu gets a chance.
+    private void TabBar_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (_vm is null || TabUnder(e.OriginalSource) is not { } tab) return;
+        OpenTabContextMenu(tab, e.OriginalSource);
+        e.Handled = true;
+    }
+
+    private void OpenTabContextMenu(TabViewModel tab, object? source)
+    {
+        if (_openTabContextMenu is not null)
+            _openTabContextMenu.IsOpen = false;
+
+        var menu = (ContextMenu)FindResource("TabContextMenu");
+        menu.DataContext = tab;
+        menu.PlacementTarget = (UIElement?)TabContainer(source) ?? TabBar;
+        menu.Placement = PlacementMode.Bottom;
+        menu.HorizontalOffset = 0;
+        menu.VerticalOffset = 2;
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_openTabContextMenu, menu))
+                _openTabContextMenu = null;
+        };
+        _openTabContextMenu = menu;
+        menu.IsOpen = true;
+    }
+
+    // ---- Tab context menus -------------------------------------------------
+    private void TabContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu || menu.DataContext is not TabViewModel tab || _vm is null) return;
+
+        var pin = menu.Items.OfType<MenuItem>().FirstOrDefault(i => Equals(i.Tag, "pin"));
+        if (pin is not null) pin.Header = tab.IsPinned ? "Unpin tab" : "Pin tab";
+
+        int index = _vm.Tabs.IndexOf(tab);
+        var closeOther = menu.Items.OfType<MenuItem>().FirstOrDefault(i => Equals(i.Tag, "close-other"));
+        if (closeOther is not null) closeOther.IsEnabled = _vm.Tabs.Any(t => t != tab && !t.IsPinned);
+        var closeRight = menu.Items.OfType<MenuItem>().FirstOrDefault(i => Equals(i.Tag, "close-right"));
+        if (closeRight is not null)
+            closeRight.IsEnabled = index >= 0 && _vm.Tabs.Skip(index + 1).Any(t => !t.IsPinned);
+
+        foreach (var element in menu.Items.OfType<FrameworkElement>()
+                     .Where(item => item.Tag is string tag && tag.StartsWith("group-", StringComparison.Ordinal)))
+            element.Visibility = tab.IsGrouped ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static TabViewModel? TabFromMenu(object sender) =>
+        (sender as FrameworkElement)?.DataContext as TabViewModel;
+
+    private void TabDuplicate_Click(object sender, RoutedEventArgs e) => _vm?.DuplicateTab(TabFromMenu(sender));
+
+    private void TabReload_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabFromMenu(sender) is { } tab) _ = tab.ReloadAsync();
+    }
+
+    private void TabPin_Click(object sender, RoutedEventArgs e) => _vm?.TogglePin(TabFromMenu(sender));
+    private void TabGroupNew_Click(object sender, RoutedEventArgs e) => _vm?.NewTabInGroup(TabFromMenu(sender));
+
+    private void TabGroupRename_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = TabFromMenu(sender);
+        if (_vm is null || tab is null || !tab.IsGrouped) return;
+        var dialog = new InputDialog("Rename tab group", "Group name:", tab.GroupName)
+        {
+            Owner = Window.GetWindow(this)
+        };
+        if (dialog.ShowDialog() == true) _vm.RenameGroup(tab, dialog.Value);
+    }
+
+    private void TabGroupRemove_Click(object sender, RoutedEventArgs e) =>
+        _vm?.RemoveFromGroup(TabFromMenu(sender));
+
+    private void TabGroupClear_Click(object sender, RoutedEventArgs e) =>
+        _vm?.ClearGroup(TabFromMenu(sender));
+
+    private void TabGroupClose_Click(object sender, RoutedEventArgs e) =>
+        _vm?.CloseGroup(TabFromMenu(sender));
+
+    private void TabClose_Click(object sender, RoutedEventArgs e) => _vm?.CloseTab(TabFromMenu(sender));
+    private void TabCloseOther_Click(object sender, RoutedEventArgs e) => _vm?.CloseOtherTabs(TabFromMenu(sender));
+    private void TabCloseRight_Click(object sender, RoutedEventArgs e) => _vm?.CloseTabsToRight(TabFromMenu(sender));
+
+    private void TabStripNewTab_Click(object sender, RoutedEventArgs e) => _vm?.NewTab(activate: true);
+    private void TabStripNewGroupTab_Click(object sender, RoutedEventArgs e) => _vm?.NewTabInActiveGroup();
+    private void NewActiveGroupTab_Click(object sender, RoutedEventArgs e) => _vm?.NewTabInActiveGroup();
+    private void ReopenClosedTab_Click(object sender, RoutedEventArgs e) => _vm?.ReopenClosedTab();
+
+    // ---- Tab projects ------------------------------------------------------
+    private void ProjectsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null) return;
+        if (ProjectsFlyout.Visibility == Visibility.Visible)
+        {
+            SetProjectsFlyoutOpen(false);
+            return;
+        }
+        CloseToolbarPopups();
+        BuildProjectsMenu();
+        SetProjectsFlyoutOpen(true);
+    }
+
+    private void SetProjectsFlyoutOpen(bool open)
+    {
+        int version = ++_projectsAnimationVersion;
+        ProjectsFlyout.BeginAnimation(OpacityProperty, null);
+        ProjectsFlyoutTransform.BeginAnimation(TranslateTransform.YProperty, null);
+
+        if (open)
+        {
+            ProjectsFlyout.Visibility = Visibility.Visible;
+            ProjectsFlyout.Opacity = 0;
+            ProjectsFlyoutTransform.Y = -6;
+            ProjectsFlyout.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1,
+                TimeSpan.FromMilliseconds(150)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+            ProjectsFlyoutTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-6, 0,
+                TimeSpan.FromMilliseconds(170)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+            return;
+        }
+
+        if (ProjectsFlyout.Visibility != Visibility.Visible) return;
+        var fade = new DoubleAnimation(ProjectsFlyout.Opacity, 0, TimeSpan.FromMilliseconds(110));
+        fade.Completed += (_, _) =>
+        {
+            if (version != _projectsAnimationVersion) return;
+            ProjectsFlyout.Visibility = Visibility.Collapsed;
+            ProjectsFlyout.Opacity = 0;
+            ProjectsFlyoutTransform.Y = -6;
+        };
+        ProjectsFlyout.BeginAnimation(OpacityProperty, fade);
+        ProjectsFlyoutTransform.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(ProjectsFlyoutTransform.Y, -6, TimeSpan.FromMilliseconds(110)));
+    }
+
+    private void BuildProjectsMenu()
+    {
+        ProjectsMenuItems.Children.Clear();
+        var settings = SettingsStore.Instance.Settings;
+
+        ProjectsMenuItems.Children.Add(new MenuItem { Header = "TAB PROJECTS", IsEnabled = false, FontWeight = FontWeights.SemiBold });
+        ProjectsMenuItems.Children.Add(new MenuItem { Header = "Save current tabs as new project…", Command = ProjectCommand(SaveCurrentTabsAsProject) });
+        ProjectsMenuItems.Children.Add(new MenuItem { Header = "New empty project…", Command = ProjectCommand(CreateEmptyProject) });
+
+        if (settings.TabProjects.Count > 0)
+        {
+            ProjectsMenuItems.Children.Add(new Separator());
+            foreach (var project in settings.TabProjects)
+            {
+                var item = new MenuItem
+                {
+                    Header = $"{project.Name}  ·  {project.Tabs.Count} tab{(project.Tabs.Count == 1 ? "" : "s")}",
+                    IsCheckable = true,
+                    IsChecked = project.Id == _vm?.ActiveProjectId,
+                    Tag = project.Id,
+                };
+                item.Click += (_, _) =>
+                {
+                    SetProjectsFlyoutOpen(false);
+                    SwitchProject(project.Id);
+                };
+                ProjectsMenuItems.Children.Add(item);
+            }
+
+            var manage = new MenuItem { Header = "Manage projects…" };
+            manage.Click += (_, _) => BuildProjectManager();
+            ProjectsMenuItems.Children.Add(manage);
+        }
+        RefreshProjectsButton();
+    }
+
+    private void BuildProjectManager()
+    {
+        ProjectsMenuItems.Children.Clear();
+        ProjectsMenuItems.Children.Add(new MenuItem
+        {
+            Header = "MANAGE TAB PROJECTS",
+            IsEnabled = false,
+            FontWeight = FontWeights.SemiBold
+        });
+        var back = new MenuItem { Header = "← Back to projects" };
+        back.Click += (_, _) => BuildProjectsMenu();
+        ProjectsMenuItems.Children.Add(back);
+        ProjectsMenuItems.Children.Add(new Separator());
+
+        foreach (var project in SettingsStore.Instance.Settings.TabProjects.ToList())
+        {
+            var row = new Grid { Margin = new Thickness(7, 5, 7, 5) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var name = new TextBlock
+            {
+                Text = project.Name,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 180,
+                Margin = new Thickness(3, 0, 10, 0)
+            };
+            row.Children.Add(name);
+
+            var rename = ProjectManagerButton("Rename");
+            rename.Click += (_, _) =>
+            {
+                SetProjectsFlyoutOpen(false);
+                RenameProject(project.Id);
+            };
+            Grid.SetColumn(rename, 1);
+            row.Children.Add(rename);
+
+            var delete = ProjectManagerButton("Delete");
+            delete.Foreground = (Brush)FindResource("Danger");
+            delete.Click += (_, _) =>
+            {
+                SetProjectsFlyoutOpen(false);
+                DeleteProject(project.Id);
+            };
+            Grid.SetColumn(delete, 2);
+            row.Children.Add(delete);
+
+            ProjectsMenuItems.Children.Add(row);
+        }
+    }
+
+    private Button ProjectManagerButton(string text) => new()
+    {
+        Content = text,
+        Style = (Style)FindResource("GhostButton"),
+        MinWidth = 0,
+        Padding = new Thickness(8, 4, 8, 4),
+        Margin = new Thickness(3, 0, 0, 0),
+        FontSize = 11,
+    };
+
+    private ICommand ProjectCommand(Action action) => new RelayCommand(_ =>
+    {
+        SetProjectsFlyoutOpen(false);
+        action();
+    });
+
+    private ICommand ProjectCommand(Func<bool> action) => new RelayCommand(_ =>
+    {
+        SetProjectsFlyoutOpen(false);
+        action();
+    });
+
+    private void RefreshProjectsButton()
+    {
+        if (ProjectsButtonText is null) return;
+        string? id = _vm?.ActiveProjectId;
+        string? name = SettingsStore.Instance.Settings.TabProjects
+            .FirstOrDefault(project => project.Id == id)?.Name;
+        ProjectsButtonText.Text = name is null ? "Tab projects" : $"Project · {name}";
+    }
+
+    private bool SaveCurrentTabsAsProject()
+    {
+        if (_vm is null) return false;
+        var dialog = new InputDialog("Save tab project", "Project name:", "Current tabs") { Owner = Window.GetWindow(this) };
+        if (dialog.ShowDialog() != true) return false;
+
+        var snapshot = _vm.CaptureProject();
+        var project = new TabProject
+        {
+            Name = UniqueProjectName(dialog.Value),
+            Tabs = snapshot.Tabs,
+            SelectedIndex = snapshot.SelectedIndex,
+        };
+        SettingsStore.Instance.Settings.TabProjects.Add(project);
+        SettingsStore.Instance.Settings.NotifyTabProjectsChanged();
+        _vm.ActiveProjectId = project.Id;
+        return true;
+    }
+
+    private void CreateEmptyProject()
+    {
+        if (_vm is null) return;
+        if (_vm.ActiveProjectId is null && _vm.Tabs.Count > 0 && !SaveCurrentTabsAsProject()) return;
+        if (_vm.ActiveProjectId is not null) UpdateCurrentProject();
+
+        var dialog = new InputDialog("New tab project", "Project name:", "New project") { Owner = Window.GetWindow(this) };
+        if (dialog.ShowDialog() != true) return;
+        var project = new TabProject { Name = UniqueProjectName(dialog.Value) };
+        SettingsStore.Instance.Settings.TabProjects.Add(project);
+        SettingsStore.Instance.Settings.NotifyTabProjectsChanged();
+        _vm.LoadProject(project.Tabs, project.SelectedIndex);
+        _vm.ActiveProjectId = project.Id;
+    }
+
+    private void SwitchProject(string id)
+    {
+        if (_vm is null || _vm.ActiveProjectId == id) return;
+        if (_vm.ActiveProjectId is null && _vm.Tabs.Count > 0 && !SaveCurrentTabsAsProject()) return;
+        if (_vm.ActiveProjectId is not null) UpdateCurrentProject();
+
+        var project = SettingsStore.Instance.Settings.TabProjects.FirstOrDefault(p => p.Id == id);
+        if (project is null) return;
+        _vm.LoadProject(project.Tabs, project.SelectedIndex);
+        _vm.ActiveProjectId = project.Id;
+    }
+
+    private void UpdateCurrentProject()
+    {
+        if (_vm?.ActiveProjectId is { Length: > 0 } id) UpdateProject(id);
+    }
+
+    private void UpdateProject(string id)
+    {
+        if (_vm is null) return;
+        var project = SettingsStore.Instance.Settings.TabProjects.FirstOrDefault(p => p.Id == id);
+        if (project is null) return;
+        var snapshot = _vm.CaptureProject();
+        project.Tabs = snapshot.Tabs;
+        project.SelectedIndex = snapshot.SelectedIndex;
+        SettingsStore.Instance.Settings.NotifyTabProjectsChanged();
+    }
+
+    private void RenameProject(string id)
+    {
+        var project = SettingsStore.Instance.Settings.TabProjects.FirstOrDefault(p => p.Id == id);
+        if (project is null) return;
+        var dialog = new InputDialog("Rename tab project", "Project name:", project.Name) { Owner = Window.GetWindow(this) };
+        if (dialog.ShowDialog() != true) return;
+        project.Name = UniqueProjectName(dialog.Value, project.Id);
+        SettingsStore.Instance.Settings.NotifyTabProjectsChanged();
+    }
+
+    private void DeleteProject(string id)
+    {
+        var settings = SettingsStore.Instance.Settings;
+        var project = settings.TabProjects.FirstOrDefault(p => p.Id == id);
+        if (project is null) return;
+        if (!ConfirmDialog.Ask(Window.GetWindow(this), "Delete tab project",
+            $"Delete the saved project “{project.Name}”? Its tabs will stay open if it is active.",
+            "Delete", "Cancel", danger: true))
+            return;
+        settings.TabProjects.Remove(project);
+        settings.NotifyTabProjectsChanged();
+        if (_vm?.ActiveProjectId == id) _vm.ActiveProjectId = null;
+    }
+
+    private static string UniqueProjectName(string raw, string? currentId = null)
+    {
+        string baseName = string.IsNullOrWhiteSpace(raw) ? "New project" : raw.Trim();
+        string name = baseName;
+        int suffix = 2;
+        var projects = SettingsStore.Instance.Settings.TabProjects;
+        while (projects.Any(p => p.Id != currentId && string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
+            name = $"{baseName} ({suffix++})";
+        return name;
     }
 
     private static T? ItemFromPoint<T>(MouseButtonEventArgs e) where T : class
@@ -450,6 +1160,8 @@ public partial class PaneView : UserControl
     // where the list should rubber-band select instead).
     private void FileList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsWithin<TextBox>(e.OriginalSource) || IsWithin<CheckBox>(e.OriginalSource)) return;
+
         // The ListView's ScrollBar lives inside the ListView template, so its mouse
         // events also route through this handler. Never arm file dragging or the
         // empty-space selection marquee for scrollbar chrome; otherwise the marquee
@@ -466,6 +1178,12 @@ public partial class PaneView : UserControl
         _marqueeStart = e.GetPosition(FileList);
         _maybeMarquee = hit is null && _tab is { IsFolderView: true }
                         && !IsWithin<GridViewColumnHeader>(e.OriginalSource);
+
+        // WPF keeps an extended selection when the click falls on the list's blank area.
+        // In a file manager that makes the previous selection feel stuck, so a plain blank
+        // click always clears it before a possible rubber-band gesture starts.
+        if (_maybeMarquee && Keyboard.Modifiers == ModifierKeys.None)
+            FileList.UnselectAll();
 
         // Pressing a row that's already part of a multi-selection (no Ctrl/Shift) must NOT
         // collapse the selection — otherwise a drag would only carry this one row. Suppress
@@ -525,7 +1243,7 @@ public partial class PaneView : UserControl
             var result = DragDrop.DoDragDrop(FileList, data,
                 DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
             // If the drop target moved the files out, our folder is now stale.
-            if (result == DragDropEffects.Move) _ = _tab?.ReloadAsync();
+            if (result == DragDropEffects.Move) _ = _tab?.ReloadAfterOperationAsync();
         }
         catch { /* drag cancelled */ }
         finally { HideDragGhost(); SetDropTarget(null); }
@@ -682,15 +1400,99 @@ public partial class PaneView : UserControl
         bool move = ComputeDropEffect(e) == DragDropEffects.Move;
         string? err = FileDropService.Perform(files, dest, move);
         if (err is not null) SetStatus($"⚠️ {err}");
-        _ = _tab.ReloadAsync();
+        _ = _tab.ReloadAfterOperationAsync();
     }
 
     // ===================== Drop onto a tab header =====================
     // Drops the dragged files into that tab's folder (move/copy by the same rules).
     private TabViewModel? _tabDropTarget;
 
+    private static bool TryResolveTabDrag(
+        IDataObject data, out PaneViewModel? sourcePane, out TabViewModel? tab)
+    {
+        sourcePane = null;
+        tab = null;
+        if (!data.GetDataPresent(TabDragTokenFormat)
+            || data.GetData(TabDragTokenFormat) is not string token
+            || !ActiveTabDrags.TryGetValue(token, out var payload))
+            return false;
+
+        sourcePane = payload.SourcePane;
+        tab = payload.Tab;
+        return true;
+    }
+
     private void TabBar_DragOver(object sender, DragEventArgs e)
     {
+        if (TryResolveTabDrag(e.Data, out var sourcePane, out var dragged))
+        {
+            var dragBar = sender as ListBox ?? TabBar;
+            if (ReferenceEquals(dragBar, TabBar)) EnsureTopLevelTabDragSlots();
+            Point pointer = e.GetPosition(dragBar);
+            var stableSlot = ReferenceEquals(sourcePane, _vm) && ReferenceEquals(dragBar, TabBar)
+                ? TabDragSlotAt(pointer.X)
+                : null;
+            var target = stableSlot?.Tab ?? TabUnder(e.OriginalSource);
+            bool valid = dragged is not null && sourcePane is not null
+                && (target is null || dragged.IsPinned == target.IsPinned);
+            e.Effects = valid ? DragDropEffects.Move : DragDropEffects.None;
+            SetTabDropTarget(null);
+            bool waitingToGroup = false;
+            bool alreadyInSameGroup = dragged?.GroupId is { Length: > 0 } draggedGroupId
+                && draggedGroupId == target?.GroupId;
+            if (valid && dragged is not null && target is not null && !dragged.IsPinned
+                && !ReferenceEquals(dragged, target) && !alreadyInSameGroup)
+            {
+                double? ratio = stableSlot is not null
+                    ? (pointer.X - stableSlot.X) / stableSlot.Width
+                    : TabContainer(e.OriginalSource) is { ActualWidth: > 0 } targetBox
+                        ? e.GetPosition(targetBox).X / targetBox.ActualWidth
+                        : null;
+                if (ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio)
+                {
+                    waitingToGroup = true;
+                    BeginTabGroupHover(dragged, target);
+                }
+                else
+                {
+                    ResetTabGroupHover();
+                    SetTabGroupTarget(null, null);
+                }
+            }
+            else
+            {
+                ResetTabGroupHover();
+                SetTabGroupTarget(null, null);
+            }
+
+            // Preview ordinary same-pane reordering as a ghost. The live collection stays
+            // untouched until drop, so the dragged tab can always return to its origin.
+            if (valid && !waitingToGroup && ReferenceEquals(sourcePane, _vm)
+                && dragged is not null && target is not null && stableSlot is not null
+                && dragged.IsGrouped)
+            {
+                PreviewGroupedTabMove(dragged, stableSlot,
+                    pointer.X - stableSlot.X >= stableSlot.Width / 2);
+            }
+            else if (valid && !waitingToGroup && ReferenceEquals(sourcePane, _vm)
+                && dragged is not null && target is not null
+                && !ReferenceEquals(dragged, target) && !target.IsGrouped && stableSlot is not null)
+            {
+                var display = _tabDragSlots.Select(slot => slot.Tab).ToList();
+                int targetIndex = display.IndexOf(target);
+                if (pointer.X - stableSlot.X >= stableSlot.Width / 2) targetIndex++;
+                int sourceIndex = display.IndexOf(dragged);
+                if (sourceIndex >= 0 && sourceIndex < targetIndex) targetIndex--;
+                PreviewTabMove(dragged, targetIndex);
+            }
+            else
+            {
+                ClearTabDragPreview();
+            }
+            e.Handled = true;
+            return;
+        }
+
         var tab = TabUnder(e.OriginalSource);
         string? dest = tab is { IsFolderView: true } ? tab.CurrentPath : null;
         var files = e.Data.GetData(DataFormats.FileDrop) as string[];
@@ -700,11 +1502,101 @@ public partial class PaneView : UserControl
         e.Handled = true;
     }
 
-    private void TabBar_DragLeave(object sender, DragEventArgs e) => SetTabDropTarget(null);
+    private void TabBar_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is FrameworkElement bar)
+        {
+            Point pointer = e.GetPosition(bar);
+            if (pointer.X >= 0 && pointer.X <= bar.ActualWidth
+                && pointer.Y >= 0 && pointer.Y <= bar.ActualHeight)
+                return;
+        }
+        SetTabDropTarget(null);
+        if (e.Data.GetDataPresent(TabDragTokenFormat))
+        {
+            ClearTabDragPreview();
+            ResetTabGroupHover();
+            SetTabGroupTarget(null, null);
+        }
+    }
 
     private void TabBar_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        if (TryResolveTabDrag(e.Data, out var sourcePane, out var dragged))
+        {
+            var dropBar = sender as ListBox ?? TabBar;
+            Point pointer = e.GetPosition(dropBar);
+            var stableSlot = ReferenceEquals(sourcePane, _vm) && ReferenceEquals(dropBar, TabBar)
+                ? TabDragSlotAt(pointer.X)
+                : null;
+            var target = stableSlot?.Tab ?? TabUnder(e.OriginalSource);
+            int previewIndex = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewIndex : -1;
+            var previewTarget = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewTarget : null;
+            bool previewAfter = _tabPreviewAfter;
+            double? stableRatio = stableSlot is null ? null : (pointer.X - stableSlot.X) / stableSlot.Width;
+            ClearTabDragPreview();
+            if (_vm is not null && sourcePane is not null && dragged is not null
+                && (target is null || dragged.IsPinned == target.IsPinned))
+            {
+                bool groupDrop = ReferenceEquals(_tabGroupSource, dragged)
+                    && ReferenceEquals(_tabGroupTarget, target);
+                if (!ReferenceEquals(sourcePane, _vm))
+                {
+                    int targetIndex = target is null ? _vm.Tabs.Count : _vm.Tabs.IndexOf(target);
+                    if (!groupDrop && target is not null
+                        && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } foreignBox
+                        && e.GetPosition(foreignBox).X >= foreignBox.ActualWidth / 2)
+                        targetIndex++;
+                    if (_vm.TransferTabFrom(sourcePane, dragged, targetIndex,
+                            activate: true, preserveGroup: false)
+                        && groupDrop)
+                        _vm.GroupTabs(dragged, target);
+                }
+                else
+                {
+                    if (groupDrop)
+                    {
+                        _vm.GroupTabs(dragged, target);
+                    }
+                    else if (dragged.IsGrouped)
+                    {
+                        var moveTarget = previewTarget ?? target;
+                        bool dropsAfter = previewTarget is not null
+                            ? previewAfter
+                            : stableRatio is double ratio
+                                ? ratio >= 0.5
+                                : target is not null
+                                  && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } groupedBox
+                                  && e.GetPosition(groupedBox).X >= groupedBox.ActualWidth / 2;
+                        _vm.MoveTabOutOfGroup(dragged, moveTarget, dropsAfter);
+                    }
+                    else
+                    {
+                        int targetIndex = previewIndex;
+                        if (targetIndex < 0)
+                        {
+                            targetIndex = target is null ? _vm.Tabs.Count - 1 : _vm.Tabs.IndexOf(target);
+                            bool dropsAfter = stableRatio is double ratio
+                                ? ratio >= 0.5
+                                : target is not null
+                                  && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } box
+                                  && e.GetPosition(box).X >= box.ActualWidth / 2;
+                            if (target is not null && dropsAfter) targetIndex++;
+                            int sourceIndex = _vm.Tabs.IndexOf(dragged);
+                            if (sourceIndex >= 0 && sourceIndex < targetIndex) targetIndex--;
+                        }
+                        MoveTabWithAnimation(dragged, targetIndex);
+                    }
+                }
+                e.Effects = DragDropEffects.Move;
+            }
+            SetTabGroupTarget(null, null);
+            ResetTabGroupHover();
+            SetTabDropTarget(null);
+            return;
+        }
+
         var tab = TabUnder(e.OriginalSource);
         SetTabDropTarget(null);
         if (tab is null || !tab.IsFolderView) return;
@@ -713,8 +1605,240 @@ public partial class PaneView : UserControl
         bool move = FileDropService.EffectFor(files, tab.CurrentPath, e.KeyStates) == DragDropEffects.Move;
         string? err = FileDropService.Perform(files, tab.CurrentPath, move);
         if (err is not null) SetStatus($"⚠️ {err}");
-        _ = tab.ReloadAsync();
-        if (_tab is not null && !ReferenceEquals(_tab, tab)) _ = _tab.ReloadAsync();   // source tab is now stale
+        _ = tab.ReloadAfterOperationAsync();
+        if (_tab is not null && !ReferenceEquals(_tab, tab))
+            _ = _tab.ReloadAfterOperationAsync();   // source tab is now stale
+    }
+
+    private void SetTabGroupTarget(TabViewModel? source, TabViewModel? target)
+    {
+        if (_tabGroupSource is not null) _tabGroupSource.IsGroupDropTarget = false;
+        if (_tabGroupTarget is not null) _tabGroupTarget.IsGroupDropTarget = false;
+        _tabGroupSource = source;
+        _tabGroupTarget = target;
+        if (_tabGroupSource is not null) _tabGroupSource.IsGroupDropTarget = true;
+        if (_tabGroupTarget is not null) _tabGroupTarget.IsGroupDropTarget = true;
+    }
+
+    private void ResetTabGroupHover()
+    {
+        _tabGroupHoverTimer?.Stop();
+        _tabGroupHoverCandidate = null;
+        _tabGroupHoverSource = null;
+    }
+
+    private void BeginTabGroupHover(TabViewModel source, TabViewModel target)
+    {
+        if (ReferenceEquals(_tabGroupHoverSource, source)
+            && ReferenceEquals(_tabGroupHoverCandidate, target))
+            return;
+
+        ResetTabGroupHover();
+        SetTabGroupTarget(null, null);
+        _tabGroupHoverSource = source;
+        _tabGroupHoverCandidate = target;
+        _tabGroupHoverTimer ??= CreateTabGroupHoverTimer();
+        _tabGroupHoverTimer.Interval = TabGroupHoverDelay;
+        _tabGroupHoverTimer.Start();
+    }
+
+    private DispatcherTimer CreateTabGroupHoverTimer()
+    {
+        var timer = new DispatcherTimer();
+        timer.Tick += (_, _) => CompleteTabGroupHover();
+        return timer;
+    }
+
+    private void CompleteTabGroupHover()
+    {
+        _tabGroupHoverTimer?.Stop();
+        var source = _tabGroupHoverSource;
+        var target = _tabGroupHoverCandidate;
+        var slot = target is null
+            ? null
+            : _tabDragSlots.FirstOrDefault(candidate => ReferenceEquals(candidate.Tab, target));
+        if (source is null || target is null || slot is null || !GetCursorPos(out var cursor))
+        {
+            ResetTabGroupHover();
+            SetTabGroupTarget(null, null);
+            return;
+        }
+
+        try
+        {
+            Point pointer = TabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+            double ratio = (pointer.X - slot.X) / slot.Width;
+            bool stillCentered = pointer.Y >= 0 && pointer.Y <= TabBar.ActualHeight
+                && ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio;
+            if (stillCentered)
+            {
+                SetTabGroupTarget(source, target);
+                return;
+            }
+        }
+        catch
+        {
+            // The tab strip can detach while a drag is being cancelled.
+        }
+
+        ResetTabGroupHover();
+        SetTabGroupTarget(null, null);
+    }
+
+    private void PreviewTabMove(TabViewModel dragged, int targetIndex)
+    {
+        if (_vm is null || _tabDragSlots.Count == 0) return;
+        var display = _tabDragSlots.Select(slot => slot.Tab).ToList();
+        int sourceIndex = display.IndexOf(dragged);
+        if (sourceIndex < 0) return;
+        targetIndex = Math.Clamp(targetIndex, 0, display.Count - 1);
+        if (sourceIndex == targetIndex)
+        {
+            ClearTabDragPreview();
+            return;
+        }
+        if (ReferenceEquals(_tabPreviewSource, dragged) && _tabPreviewIndex == targetIndex) return;
+
+        var reordered = display.ToList();
+        reordered.RemoveAt(sourceIndex);
+        reordered.Insert(targetIndex, dragged);
+        var slotsByTab = _tabDragSlots.ToDictionary(slot => slot.Tab);
+        for (int index = 0; index < reordered.Count; index++)
+        {
+            var candidate = reordered[index];
+            var original = slotsByTab[candidate];
+            double destination = _tabDragSlots[index].X;
+            original.Container.RenderTransform = new TranslateTransform(destination - original.X, 0);
+        }
+
+        _tabPreviewSource = dragged;
+        _tabPreviewTarget = null;
+        _tabPreviewAfter = false;
+        _tabPreviewIndex = targetIndex;
+        EnsureTabInsertionAdorner();
+        if (_tabInsertionAdorner is not null)
+            _tabInsertionAdorner.X = _tabDragSlots[targetIndex].X;
+    }
+
+    private void PreviewGroupedTabMove(TabViewModel dragged, TabDragSlot targetSlot, bool after)
+    {
+        if (ReferenceEquals(_tabPreviewSource, dragged)
+            && ReferenceEquals(_tabPreviewTarget, targetSlot.Tab)
+            && _tabPreviewAfter == after)
+            return;
+
+        ClearTabDragPreview();
+        _tabPreviewSource = dragged;
+        _tabPreviewTarget = targetSlot.Tab;
+        _tabPreviewAfter = after;
+        EnsureTabInsertionAdorner();
+        if (_tabInsertionAdorner is not null)
+            _tabInsertionAdorner.X = targetSlot.X + (after ? targetSlot.Width : 0);
+    }
+
+    private void CaptureTabDragSlots(ListBox sourceBar)
+    {
+        _tabDragSlots.Clear();
+        if (!ReferenceEquals(sourceBar, TabBar) || _vm is null) return;
+        foreach (var tab in _vm.TopLevelTabs)
+        {
+            if (TabBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container)
+            {
+                _tabDragSlots.Clear();
+                return;
+            }
+            _tabDragSlots.Add(new TabDragSlot(tab, container,
+                container.TranslatePoint(new Point(), TabBar).X,
+                Math.Max(1, container.ActualWidth)));
+        }
+    }
+
+    private void EnsureTopLevelTabDragSlots()
+    {
+        if (_vm is null) return;
+        var topLevelTabs = _vm.TopLevelTabs;
+        if (_tabDragSlots.Count == topLevelTabs.Count
+            && _tabDragSlots.Select(slot => slot.Tab).SequenceEqual(topLevelTabs))
+            return;
+
+        ClearTabDragPreview();
+        _tabDragSlots.Clear();
+        foreach (var tab in topLevelTabs)
+        {
+            if (TabBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container)
+            {
+                _tabDragSlots.Clear();
+                return;
+            }
+            _tabDragSlots.Add(new TabDragSlot(tab, container,
+                container.TranslatePoint(new Point(), TabBar).X,
+                Math.Max(1, container.ActualWidth)));
+        }
+    }
+
+    private TabDragSlot? TabDragSlotAt(double x)
+    {
+        if (_tabDragSlots.Count == 0) return null;
+        foreach (var slot in _tabDragSlots)
+            if (x >= slot.X && x < slot.X + slot.Width) return slot;
+        if (x < _tabDragSlots[0].X) return _tabDragSlots[0];
+        return _tabDragSlots[^1];
+    }
+
+    private void EnsureTabInsertionAdorner()
+    {
+        if (_tabInsertionAdorner is not null) return;
+        var layer = AdornerLayer.GetAdornerLayer(TabBar);
+        if (layer is null) return;
+        _tabInsertionAdorner = new TabInsertionAdorner(TabBar);
+        layer.Add(_tabInsertionAdorner);
+    }
+
+    private void ClearTabDragPreview()
+    {
+        if (_tabPreviewSource is null && _tabInsertionAdorner is null) return;
+        foreach (var slot in _tabDragSlots) slot.Container.RenderTransform = null;
+        if (_tabInsertionAdorner is not null)
+        {
+            AdornerLayer.GetAdornerLayer(TabBar)?.Remove(_tabInsertionAdorner);
+            _tabInsertionAdorner = null;
+        }
+        _tabPreviewSource = null;
+        _tabPreviewTarget = null;
+        _tabPreviewAfter = false;
+        _tabPreviewIndex = -1;
+    }
+
+    private void MoveTabWithAnimation(TabViewModel tab, int targetIndex)
+    {
+        if (_vm is null) return;
+        var before = _vm.Tabs
+            .Select(candidate => (candidate,
+                container: TabBar.ItemContainerGenerator.ContainerFromItem(candidate) as ListBoxItem))
+            .Where(pair => pair.container is not null)
+            .ToDictionary(pair => pair.candidate,
+                pair => pair.container!.TranslatePoint(new Point(), TabBar).X);
+
+        if (!_vm.MoveTab(tab, targetIndex)) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            foreach (var candidate in _vm.Tabs)
+            {
+                if (!before.TryGetValue(candidate, out double oldX)
+                    || TabBar.ItemContainerGenerator.ContainerFromItem(candidate) is not ListBoxItem container)
+                    continue;
+                double newX = container.TranslatePoint(new Point(), TabBar).X;
+                double delta = oldX - newX;
+                if (Math.Abs(delta) < 0.5) continue;
+                var transform = new TranslateTransform(delta, 0);
+                container.RenderTransform = transform;
+                var animation = new DoubleAnimation(0, TimeSpan.FromMilliseconds(145))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                transform.BeginAnimation(TranslateTransform.XProperty, animation);
+            }
+        }, DispatcherPriority.Render);
     }
 
     private void SetTabDropTarget(TabViewModel? tab)
@@ -727,9 +1851,14 @@ public partial class PaneView : UserControl
 
     private static TabViewModel? TabUnder(object? source)
     {
+        return TabContainer(source)?.DataContext as TabViewModel;
+    }
+
+    private static ListBoxItem? TabContainer(object? source)
+    {
         DependencyObject? d = source as DependencyObject;
         while (d is not null and not ListBoxItem) d = VisualTreeHelper.GetParent(d);
-        return (d as ListBoxItem)?.DataContext as TabViewModel;
+        return d as ListBoxItem;
     }
 
     // Drop onto a folder row drops *into* that folder; elsewhere, the current folder.
@@ -784,6 +1913,7 @@ public partial class PaneView : UserControl
 
     private void FileContextMenu_Opened(object sender, RoutedEventArgs e)
     {
+        _fileContextMenuOpen = true;
         var items = SelectedItems();
         int n = items.Count;
         bool has = n > 0;
@@ -808,6 +1938,16 @@ public partial class PaneView : UserControl
         MenuRename.IsEnabled = n == 1;
         MenuDelete.IsEnabled = has;
         MenuProperties.IsEnabled = n == 1;
+        MenuGit.Visibility = SettingsStore.Instance.Settings.GitIntegrationEnabled
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        // Set up the native menu once the regular menu has painted. The submenu then opens
+        // immediately in normal use, while an instant hover still falls back to its loader.
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            if (_fileContextMenuOpen) PrepareShowMoreOptions();
+        }));
     }
 
     private void BuildPinMenu(IReadOnlyList<FileItem> dirs)
@@ -917,15 +2057,16 @@ public partial class PaneView : UserControl
 
         string? err = FileDropService.Perform(files, _tab.CurrentPath, move);
         if (err is not null) SetStatus($"⚠️ {err}");
-        _ = _tab.ReloadAsync();
+        _ = _tab.ReloadAfterOperationAsync();
     }
 
     // ---- Delete (Recycle Bin) ----
     private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
 
-    private void DeleteSelected()
+    private async void DeleteSelected()
     {
-        if (_tab is null) return;
+        if (_tab is null || _fileOperationInProgress) return;
+        var tab = _tab;
         var paths = SelectedPaths();
         if (paths.Count == 0) return;
 
@@ -947,29 +2088,61 @@ public partial class PaneView : UserControl
                 break;
         }
 
+        // Every permanent-delete path gets one Rain-styled confirmation. The underlying
+        // shell operation suppresses Windows' per-file prompts so a multi-delete stays one action.
+        if (permanent && !ConfirmDialog.Ask(Window.GetWindow(this), "Permanently delete",
+            $"Permanently delete {what}? This can't be undone.",
+            "Delete permanently", "Cancel", danger: true))
+            return;
+
         var act = Activity.Begin(permanent ? "Permanently deleted" : "Recycled", Summarize(paths), "trash");
-        OpResult res = permanent ? _ops.DeletePermanent(paths) : _ops.Delete(paths);
+        tab.BeginKnownFileOperation();
+        _fileOperationInProgress = true;
+        OpResult res;
+        try
+        {
+            res = await Task.Run(() => permanent ? _ops.DeletePermanent(paths) : _ops.Delete(paths));
+        }
+        finally
+        {
+            _fileOperationInProgress = false;
+        }
+
+        // Keep the current collection in sync locally. A full directory reload can
+        // rebuild thousands of rows and made the window appear frozen after deletes.
+        tab.ApplyLocalDelete(res.Completed);
 
         // The user backed out of the OS confirm dialog — nothing was deleted. Reflect that in
         // the activity center (instead of falsely logging a completed delete) and stop here.
         if (res.Canceled)
         {
             Activity.Cancel(act);
-            _ = _tab.ReloadAsync();   // a multi-item delete may have partially completed before cancel
+            if (!permanent) PushDeleteUndo(res.Completed);
+            if (!permanent && res.Completed.Count > 0)
+                SetStatus($"Delete canceled after {res.Completed.Count} item{(res.Completed.Count == 1 ? "" : "s")}; use Undo to restore them.");
             return;
         }
 
         Activity.Complete(act, res.Ok, res.Error);
         if (!res.Ok) SetStatus($"⚠️ {res.Error}");
         // Only a Recycle-Bin delete is undoable; a permanent delete can't be restored.
-        else if (!permanent) UndoService.Instance.Push(new RestoreFromBinAction(
-            paths, paths.Count == 1 ? "Delete" : $"Delete ({paths.Count} items)"));
-        _ = _tab.ReloadAsync();
+        if (!permanent) PushDeleteUndo(res.Completed);
+    }
+
+    private static void PushDeleteUndo(IReadOnlyList<string> completed)
+    {
+        if (completed.Count == 0) return;
+        UndoService.Instance.Push(new RestoreFromBinAction(
+            completed, completed.Count == 1 ? "Delete" : $"Delete ({completed.Count} items)"));
     }
 
     // ---- Keyboard shortcuts, scoped to the file list (so typing in text boxes is unaffected) ----
     private void FileList_KeyDown(object sender, KeyEventArgs e)
     {
+        // Editing keys belong to the rename box. In particular, Space must type a
+        // space instead of bubbling here and toggling the preview pane.
+        if (e.OriginalSource is TextBox || _tab?.Items.Any(item => item.IsEditing) == true) return;
+
         if (_tab is null) return;
         if (Keyboard.FocusedElement is TextBox) return;   // inline-rename in progress
 
@@ -1031,14 +2204,16 @@ public partial class PaneView : UserControl
     // ---- Rename (dialog or inline, per Settings) ----
     private void Rename_Click(object sender, RoutedEventArgs e) => BeginRename();
 
-    private void BeginRename()
+    private async void BeginRename()
     {
-        if (_tab is null || FileList.SelectedItems.Count != 1) return;
+        if (_tab is null || _fileOperationInProgress || FileList.SelectedItems.Count != 1) return;
+        var tab = _tab;
         var item = (FileItem)FileList.SelectedItem;
 
         if (SettingsStore.Instance.Settings.RenameMode == RenameMode.Inline)
         {
             item.EditName = item.Name;
+            tab.BeginInlineEdit();
             item.IsEditing = true;
         }
         else
@@ -1048,11 +2223,26 @@ public partial class PaneView : UserControl
             {
                 if (!AllowRename(item.Name, dlg.Value, item.IsDirectory)) return;
                 var act = Activity.Begin("Rename", $"{item.Name} → {dlg.Value}", "pencil");
-                string? err = _ops.Rename(item.FullPath, dlg.Value);
+                string oldPath = item.FullPath;
+                tab.BeginKnownFileOperation();
+                _fileOperationInProgress = true;
+                string? err;
+                try
+                {
+                    err = await Task.Run(() => _ops.Rename(item.FullPath, dlg.Value));
+                }
+                finally
+                {
+                    _fileOperationInProgress = false;
+                }
                 Activity.Complete(act, err is null, err);
                 if (err is not null) SetStatus($"⚠️ {err}");
-                else PushRenameUndo(item.FullPath, dlg.Value);
-                _ = _tab.ReloadAsync();
+                else
+                {
+                    PushRenameUndo(oldPath, dlg.Value);
+                    string dir = Path.GetDirectoryName(oldPath)!;
+                    tab.ApplyLocalRename(item, Path.Combine(dir, dlg.Value));
+                }
             }
         }
     }
@@ -1073,10 +2263,11 @@ public partial class PaneView : UserControl
                 act.Detail = Path.GetFileName(created);
                 UndoService.Instance.Push(new RecycleAction(new[] { created }, "New folder"));
             }
-            await _tab.ReloadAsync();
+            await _tab.ReloadAfterOperationAsync();
             if (created is not null && _tab.Find(created) is { } item)
             {
                 item.EditName = item.Name;
+                _tab.BeginInlineEdit();
                 item.IsEditing = true;
             }
         }
@@ -1089,7 +2280,7 @@ public partial class PaneView : UserControl
             Activity.Complete(act, err is null, err);
             if (err is not null) { SetStatus($"⚠️ {err}"); return; }
             if (created is not null) UndoService.Instance.Push(new RecycleAction(new[] { created }, "New folder"));
-            await _tab.ReloadAsync();
+            await _tab.ReloadAfterOperationAsync();
         }
     }
 
@@ -1100,7 +2291,304 @@ public partial class PaneView : UserControl
         if (FileList.SelectedItem is not FileItem item) return;
         var dlg = new PropertiesDialog(item) { Owner = Window.GetWindow(this) };
         dlg.ShowDialog();
-        if (dlg.Changed) _ = _tab?.ReloadAsync();
+        if (dlg.Changed) _ = _tab?.ReloadAfterOperationAsync();
+    }
+
+    // ---- First-class Git actions -------------------------------------------
+    private async void GitMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (!SettingsStore.Instance.Settings.GitIntegrationEnabled) return;
+
+        _gitMenuCts?.Cancel();
+        _gitMenuCts?.Dispose();
+        _gitMenuCts = new CancellationTokenSource();
+        CancellationToken token = _gitMenuCts.Token;
+        MenuGit.Items.Clear();
+        MenuGit.Items.Add(new MenuItem { Header = "Checking repository…", IsEnabled = false });
+
+        try
+        {
+            var runtime = GitIntegrationRuntime.Instance;
+            GitInstallationInfo? installation = await runtime.ExecutableLocator.FindAsync(token);
+            if (!_fileContextMenuOpen || token.IsCancellationRequested) return;
+            if (installation is null || !installation.IsSupported)
+            {
+                BuildGitUnavailableMenu(installation);
+                return;
+            }
+
+            string? candidate = GitMenuCandidate();
+            if (candidate is null)
+            {
+                MenuGit.Items.Clear();
+                MenuGit.Items.Add(new MenuItem { Header = "No folder is available", IsEnabled = false });
+                return;
+            }
+
+            GitRepositoryContext? repository = await runtime.RepositoryLocator.FindAsync(candidate, token);
+            if (repository is null)
+            {
+                BuildGitInitializeMenu(candidate);
+                return;
+            }
+
+            GitRepositoryStatus status = await runtime.StatusReader.ReadAsync(repository, token);
+            if (!_fileContextMenuOpen || token.IsCancellationRequested) return;
+            _gitMenuRepository = repository;
+            _gitMenuStatus = status;
+            BuildGitRepositoryMenu(status);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!_fileContextMenuOpen) return;
+            MenuGit.Items.Clear();
+            MenuGit.Items.Add(new MenuItem
+            {
+                Header = GitSecurity.Redact(ex.Message),
+                IsEnabled = false,
+            });
+        }
+    }
+
+    private string? GitMenuCandidate()
+    {
+        if (SelectedItems() is [{ IsDirectory: true } directory] && Directory.Exists(directory.FullPath))
+            return directory.FullPath;
+        if (_tab is { IsFolderView: true } && Directory.Exists(_tab.CurrentPath))
+            return _tab.CurrentPath;
+        return null;
+    }
+
+    private void BuildGitUnavailableMenu(GitInstallationInfo? installation)
+    {
+        MenuGit.Items.Clear();
+        MenuGit.Items.Add(new MenuItem
+        {
+            Header = installation is null
+                ? "Git for Windows is required"
+                : $"Git {installation.DisplayVersion} is too old (2.40+ required)",
+            IsEnabled = false,
+        });
+        var choose = new MenuItem { Header = "Choose Git executable…" };
+        choose.Click += ChooseGitExecutable_Click;
+        MenuGit.Items.Add(choose);
+        var download = new MenuItem { Header = "Get Git for Windows" };
+        download.Click += (_, _) => OpenWebAddress("https://git-scm.com/download/win");
+        MenuGit.Items.Add(download);
+    }
+
+    private void BuildGitInitializeMenu(string folder)
+    {
+        _gitMenuRepository = null;
+        _gitMenuStatus = null;
+        MenuGit.Items.Clear();
+        MenuGit.Items.Add(new MenuItem { Header = "Not a Git repository", IsEnabled = false });
+        var setup = new MenuItem { Header = "Open Git & GitHub…", Tag = folder };
+        setup.Click += OpenGitSetup_Click;
+        MenuGit.Items.Add(setup);
+        var initialize = new MenuItem { Header = "Initialize Git repository…", Tag = folder };
+        initialize.Click += InitializeGit_Click;
+        MenuGit.Items.Add(initialize);
+    }
+
+    private void BuildGitRepositoryMenu(GitRepositoryStatus status)
+    {
+        MenuGit.Items.Clear();
+        MenuGit.Items.Add(new MenuItem
+        {
+            Header = $"{status.Branch.DisplayName} · {status.Files.Count} changed · "
+                     + $"{status.Files.Count(file => file.IsStaged)} staged",
+            IsEnabled = false,
+        });
+        if (status.Repository.OperationState != GitRepositoryOperationState.Normal)
+            MenuGit.Items.Add(new MenuItem
+            {
+                Header = $"{status.Repository.OperationState} in progress",
+                IsEnabled = false,
+            });
+
+        MenuGit.Items.Add(new Separator());
+        var changes = new MenuItem { Header = "Open repository changes…" };
+        changes.Click += OpenGitChanges_Click;
+        MenuGit.Items.Add(changes);
+
+        HashSet<string> selected = SelectedRepositoryPaths(status.Repository);
+        GitFileStatus[] selectedStatuses = status.Files.Where(file =>
+            selected.Count == 0 || selected.Any(path => IsSameOrChild(file.Path, path))).ToArray();
+        if (selected.Count > 0 && selectedStatuses.Any(file => file.IsUnstaged || file.IsConflict))
+        {
+            var stage = new MenuItem { Header = "Stage selected files", Tag = selectedStatuses };
+            stage.Click += StageFromGitMenu_Click;
+            MenuGit.Items.Add(stage);
+        }
+        if (selected.Count > 0 && selectedStatuses.Any(file => file.IsStaged))
+        {
+            var unstage = new MenuItem { Header = "Unstage selected files", Tag = selectedStatuses };
+            unstage.Click += UnstageFromGitMenu_Click;
+            MenuGit.Items.Add(unstage);
+        }
+
+        var commit = new MenuItem
+        {
+            Header = "Commit staged changes…",
+            IsEnabled = status.HasStagedChanges && !status.HasConflicts
+                && status.Repository.OperationState == GitRepositoryOperationState.Normal
+                && !status.Branch.IsDetached,
+        };
+        commit.Click += OpenGitChanges_Click;
+        MenuGit.Items.Add(commit);
+
+        GitRemoteInfo? pushRemote = status.Remotes.FirstOrDefault(remote =>
+                                        remote.Name == status.PreferredPushRemote)
+                                    ?? (status.Remotes.Count == 1 ? status.Remotes[0] : null);
+        bool hasPushableCommits = string.IsNullOrWhiteSpace(status.Branch.Upstream)
+            || status.Branch.Ahead > 0;
+        var push = new MenuItem
+        {
+            Header = pushRemote is null
+                ? "Push (no push remote configured)"
+                : $"Push {status.Branch.DisplayName} to {pushRemote.Name}…",
+            IsEnabled = pushRemote is not null
+                && !status.Branch.IsDetached
+                && !status.Branch.IsUnborn
+                && !status.HasConflicts
+                && status.Repository.OperationState == GitRepositoryOperationState.Normal
+                && hasPushableCommits,
+        };
+        push.Click += OpenGitChanges_Click;
+        MenuGit.Items.Add(push);
+
+        if (pushRemote is { IsGitHub: true, WebUrl.Length: > 0 })
+        {
+            var github = new MenuItem { Header = "Open repository on GitHub", Tag = pushRemote.WebUrl };
+            github.Click += (_, _) => OpenWebAddress((string)github.Tag);
+            MenuGit.Items.Add(github);
+        }
+
+        MenuGit.Items.Add(new Separator());
+        var copyRoot = new MenuItem { Header = "Copy repository root" };
+        copyRoot.Click += (_, _) =>
+        {
+            try { Clipboard.SetText(status.Repository.WorkTreeRoot); }
+            catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
+        };
+        MenuGit.Items.Add(copyRoot);
+    }
+
+    private HashSet<string> SelectedRepositoryPaths(GitRepositoryContext repository)
+    {
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string fullPath in SelectedPaths())
+        {
+            try
+            {
+                string relative = Path.GetRelativePath(repository.WorkTreeRoot, fullPath).Replace('\\', '/');
+                if (relative != ".." && !relative.StartsWith("../", StringComparison.Ordinal))
+                    paths.Add(relative == "." ? string.Empty : relative);
+            }
+            catch { }
+        }
+        return paths;
+    }
+
+    private static bool IsSameOrChild(string filePath, string selectedPath) =>
+        string.Equals(filePath, selectedPath, StringComparison.Ordinal)
+        || filePath.StartsWith(selectedPath.TrimEnd('/') + "/", StringComparison.Ordinal);
+
+    private async void StageFromGitMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gitMenuRepository is null || sender is not MenuItem { Tag: GitFileStatus[] files }) return;
+        string[] paths = files.Where(file => file.IsUnstaged || file.IsConflict)
+            .Select(file => file.Path).Distinct(StringComparer.Ordinal).ToArray();
+        GitOperationResult result = await GitIntegrationRuntime.Instance.Mutations.StageAsync(
+            _gitMenuRepository, paths, CancellationToken.None);
+        SetStatus(result.Message ?? (result.Succeeded ? "Selected files staged." : "Staging failed."));
+        await (_tab?.ReloadAfterOperationAsync() ?? Task.CompletedTask);
+    }
+
+    private async void UnstageFromGitMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gitMenuRepository is null || _gitMenuStatus is null
+            || sender is not MenuItem { Tag: GitFileStatus[] files }) return;
+        string[] paths = files.Where(file => file.IsStaged)
+            .Select(file => file.Path).Distinct(StringComparer.Ordinal).ToArray();
+        GitOperationResult result = await GitIntegrationRuntime.Instance.Mutations.UnstageAsync(
+            _gitMenuRepository, paths, !_gitMenuStatus.Branch.IsUnborn, CancellationToken.None);
+        SetStatus(result.Message ?? (result.Succeeded ? "Selected files unstaged." : "Unstaging failed."));
+        await (_tab?.ReloadAfterOperationAsync() ?? Task.CompletedTask);
+    }
+
+    private async void InitializeGit_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string folder }) return;
+        if (!ConfirmDialog.Ask(Window.GetWindow(this), "Initialize Git repository",
+                $"Create Git repository metadata in:\n{folder}\n\n"
+                + "This does not stage, commit, or upload any files.",
+                "Initialize", "Cancel", danger: false))
+            return;
+
+        GitOperationResult result = await GitIntegrationRuntime.Instance.Mutations.InitializeAsync(
+            folder, CancellationToken.None);
+        SetStatus(result.Message ?? (result.Succeeded
+            ? "Git repository initialized. No files were staged."
+            : "Repository initialization failed."));
+        if (!result.Succeeded) return;
+        GitIntegrationRuntime.Instance.RepositoryLocator.Invalidate(folder);
+        GitRepositoryContext? repository = await GitIntegrationRuntime.Instance.RepositoryLocator.FindAsync(
+            folder, CancellationToken.None, useCache: false);
+        if (repository is not null) OpenGitChanges(repository);
+    }
+
+    private async void OpenGitSetup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string folder }) return;
+        var window = new GitSetupWindow(folder)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        if (window.ShowDialog() != true || window.RepositoryPath is not { } repositoryPath)
+            return;
+
+        _vm?.NewTab(repositoryPath, activate: true);
+        GitRepositoryContext? repository = await GitIntegrationRuntime.Instance.RepositoryLocator
+            .FindAsync(repositoryPath, CancellationToken.None, useCache: false);
+        if (repository is not null) OpenGitChanges(repository);
+    }
+
+    private void OpenGitChanges_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gitMenuRepository is not null) OpenGitChanges(_gitMenuRepository);
+    }
+
+    private void OpenGitChanges(GitRepositoryContext repository)
+    {
+        var window = new GitChangesWindow(repository, SelectedPaths())
+        {
+            Owner = Window.GetWindow(this),
+        };
+        window.ShowDialog();
+        _ = _tab?.ReloadAfterOperationAsync();
+    }
+
+    private void ChooseGitExecutable_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose Git executable",
+            Filter = "Git executable (git.exe)|git.exe|Applications (*.exe)|*.exe",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+        SettingsStore.Instance.Settings.GitExecutablePath = dialog.FileName;
+        SettingsStore.Instance.Flush();
+        SetStatus("Git executable updated.");
+    }
+
+    private static void OpenWebAddress(string address)
+    {
+        try { Process.Start(new ProcessStartInfo(address) { UseShellExecute = true }); }
+        catch { }
     }
 
     // ---- Native Windows shell items, rendered in our themed submenu --------
@@ -1108,7 +2596,12 @@ public partial class PaneView : UserControl
 
     private void ShowMore_SubmenuOpened(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem more) return;
+        PrepareShowMoreOptions(sender as MenuItem);
+    }
+
+    private void PrepareShowMoreOptions(MenuItem? more = null)
+    {
+        more ??= MenuShowMore;
         if (_shellSession is not null) return;   // already populated this session
 
         var paths = SelectedPaths();
@@ -1131,8 +2624,16 @@ public partial class PaneView : UserControl
 
     private void FileContextMenu_Closed(object sender, RoutedEventArgs e)
     {
+        _fileContextMenuOpen = false;
         _shellSession?.Dispose();
         _shellSession = null;
+        _gitMenuCts?.Cancel();
+        _gitMenuCts?.Dispose();
+        _gitMenuCts = null;
+        _gitMenuRepository = null;
+        _gitMenuStatus = null;
+        MenuGit.Items.Clear();
+        MenuGit.Items.Add(new MenuItem { Header = "Checking repository…", IsEnabled = false });
         // Reset the placeholder so the submenu repopulates next time it opens.
         MenuShowMore.Items.Clear();
         MenuShowMore.Items.Add(new MenuItem { Header = "Loading…", IsEnabled = false });
@@ -1219,7 +2720,7 @@ public partial class PaneView : UserControl
                 sc.WorkingDirectory = Path.GetDirectoryName(item.FullPath) ?? _tab.CurrentPath;
                 sc.Save();
             }
-            _ = _tab.ReloadAsync();
+            _ = _tab.ReloadAfterOperationAsync();
         }
         catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
     }
@@ -1253,7 +2754,7 @@ public partial class PaneView : UserControl
             Activity.Complete(act, true);
             UndoService.Instance.Push(new RecycleAction(new[] { zipPath }, "Compress"));
             SetStatus($"Compressed {items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}");
-            _ = _tab.ReloadAsync();
+            _ = _tab.ReloadAfterOperationAsync();
         }
         catch (Exception ex) { Activity.Complete(act, false, ex.Message); SetStatus($"⚠️ {ex.Message}"); }
     }
@@ -1295,7 +2796,11 @@ public partial class PaneView : UserControl
         }
         Activity.Complete(act, ok == zips.Count, lastErr);
         if (extracted.Count > 0) UndoService.Instance.Push(new RecycleAction(extracted, "Extract"));
-        if (ok > 0) { SetStatus($"Extracted {ok} archive{(ok == 1 ? "" : "s")}"); _ = _tab.ReloadAsync(); }
+        if (ok > 0)
+        {
+            SetStatus($"Extracted {ok} archive{(ok == 1 ? "" : "s")}");
+            _ = _tab.ReloadAfterOperationAsync();
+        }
     }
 
     // Extract any supported archive into destDir. ZIP uses the built-in extractor;
@@ -1329,10 +2834,11 @@ public partial class PaneView : UserControl
                 act.Detail = Path.GetFileName(created);
                 UndoService.Instance.Push(new RecycleAction(new[] { created }, "New file"));
             }
-            await _tab.ReloadAsync();
+            await _tab.ReloadAfterOperationAsync();
             if (created is not null && _tab.Find(created) is { } item)
             {
                 item.EditName = item.Name;
+                _tab.BeginInlineEdit();
                 item.IsEditing = true;
             }
         }
@@ -1346,7 +2852,7 @@ public partial class PaneView : UserControl
             Activity.Complete(act, err is null, err);
             if (err is not null) { SetStatus($"⚠️ {err}"); return; }
             if (created is not null) UndoService.Instance.Push(new RecycleAction(new[] { created }, "New file"));
-            await _tab.ReloadAsync();
+            await _tab.ReloadAfterOperationAsync();
         }
     }
 
@@ -1362,7 +2868,12 @@ public partial class PaneView : UserControl
     {
         if (sender is not TextBox tb || tb.DataContext is not FileItem item) return;
         if (e.Key == Key.Enter) { e.Handled = true; CommitInline(item); FileList.Focus(); }
-        else if (e.Key == Key.Escape) { e.Handled = true; item.IsEditing = false; }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            item.IsEditing = false;
+            _tab?.EndInlineEdit();
+        }
     }
 
     private void RenameBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -1370,23 +2881,46 @@ public partial class PaneView : UserControl
         if (sender is TextBox tb && tb.DataContext is FileItem item) CommitInline(item);
     }
 
-    private void CommitInline(FileItem item)
+    private async void CommitInline(FileItem item)
     {
-        if (_committing || !item.IsEditing || _tab is null) return;
+        if (_committing || _fileOperationInProgress || !item.IsEditing || _tab is null) return;
+        var tab = _tab;
         _committing = true;
-        item.IsEditing = false;
-        string newName = item.EditName;
-        if (!string.Equals(newName, item.Name, StringComparison.Ordinal))
+        try
         {
-            if (!AllowRename(item.Name, newName, item.IsDirectory)) { _committing = false; return; }
-            var act = Activity.Begin("Rename", $"{item.Name} → {newName}", "pencil");
-            string? err = _ops.Rename(item.FullPath, newName);
-            Activity.Complete(act, err is null, err);
-            if (err is not null) SetStatus($"⚠️ {err}");
-            else PushRenameUndo(item.FullPath, newName);
-            _ = _tab.ReloadAsync();
+            item.IsEditing = false;
+            string newName = item.EditName;
+            if (!string.Equals(newName, item.Name, StringComparison.Ordinal))
+            {
+                if (!AllowRename(item.Name, newName, item.IsDirectory)) return;
+                string oldPath = item.FullPath;
+                var act = Activity.Begin("Rename", $"{item.Name} → {newName}", "pencil");
+                tab.BeginKnownFileOperation();
+                _fileOperationInProgress = true;
+                string? err;
+                try
+                {
+                    err = await Task.Run(() => _ops.Rename(oldPath, newName));
+                }
+                finally
+                {
+                    _fileOperationInProgress = false;
+                }
+                Activity.Complete(act, err is null, err);
+                if (err is not null) SetStatus($"⚠️ {err}");
+                else
+                {
+                    PushRenameUndo(oldPath, newName);
+                    string dir = Path.GetDirectoryName(oldPath)!;
+                    tab.ApplyLocalRename(item, Path.Combine(dir, newName));
+                }
+            }
         }
-        _committing = false;
+        finally
+        {
+            tab.EndInlineEdit();
+            _committing = false;
+        }
     }
 
     // Record a rename so Ctrl+Z restores the previous name.

@@ -21,6 +21,8 @@ public partial class SettingsView : UserControl
     public sealed record ThemeOption(string Name, Brush Swatch);
 
     private ScrollViewer[] _panes = System.Array.Empty<ScrollViewer>();
+    private List<string> _installedFonts = [];
+    private bool _filteringFonts;
 
     public SettingsView()
     {
@@ -37,12 +39,13 @@ public partial class SettingsView : UserControl
         TerminalAppBox.ItemsSource = Enum.GetValues(typeof(TerminalApp));
 
         // Installed UI fonts, alphabetised.
-        FontBox.ItemsSource = System.Windows.Media.Fonts.SystemFontFamilies
+        _installedFonts = System.Windows.Media.Fonts.SystemFontFamilies
             .Select(f => f.Source)
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        FontBox.ItemsSource = _installedFonts;
 
-        // Prefer the informational version (e.g. "1.0.1-PreRelease"); fall back to the numeric one.
+        // Prefer the informational version (e.g. "1.1.0-PreRelease"); fall back to the numeric one.
         var info = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(info))
@@ -63,6 +66,38 @@ public partial class SettingsView : UserControl
         _panes = new[] { PaneAppearance, PaneBrowsing, PaneFiles, PaneAdvanced, PaneAbout };
 
         DataContext = SettingsStore.Instance.Settings;
+        FontBox.SelectedItem = SettingsStore.Instance.Settings.FontFamily;
+    }
+
+    private void FontSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string query = FontSearchBox.Text.Trim();
+        IEnumerable<string> matches = _installedFonts;
+        if (query.Length > 0)
+        {
+            matches = _installedFonts
+                .Where(font => font.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(font => font.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(font => font, StringComparer.OrdinalIgnoreCase);
+        }
+
+        string selected = SettingsStore.Instance.Settings.FontFamily;
+        var filtered = matches.ToList();
+        _filteringFonts = true;
+        FontBox.ItemsSource = filtered;
+        FontBox.SelectedItem = filtered.Contains(selected, StringComparer.OrdinalIgnoreCase)
+            ? selected
+            : null;
+        _filteringFonts = false;
+
+        if (query.Length > 0 && FontSearchBox.IsKeyboardFocusWithin)
+            FontBox.IsDropDownOpen = true;
+    }
+
+    private void FontBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_filteringFonts || FontBox.SelectedItem is not string font) return;
+        SettingsStore.Instance.Settings.FontFamily = font;
     }
 
     // ---- Section nav: show the selected pane, hide the rest ----------------
@@ -133,5 +168,24 @@ public partial class SettingsView : UserControl
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
         }
         catch { /* best effort */ }
+    }
+
+    private void BrowseGit_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Choose git.exe",
+            Filter = "Git executable (git.exe)|git.exe|Applications (*.exe)|*.exe",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        string current = SettingsStore.Instance.Settings.GitExecutablePath;
+        if (File.Exists(current))
+        {
+            dialog.InitialDirectory = Path.GetDirectoryName(current);
+            dialog.FileName = current;
+        }
+        if (dialog.ShowDialog() == true)
+            SettingsStore.Instance.Settings.GitExecutablePath = dialog.FileName;
     }
 }

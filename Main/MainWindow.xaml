@@ -5,6 +5,7 @@
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     xmlns:ctrl="clr-namespace:RainExplorer.Controls"
     xmlns:svc="clr-namespace:RainExplorer.Services"
+    xmlns:helpers="clr-namespace:RainExplorer.Helpers"
     Title="Rain Explorer"
     Icon="Assets/rain-cloud.png"
     Height="720" Width="1140" MinHeight="480" MinWidth="760"
@@ -120,6 +121,20 @@
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.undo}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                        <Button x:Name="RedoButton" Style="{StaticResource CaptionButton}"
+                                Click="RedoButton_Click"
+                                IsEnabled="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanRedo}"
+                                Visibility="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanRedo,
+                                    Converter={StaticResource BoolToVis}}"
+                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=RedoText}">
+                            <Path Style="{StaticResource IconPath}" Width="16" Height="16"
+                                  Data="{StaticResource Ic.undo}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+                                <Path.LayoutTransform>
+                                    <ScaleTransform ScaleX="-1" />
+                                </Path.LayoutTransform>
+                            </Path>
                         </Button>
                         <Button x:Name="ActivityButton" Style="{StaticResource CaptionButton}"
                                 Click="ActivityButton_Click" ToolTip="Activity">
@@ -343,12 +358,11 @@
                                                                                   VerticalAlignment="Center" />
                                                             </Grid>
                                                         </Border>
-                                                        <ItemsPresenter x:Name="ItemsHost" Margin="12,0,0,0" />
+                                                        <ItemsPresenter x:Name="ItemsHost" Margin="12,0,0,0"
+                                                                        helpers:ExpandCollapseBehavior.IsExpanded="{Binding IsExpanded,
+                                                                            RelativeSource={RelativeSource TemplatedParent}}" />
                                                     </StackPanel>
                                                     <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsExpanded" Value="False">
-                                                            <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
-                                                        </Trigger>
                                                         <Trigger Property="HasItems" Value="False">
                                                             <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
                                                         </Trigger>

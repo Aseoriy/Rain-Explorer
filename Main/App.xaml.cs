@@ -169,7 +169,11 @@ public partial class App : Application
     /// or file, open it in a new tab. Runs on the UI thread.</summary>
     private void OpenForwardedTarget(string[] args)
     {
-        if (Current.MainWindow is not MainWindow w) return;
+        var w = Current.Windows.OfType<MainWindow>()
+            .FirstOrDefault(candidate => candidate.IsActive)
+            ?? Current.Windows.OfType<MainWindow>().FirstOrDefault(candidate => candidate.IsVisible);
+        if (w is null) return;
+        Current.MainWindow = w;
 
         if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
         w.Activate();

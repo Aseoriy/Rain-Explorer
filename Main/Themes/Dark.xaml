@@ -450,14 +450,39 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
-                    <Border Background="{TemplateBinding Background}"
+                    <Border x:Name="menuSurface" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                            CornerRadius="10" Padding="5">
+                            CornerRadius="10" Padding="5" Opacity="0">
+                        <Border.RenderTransform>
+                            <TranslateTransform Y="-6" />
+                        </Border.RenderTransform>
                         <Border.Effect>
                             <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="24" ShadowDepth="4" />
                         </Border.Effect>
                         <ItemsPresenter />
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="menuSurface"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     From="0" To="1" Duration="0:0:0.15">
+                                        <DoubleAnimation.EasingFunction>
+                                            <QuadraticEase EasingMode="EaseOut" />
+                                        </DoubleAnimation.EasingFunction>
+                                    </DoubleAnimation>
+                                    <DoubleAnimation Storyboard.TargetName="menuSurface"
+                                                     Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)"
+                                                     From="-6" To="0" Duration="0:0:0.17">
+                                        <DoubleAnimation.EasingFunction>
+                                            <QuadraticEase EasingMode="EaseOut" />
+                                        </DoubleAnimation.EasingFunction>
+                                    </DoubleAnimation>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -578,7 +603,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
                     <Border x:Name="bg" Background="Transparent" CornerRadius="6" Padding="10,6">
-                        <ContentPresenter />
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
@@ -602,6 +627,8 @@
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
                         <ToggleButton Focusable="False" ClickMode="Press"
+                                      Foreground="{Binding Foreground,
+                                          RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
                                           RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
@@ -617,6 +644,11 @@
                                             <ContentPresenter
                                                 Content="{Binding SelectionBoxItem,
                                                     RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                ContentTemplate="{Binding SelectionBoxItemTemplate,
+                                                    RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                ContentTemplateSelector="{Binding ItemTemplateSelector,
+                                                    RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                TextElement.Foreground="{TemplateBinding Foreground}"
                                                 VerticalAlignment="Center" />
                                             <Path Grid.Column="1" Style="{StaticResource IconPath}"
                                                   Data="{StaticResource Ic.chevron-down}"

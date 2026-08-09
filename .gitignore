@@ -1,20 +1,43 @@
-# Build outputs
-Main/bin/
-Main/obj/
+# Ignore everything by default.
+*
+
+# Keep directories traversable so the source files below can be included.
+!*/
+
+# Application and test source files.
+!*.cs
+!*.xaml
+
+# .NET project files and Windows installer configuration.
+!*.csproj
+!*.sln
+!*.props
+!*.targets
+!*.manifest
+!*.iss
+
+# Required application assets.
+!*.png
+!*.ico
+
+# Keep the repository documentation and this file.
+!/.gitignore
+!/README.md
+!/Preview.png
+
+# Build and publish output.
+bin/
+obj/
 dist/
 
-# Legacy Electron prototype (node_modules, build artifacts)
+# Legacy prototype and local development files.
 Main/legacy-electron/
-
-# User-specific VS/Rider files
-*.user
-*.suo
 .vs/
 .idea/
+*.user
+*.suo
+*.log
 
-# OS
+# Operating-system files.
 Thumbs.db
 .DS_Store
-
-# Logs
-*.log

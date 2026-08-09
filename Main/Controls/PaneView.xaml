@@ -10,25 +10,94 @@
     PreviewKeyDown="Root_PreviewKeyDown">
 
     <UserControl.Resources>
+        <ContextMenu x:Key="TabContextMenu" x:Shared="False"
+                     DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                     Opened="TabContextMenu_Opened">
+            <MenuItem Header="Duplicate tab" Click="TabDuplicate_Click" />
+            <MenuItem Header="Reload" InputGestureText="F5" Click="TabReload_Click" />
+            <MenuItem Tag="pin" Header="Pin tab" Click="TabPin_Click" />
+            <Separator Tag="group-separator" />
+            <MenuItem Tag="group-new" Header="New tab in group" Click="TabGroupNew_Click" />
+            <MenuItem Tag="group-rename" Header="Rename tab group…" Click="TabGroupRename_Click" />
+            <MenuItem Tag="group-remove" Header="Remove tab from group" Click="TabGroupRemove_Click" />
+            <MenuItem Tag="group-clear" Header="Ungroup tabs" Click="TabGroupClear_Click" />
+            <MenuItem Tag="group-close" Header="Close tab group" Click="TabGroupClose_Click" />
+            <Separator />
+            <MenuItem Header="Close tab" InputGestureText="Ctrl+W" Click="TabClose_Click" />
+            <MenuItem Tag="close-other" Header="Close other tabs" Click="TabCloseOther_Click" />
+            <MenuItem Tag="close-right" Header="Close tabs to the right" Click="TabCloseRight_Click" />
+        </ContextMenu>
+
         <!-- Browser-style folder tab: glass when active, violet underline + accent icon -->
         <Style x:Key="TabItemStyle" TargetType="ListBoxItem">
             <Setter Property="Margin" Value="2,0,0,0" />
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <EventSetter Event="MouseEnter" Handler="TabItem_MouseEnter" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Grid>
                             <Border x:Name="bg" Background="Transparent" CornerRadius="8,8,0,0"
                                     BorderBrush="Transparent" BorderThickness="1,1,1,0"
-                                    Padding="10,6" MinWidth="124" MaxWidth="208">
+                                    Padding="8,6" MinWidth="0" MaxWidth="208" ClipToBounds="True"
+                                    ToolTipService.InitialShowDelay="450"
+                                    ToolTipService.BetweenShowDelay="100"
+                                    ToolTipService.ShowDuration="12000">
+                                <Border.ToolTip>
+                                    <ToolTip Placement="Bottom" HorizontalOffset="0" VerticalOffset="5"
+                                             Background="{StaticResource MenuBg}"
+                                             BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                             Padding="8">
+                                        <StackPanel Width="480">
+                                            <Border Height="270" Background="{StaticResource Glass2}"
+                                                    BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                                    CornerRadius="8" ClipToBounds="True">
+                                                <Grid>
+                                                    <Image Source="{Binding PreviewImage}" Stretch="UniformToFill"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                                           Visibility="{Binding PreviewImage,
+                                                               Converter={StaticResource NullToVis}}" />
+                                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                Visibility="{Binding PreviewImage,
+                                                                    Converter={StaticResource NullToVis},
+                                                                    ConverterParameter=invert}">
+                                                        <Path Style="{StaticResource IconPath}" Width="28" Height="28"
+                                                              Data="{StaticResource Ic.folder}"
+                                                              Stroke="{StaticResource TextMuted}" />
+                                                        <TextBlock Text="Preview appears after visiting this tab"
+                                                                   Margin="0,10,0,0" FontSize="11"
+                                                                   Foreground="{StaticResource TextFaint}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                            <TextBlock Text="{Binding TopLevelTitle}" Margin="2,9,2,0"
+                                                       FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <TextBlock Text="{Binding CurrentPath}" Margin="2,3,2,0"
+                                                       FontSize="11" Foreground="{StaticResource TextMuted}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </ToolTip>
+                                </Border.ToolTip>
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="tabScale" ScaleX="1" ScaleY="1" />
+                                </Border.RenderTransform>
                                 <DockPanel LastChildFill="True">
+                                    <Border x:Name="groupBadge" DockPanel.Dock="Right"
+                                            Visibility="Collapsed" Background="{StaticResource AccentWash}"
+                                            BorderBrush="{StaticResource AccentLine}" BorderThickness="1"
+                                            CornerRadius="5" Padding="5,1" Margin="6,0,0,0">
+                                        <TextBlock Text="{Binding GroupCount}" Foreground="{StaticResource AccentBright}"
+                                                   FontSize="9" FontWeight="SemiBold" />
+                                    </Border>
                                     <Path x:Name="ico" DockPanel.Dock="Left" Style="{StaticResource IconPath}"
-                                          Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center"
+                                          Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"
                                           Data="{StaticResource Ic.folder}"
                                           Stroke="{StaticResource TextMuted}" />
                                     <Button x:Name="close" DockPanel.Dock="Right" Width="18" Height="18"
-                                            Margin="6,0,0,0" Cursor="Hand" Background="Transparent"
+                                            Margin="4,0,0,0" Cursor="Hand" Background="Transparent"
                                             Foreground="{StaticResource TextFaint}"
+                                            PreviewMouseLeftButtonDown="TabClose_PreviewMouseLeftButtonDown"
+                                            PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                             Command="{Binding DataContext.CloseTabCommand,
                                                       RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)">
@@ -49,7 +118,34 @@
                                             </ControlTemplate>
                                         </Button.Template>
                                     </Button>
-                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                    <Button x:Name="groupClose" DockPanel.Dock="Right" Width="18" Height="18"
+                                            Margin="4,0,0,0" Cursor="Hand" Background="Transparent"
+                                            Foreground="{StaticResource TextFaint}" Visibility="Collapsed"
+                                            PreviewMouseLeftButtonDown="TabClose_PreviewMouseLeftButtonDown"
+                                            PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
+                                            Command="{Binding DataContext.CloseGroupCommand,
+                                                      RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}" ToolTip="Close tab group">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="cb" Background="{TemplateBinding Background}"
+                                                        CornerRadius="4">
+                                                    <Path Style="{StaticResource IconPath}" Width="11" Height="11"
+                                                          StrokeThickness="2" Data="{StaticResource Ic.x}"
+                                                          Stroke="{Binding Foreground,
+                                                              RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="cb" Property="Background"
+                                                                Value="{StaticResource Glass4}" />
+                                                        <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <TextBlock x:Name="title" Text="{Binding TopLevelTitle}" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
                             </Border>
@@ -61,6 +157,10 @@
                                     <DropShadowEffect Color="#A855F7" BlurRadius="8" ShadowDepth="0" Opacity="0.7" />
                                 </Border.Effect>
                             </Border>
+                            <Border x:Name="groupRail" Height="3" CornerRadius="2"
+                                    VerticalAlignment="Top" Margin="8,0"
+                                    Background="{StaticResource AccentBright}"
+                                    Visibility="Collapsed" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -79,6 +179,163 @@
                                 <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                                 <Setter TargetName="ico" Property="Stroke" Value="{StaticResource AccentBright}" />
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding IsGrouped}" Value="True">
+                                <Setter TargetName="groupRail" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsGroupLeader}" Value="True">
+                                <Setter TargetName="groupBadge" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="close" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="groupClose" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsGroupDropTarget}" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash2}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                                <Setter Property="Panel.ZIndex" Value="20" />
+                                <Setter Property="Opacity" Value="0.72" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="tabScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="0.96" Duration="0:0:0.10" />
+                                            <DoubleAnimation Storyboard.TargetName="tabScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="0.96" Duration="0:0:0.10" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="tabScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1" Duration="0:0:0.13" />
+                                            <DoubleAnimation Storyboard.TargetName="tabScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1" Duration="0:0:0.13" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                            <!-- Pinned tabs mimic browser favicons: compact, kept at the left,
+                                 and their close affordance stays in the context menu. -->
+                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                <Setter TargetName="bg" Property="Width" Value="38" />
+                                <Setter TargetName="bg" Property="MinWidth" Value="38" />
+                                <Setter TargetName="bg" Property="MaxWidth" Value="38" />
+                                <Setter TargetName="bg" Property="Padding" Value="11,6" />
+                                <Setter TargetName="ico" Property="Margin" Value="0" />
+                                <Setter TargetName="title" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="close" Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Compact second-row member tabs, matching Vivaldi's two-level tab stacks. -->
+        <Style x:Key="GroupChildTabStyle" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="2,0,0,0" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <EventSetter Event="MouseEnter" Handler="TabItem_MouseEnter" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="7"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                Padding="7,4" MinWidth="0" MaxWidth="190" ClipToBounds="True"
+                                ToolTipService.InitialShowDelay="450"
+                                ToolTipService.BetweenShowDelay="100"
+                                ToolTipService.ShowDuration="12000">
+                            <Border.ToolTip>
+                                <ToolTip Placement="Bottom" HorizontalOffset="0" VerticalOffset="5"
+                                         Background="{StaticResource MenuBg}"
+                                         BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                         Padding="8">
+                                    <StackPanel Width="480">
+                                        <Border Height="270" Background="{StaticResource Glass2}"
+                                                BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                                                CornerRadius="8" ClipToBounds="True">
+                                            <Grid>
+                                                <Image Source="{Binding PreviewImage}" Stretch="UniformToFill"
+                                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                                       Visibility="{Binding PreviewImage,
+                                                           Converter={StaticResource NullToVis}}" />
+                                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            Visibility="{Binding PreviewImage,
+                                                                Converter={StaticResource NullToVis},
+                                                                ConverterParameter=invert}">
+                                                    <Path Style="{StaticResource IconPath}" Width="28" Height="28"
+                                                          Data="{StaticResource Ic.folder}"
+                                                          Stroke="{StaticResource TextMuted}" />
+                                                    <TextBlock Text="Preview appears after visiting this tab"
+                                                               Margin="0,10,0,0" FontSize="11"
+                                                               Foreground="{StaticResource TextFaint}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock Text="{Binding Title}" Margin="2,9,2,0"
+                                                   FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <TextBlock Text="{Binding CurrentPath}" Margin="2,3,2,0"
+                                                   FontSize="11" Foreground="{StaticResource TextMuted}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </ToolTip>
+                            </Border.ToolTip>
+                            <DockPanel LastChildFill="True">
+                                <Path x:Name="ico" DockPanel.Dock="Left" Style="{StaticResource IconPath}"
+                                      Width="12" Height="12" Margin="0,0,5,0" VerticalAlignment="Center"
+                                      Data="{StaticResource Ic.folder}" Stroke="{StaticResource TextMuted}" />
+                                <Button x:Name="close" DockPanel.Dock="Right" Width="17" Height="17"
+                                        Margin="4,0,0,0" Cursor="Hand" Background="Transparent"
+                                        Foreground="{StaticResource TextFaint}"
+                                        PreviewMouseLeftButtonDown="TabClose_PreviewMouseLeftButtonDown"
+                                        PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
+                                        Command="{Binding DataContext.CloseTabCommand,
+                                                  RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="cb" Background="{TemplateBinding Background}" CornerRadius="4">
+                                                <Path Style="{StaticResource IconPath}" Width="10" Height="10"
+                                                      StrokeThickness="2" Data="{StaticResource Ic.x}"
+                                                      Stroke="{Binding Foreground,
+                                                          RelativeSource={RelativeSource AncestorType=Button}}" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="cb" Property="Background"
+                                                            Value="{StaticResource Glass4}" />
+                                                    <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                <Setter TargetName="ico" Property="Stroke" Value="{StaticResource AccentBright}" />
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsGroupDropTarget}" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash2}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                                <Setter Property="Opacity" Value="0.72" />
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -91,6 +348,35 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- Keep the Details-view checkboxes tidy unless their setting is enabled.
+             The optional selection-only mode reveals them for selected rows only. -->
+        <Style x:Key="SelectionCheckboxStyle" TargetType="CheckBox"
+               BasedOn="{StaticResource {x:Type CheckBox}}">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Source={x:Static svc:SettingsStore.Instance},
+                                             Path=Settings.ShowCheckboxes}" Value="True" />
+                        <Condition Binding="{Binding Source={x:Static svc:SettingsStore.Instance},
+                                             Path=Settings.ShowCheckboxesOnSelectionOnly}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Source={x:Static svc:SettingsStore.Instance},
+                                             Path=Settings.ShowCheckboxes}" Value="True" />
+                        <Condition Binding="{Binding Source={x:Static svc:SettingsStore.Instance},
+                                             Path=Settings.ShowCheckboxesOnSelectionOnly}" Value="True" />
+                        <Condition Binding="{Binding IsSelected,
+                                             RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
         </Style>
 
         <!-- Chrome-less text input (address / search): no border, no default
@@ -189,22 +475,37 @@
             </StackPanel>
         </DataTemplate>
 
-        <!-- Grid: large icon over centered name -->
+        <!-- Grid: photo thumbnail (when available) or large icon over centered name -->
         <DataTemplate x:Key="TileTemplateLarge">
-            <StackPanel Width="116" Margin="6,12" HorizontalAlignment="Center">
-                <Grid Width="46" Height="46" HorizontalAlignment="Center">
-                    <Path Style="{StaticResource IconPath}" StrokeThickness="1.4"
-                          Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                          Stroke="{Binding IconBrush}"
-                          Visibility="{Binding Icon, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
-                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality"
-                           SnapsToDevicePixels="True"
-                           Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
-                </Grid>
+            <StackPanel Width="132" Margin="6,10" HorizontalAlignment="Center">
+                <Border Width="116" Height="82" CornerRadius="7" ClipToBounds="True"
+                        Background="{StaticResource Glass2}" HorizontalAlignment="Center">
+                    <Grid>
+                        <Grid Visibility="{Binding GridThumbnail, Converter={StaticResource NullToVis},
+                                                   ConverterParameter=invert}">
+                            <Path Style="{StaticResource IconPath}" Width="46" Height="46"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  StrokeThickness="1.4"
+                                  Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                  Stroke="{Binding IconBrush}"
+                                  Visibility="{Binding Icon, Converter={StaticResource NullToVis},
+                                                       ConverterParameter=invert}" />
+                            <Image Source="{Binding Icon}" Width="46" Height="46"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   SnapsToDevicePixels="True"
+                                   Visibility="{Binding Icon, Converter={StaticResource NullToVis}}" />
+                        </Grid>
+                        <Image Source="{Binding GridThumbnail}" Stretch="UniformToFill"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               SnapsToDevicePixels="True"
+                               Visibility="{Binding GridThumbnail, Converter={StaticResource NullToVis}}" />
+                    </Grid>
+                </Border>
                 <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource Text}"
-                           HorizontalAlignment="Center" TextAlignment="Center" Margin="0,9,0,0"
+                           HorizontalAlignment="Center" TextAlignment="Center" Margin="0,8,0,0"
                            TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="34"
-                           MaxWidth="104" FontSize="12" />
+                           MaxWidth="124" FontSize="12" />
             </StackPanel>
         </DataTemplate>
 
@@ -242,10 +543,41 @@
         </Grid.RowDefinitions>
 
         <!-- Tab strip -->
-        <Grid Grid.Row="0">
-            <StackPanel Orientation="Horizontal" Margin="8,6,0,0" VerticalAlignment="Bottom">
-                <ListBox x:Name="TabBar" ItemsSource="{Binding Tabs}"
-                         SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+        <Grid Grid.Row="0" Background="Transparent">
+            <Grid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="New tab" InputGestureText="Ctrl+T" Click="TabStripNewTab_Click" />
+                    <MenuItem Header="New tab in active group" Click="TabStripNewGroupTab_Click"
+                              Visibility="{Binding HasActiveGroup, Converter={StaticResource BoolToVis}}" />
+                    <Separator />
+                    <MenuItem Header="Reopen last closed tab" Click="ReopenClosedTab_Click" />
+                </ContextMenu>
+            </Grid.ContextMenu>
+            <Grid Margin="8,6,0,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" VerticalAlignment="Bottom">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="ProjectsButton" Grid.Column="0" Style="{StaticResource IconButton}" Width="Auto"
+                        MinWidth="88" Padding="9,0" VerticalAlignment="Bottom"
+                        Margin="0,0,6,2" Click="ProjectsButton_Click" ToolTip="Switch tab project">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                              Data="{StaticResource Ic.package}" Margin="0,0,6,0"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        <TextBlock x:Name="ProjectsButtonText" Text="Tab projects"
+                                   MaxWidth="170" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <ListBox x:Name="TabBar" Grid.Column="1" ItemsSource="{Binding TopLevelTabs}"
+                         SelectedItem="{Binding SelectedTopTab, Mode=TwoWay}"
                          ItemContainerStyle="{StaticResource TabItemStyle}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -253,19 +585,63 @@
                          DragOver="TabBar_DragOver"
                          DragLeave="TabBar_DragLeave"
                          Drop="TabBar_Drop"
-                         PreviewMouseDown="TabBar_PreviewMouseDown">
+                         PreviewMouseDown="TabBar_PreviewMouseDown"
+                         PreviewMouseMove="TabBar_PreviewMouseMove"
+                         GiveFeedback="TabBar_GiveFeedback"
+                         QueryContinueDrag="TabBar_QueryContinueDrag"
+                         MouseLeave="TabBar_MouseLeave"
+                         ContextMenuOpening="TabBar_ContextMenuOpening">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
+                            <ctrl:AdaptiveTabPanel MinimumItemWidth="52" MaximumItemWidth="208"
+                                                   PinnedItemWidth="40" />
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
                 </ListBox>
-                <Button Style="{StaticResource IconButton}" VerticalAlignment="Bottom" Margin="4,0,0,2"
+                <Button Grid.Column="2" Style="{StaticResource IconButton}" VerticalAlignment="Bottom" Margin="4,0,0,2"
                         Command="{Binding NewTabCommand}" ToolTip="New tab (Ctrl+T)">
                     <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.plus}"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                 </Button>
-            </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="1" Margin="0,3,36,0" Padding="3,2"
+                        Background="{StaticResource Glass2}" BorderBrush="{StaticResource Line1}"
+                        BorderThickness="1" CornerRadius="8"
+                        Visibility="{Binding HasActiveGroup, Converter={StaticResource BoolToVis}}">
+                    <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}"
+                            Width="26" Height="24" Margin="4,0,0,0"
+                            Click="NewActiveGroupTab_Click" ToolTip="New tab in this group">
+                        <Path Style="{StaticResource IconPath}" Width="13" Height="13"
+                              Data="{StaticResource Ic.plus}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <ListBox x:Name="GroupTabBar" ItemsSource="{Binding ActiveGroupTabs}"
+                             SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+                             ItemContainerStyle="{StaticResource GroupChildTabStyle}"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AllowDrop="True"
+                             DragOver="TabBar_DragOver"
+                             DragLeave="TabBar_DragLeave"
+                             Drop="TabBar_Drop"
+                             PreviewMouseDown="TabBar_PreviewMouseDown"
+                             PreviewMouseMove="TabBar_PreviewMouseMove"
+                             GiveFeedback="TabBar_GiveFeedback"
+                             QueryContinueDrag="TabBar_QueryContinueDrag"
+                             MouseLeave="TabBar_MouseLeave"
+                             ContextMenuOpening="TabBar_ContextMenuOpening">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ctrl:AdaptiveTabPanel MinimumItemWidth="64" MaximumItemWidth="190"
+                                                       PinnedItemWidth="64" />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                    </ListBox>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- Navigation bar (scoped to the active tab) -->
@@ -359,9 +735,11 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="2" DataContext="{Binding SelectedTab}">
-        <ctrl:HomeView Visibility="{Binding IsHomeView, Converter={StaticResource BoolToVis}}" />
-        <ctrl:DrivesView Visibility="{Binding IsDrivesView, Converter={StaticResource BoolToVis}}" />
+        <Grid x:Name="TabContentHost" Grid.Row="2" DataContext="{Binding SelectedTab}">
+        <ctrl:HomeView Panel.ZIndex="2" Background="{DynamicResource AppBackgroundBrush}"
+                       Visibility="{Binding IsHomeView, Converter={StaticResource BoolToVis}}" />
+        <ctrl:DrivesView Panel.ZIndex="2" Background="{DynamicResource AppBackgroundBrush}"
+                         Visibility="{Binding IsDrivesView, Converter={StaticResource BoolToVis}}" />
         <!-- Folder view: file list + marquee, with an optional preview pane on the right. -->
         <Grid Visibility="{Binding IsFolderView, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
@@ -504,6 +882,11 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
+                    <MenuItem x:Name="MenuGit" Header="Git &amp; GitHub"
+                              SubmenuOpened="GitMenu_SubmenuOpened">
+                        <MenuItem Header="Checking repository…" IsEnabled="False" />
+                    </MenuItem>
+                    <Separator />
                     <MenuItem x:Name="MenuShowMore" Header="Show more options"
                               SubmenuOpened="ShowMore_SubmenuOpened">
                         <MenuItem.Icon>
@@ -521,10 +904,9 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
                                     <CheckBox VerticalAlignment="Center" Margin="0,0,8,0"
+                                              Style="{StaticResource SelectionCheckboxStyle}"
                                               IsChecked="{Binding IsSelected, Mode=TwoWay,
-                                                  RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                              Visibility="{Binding Source={x:Static svc:SettingsStore.Instance},
-                                                  Path=Settings.ShowCheckboxes, Converter={StaticResource BoolToVis}}" />
+                                                  RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                     <Grid Width="17" Height="17" Margin="0,0,10,0" VerticalAlignment="Center">
                                         <Path Style="{StaticResource IconPath}" StrokeThickness="1.7"
                                               Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
@@ -621,43 +1003,63 @@
         <!-- Sort / Layout toolbar dropdowns: plain Popups (not ContextMenu — a ContextMenu's
              own mouse capture swallows the re-click on its own toggle button, see
              OpenButtonMenu_Click) so the open/close toggle is fully reliable. -->
-        <Popup x:Name="SortPopup" PlacementTarget="{Binding ElementName=SortButton}"
-               Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
-               PopupAnimation="Fade" VerticalOffset="4">
-            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
-                    CornerRadius="10" Padding="5" MinWidth="180">
-                <Border.Effect>
-                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-                </Border.Effect>
-                <StackPanel>
-                    <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
-                    <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
-                    <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
-                    <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
-                    <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
-                    <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
-                    <Separator />
-                    <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
-                </StackPanel>
-            </Border>
-        </Popup>
+        <Border x:Name="SortPopup" Grid.RowSpan="4" Panel.ZIndex="110"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,104,0"
+                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
+                BorderThickness="1" CornerRadius="10" Padding="5" MinWidth="180"
+                Visibility="Collapsed" Opacity="0">
+            <Border.RenderTransform>
+                <TranslateTransform Y="-6" />
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+            </Border.Effect>
+            <StackPanel>
+                <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
+                <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
+                <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
+                <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
+                <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
+                <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
+                <Separator />
+                <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
+            </StackPanel>
+        </Border>
 
-        <Popup x:Name="LayoutPopup" PlacementTarget="{Binding ElementName=LayoutButton}"
-               Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
-               PopupAnimation="Fade" VerticalOffset="4">
-            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
-                    CornerRadius="10" Padding="5" MinWidth="140">
-                <Border.Effect>
-                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-                </Border.Effect>
-                <StackPanel>
-                    <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
-                    <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
-                    <MenuItem Header="List" Tag="List" Click="Layout_Click" />
-                    <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
-                    <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
-                </StackPanel>
-            </Border>
-        </Popup>
+        <Border x:Name="LayoutPopup" Grid.RowSpan="4" Panel.ZIndex="110"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,64,0"
+                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
+                BorderThickness="1" CornerRadius="10" Padding="5" MinWidth="140"
+                Visibility="Collapsed" Opacity="0">
+            <Border.RenderTransform>
+                <TranslateTransform Y="-6" />
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+            </Border.Effect>
+            <StackPanel>
+                <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
+                <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
+                <MenuItem Header="List" Tag="List" Click="Layout_Click" />
+                <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
+                <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="ProjectsFlyout" Grid.RowSpan="4" Panel.ZIndex="100"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,42,0,0"
+                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
+                BorderThickness="1" CornerRadius="10" Padding="5"
+                MinWidth="240" MaxHeight="520" Visibility="Collapsed" Opacity="0">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ProjectsFlyoutTransform" Y="-6" />
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+            </Border.Effect>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="ProjectsMenuItems" />
+            </ScrollViewer>
+        </Border>
     </Grid>
 </UserControl>

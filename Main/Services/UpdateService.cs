@@ -40,7 +40,7 @@ public static class UpdateService
         return c;
     }
 
-    /// <summary>The running build's version string (e.g. "1.0.1"), stripped of any "+hash".</summary>
+    /// <summary>The running build's version string (e.g. "1.1.0"), stripped of any "+hash".</summary>
     public static string CurrentVersionString
     {
         get
@@ -53,7 +53,7 @@ public static class UpdateService
                 return plus >= 0 ? info[..plus] : info;
             }
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            return v is null ? "1.0.1" : $"{v.Major}.{v.Minor}.{v.Build}";
+            return v is null ? "1.1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }
 
