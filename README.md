@@ -1,3 +1,4 @@
+yo sorry i forgot to update source from v1.1.0...
 # Rain Explorer
 
 Rain Explorer is a modern Windows file manager built with WPF and .NET 10. It provides a fast, polished workspace for browsing folders, managing files, and organizing frequently used locations.
