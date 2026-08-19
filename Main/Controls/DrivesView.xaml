@@ -24,6 +24,9 @@
                                 <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
                                 <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -43,7 +46,8 @@
                         <Button Style="{StaticResource DriveCard}"
                                 Command="{Binding DataContext.OpenEntryCommand,
                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}">
+                                CommandParameter="{Binding}" ToolTip="{Binding Path}"
+                                AutomationProperties.Name="{Binding Label}">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />

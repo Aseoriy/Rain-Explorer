@@ -14,6 +14,9 @@ namespace RainExplorer.Services;
 /// </summary>
 public static class ShellThumbnailService
 {
+    // Thumbnails are keyed by full path and view size; keep folder browsing from
+    // retaining every image visited during a long-running session.
+    private const int MaxCacheEntries = 512;
     private static readonly Dictionary<string, BitmapSource> Cache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<Action<BitmapSource>>> InFlight =
         new(StringComparer.OrdinalIgnoreCase);
@@ -31,7 +34,7 @@ public static class ShellThumbnailService
         {
             if (Cache.TryGetValue(key, out var cached))
             {
-                onLoaded(cached);
+                try { onLoaded(cached); } catch { /* a row may have been unloaded */ }
                 return;
             }
             if (InFlight.TryGetValue(key, out var waiters))
@@ -53,13 +56,20 @@ public static class ShellThumbnailService
             List<Action<BitmapSource>>? waiters;
             lock (Gate)
             {
-                if (image is not null) Cache[key] = image;
+                if (image is not null)
+                {
+                    if (Cache.Count >= MaxCacheEntries) Cache.Clear();
+                    Cache[key] = image;
+                }
                 InFlight.Remove(key, out waiters);
             }
             if (image is not null && waiters is not null)
                 System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
-                    foreach (var callback in waiters) callback(image);
+                    foreach (var callback in waiters)
+                    {
+                        try { callback(image); } catch { /* a row may have been unloaded */ }
+                    }
                 });
         });
     }

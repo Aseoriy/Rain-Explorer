@@ -18,6 +18,9 @@ namespace RainExplorer.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private readonly FileSystemService _fs = new();
+    private readonly DispatcherTimer _sessionSaveTimer;
+    private bool _restoringSession;
+    private bool _disposed;
 
     public ObservableCollection<SidebarNode> SidebarNodes { get; } = new();
 
@@ -48,6 +51,11 @@ public sealed class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        _sessionSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(650),
+        };
+        _sessionSaveTimer.Tick += OnSessionSaveTimerTick;
         LeftPane = CreatePane();
         _activePane = LeftPane;
         LeftPane.IsActive = true;
@@ -63,36 +71,74 @@ public sealed class MainViewModel : ObservableObject
         NormalizeSidebarSections();
         RebuildSidebar();
 
-        // Toggling "show hidden files" re-reads every open tab; pin changes rebuild the sidebar.
-        SettingsStore.Instance.Settings.PropertyChanged += (_, e) =>
+        // Toggling "show hidden files" re-reads every open tab; pin changes rebuild the
+        // sidebar and refresh any Home dashboards that are already open.
+        SettingsStore.Instance.Settings.PropertyChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(AppSettings.ShowHiddenFiles)
+            or nameof(AppSettings.FoldersFirst) or nameof(AppSettings.SizeFormat)
+            or nameof(AppSettings.ShowFileExtensions) or nameof(AppSettings.CalculateFolderSizes))
+            ReloadAllTabs();
+        if (e.PropertyName is nameof(AppSettings.Pinned)
+            or nameof(AppSettings.CustomGroups)
+            or nameof(AppSettings.SidebarOrder)
+            or nameof(AppSettings.ShowQuickAccessInSidebar)
+            or nameof(AppSettings.ShowDrivesInSidebar)
+            or nameof(AppSettings.QuickAccessName)
+            or nameof(AppSettings.DrivesName)
+            or nameof(AppSettings.QuickAccessCollapsed)
+            or nameof(AppSettings.DrivesCollapsed))
+            RebuildSidebar();
+        if (e.PropertyName == nameof(AppSettings.Pinned))
+            RefreshHomeTabs();
+        if (e.PropertyName == nameof(AppSettings.PreserveOpenTabsOnClose)
+            && !SettingsStore.Instance.Settings.PreserveOpenTabsOnClose)
         {
-            if (e.PropertyName is nameof(AppSettings.ShowHiddenFiles)
-                or nameof(AppSettings.FoldersFirst) or nameof(AppSettings.SizeFormat)
-                or nameof(AppSettings.ShowFileExtensions) or nameof(AppSettings.CalculateFolderSizes))
-                ReloadAllTabs();
-            if (e.PropertyName is nameof(AppSettings.Pinned)
-                or nameof(AppSettings.CustomGroups)
-                or nameof(AppSettings.SidebarOrder)
-                or nameof(AppSettings.ShowQuickAccessInSidebar)
-                or nameof(AppSettings.ShowDrivesInSidebar)
-                or nameof(AppSettings.QuickAccessName)
-                or nameof(AppSettings.DrivesName)
-                or nameof(AppSettings.QuickAccessCollapsed)
-                or nameof(AppSettings.DrivesCollapsed))
-                RebuildSidebar();
-            if (e.PropertyName == nameof(AppSettings.PreserveOpenTabsOnClose)
-                && !SettingsStore.Instance.Settings.PreserveOpenTabsOnClose)
-            {
-                SettingsStore.Instance.Settings.SavedSession = null;
-                SettingsStore.Instance.Flush();
-            }
-        };
+            _sessionSaveTimer.Stop();
+            SettingsStore.Instance.Settings.SavedSession = null;
+            SettingsStore.Instance.Flush();
+        }
+        else if (e.PropertyName == nameof(AppSettings.PreserveOpenTabsOnClose))
+        {
+            ScheduleSessionSave();
+        }
+    }
+
+    private void OnWorkspaceStateChanged(PaneViewModel pane) => ScheduleSessionSave();
+
+    private void ScheduleSessionSave()
+    {
+        if (_disposed || _restoringSession
+            || !SettingsStore.Instance.Settings.PreserveOpenTabsOnClose)
+            return;
+        _sessionSaveTimer.Stop();
+        _sessionSaveTimer.Start();
+    }
+
+    private void OnSessionSaveTimerTick(object? sender, EventArgs e)
+    {
+        _sessionSaveTimer.Stop();
+        if (_disposed || _restoringSession) return;
+        int visibleWindowCount = Application.Current?.Windows.OfType<MainWindow>()
+            .Count(window => window.IsVisible) ?? 0;
+        // Each window has its own view model, while the persisted format describes one
+        // window. Let a lone window save live; multiple windows save on final close.
+        if (visibleWindowCount <= 1) SaveSession();
     }
 
     private void RebuildSidebar()
     {
+        foreach (SidebarNode node in SidebarNodes)
+            node.TreeChanged -= SyncSidebarSelection;
         SidebarNodes.Clear();
-        foreach (var s in _fs.GetSidebarNodes()) SidebarNodes.Add(s);
+        foreach (var s in _fs.GetSidebarNodes())
+        {
+            s.TreeChanged += SyncSidebarSelection;
+            SidebarNodes.Add(s);
+        }
         SyncSidebarSelection();   // a rebuild drops selection state — restore it for the active tab
     }
 
@@ -103,12 +149,6 @@ public sealed class MainViewModel : ObservableObject
     // "All drives" again did nothing (it was still the selected item).
 
     private TabViewModel? _syncedTab;
-    private bool _suppressNav;
-
-    /// <summary>True while we're programmatically syncing the sidebar's selection, so the
-    /// TreeView's SelectionChanged handler doesn't treat it as a user navigation.</summary>
-    public bool SuppressSidebarNav => _suppressNav;
-
     private void RefreshActiveTabHook()
     {
         var tab = ActivePane?.SelectedTab;
@@ -129,21 +169,29 @@ public sealed class MainViewModel : ObservableObject
 
     private void SyncSidebarSelection()
     {
+        string? target = ActiveSidebarTarget();
+        foreach (var node in SidebarNodes) ApplyNodeSelection(node, target);
+    }
+
+    /// <summary>Programmatic selection changes already point at the active tab and must
+    /// not navigate it again. Comparing targets avoids a delayed global suppression flag
+    /// that could accidentally swallow a real click.</summary>
+    public bool IsActiveSidebarTarget(SidebarNode node)
+    {
+        string? target = ActiveSidebarTarget();
+        return target is not null && node.IsSelectable && PathMatches(node.Path, target);
+    }
+
+    private string? ActiveSidebarTarget()
+    {
         var tab = ActivePane?.SelectedTab;
-        string? target = tab?.Page switch
+        return tab?.Page switch
         {
             PageKind.Home => TabViewModel.HomeToken,
             PageKind.Drives => TabViewModel.DrivesToken,
             PageKind.Folder => tab.CurrentPath,
             _ => null,
         };
-
-        _suppressNav = true;
-        foreach (var node in SidebarNodes) ApplyNodeSelection(node, target);
-        // Release after the binding-driven SelectionChanged has fired, so a genuine
-        // subsequent user click still navigates.
-        Application.Current?.Dispatcher.BeginInvoke(
-            () => _suppressNav = false, DispatcherPriority.Background);
     }
 
     private static void ApplyNodeSelection(SidebarNode node, string? target)
@@ -469,8 +517,33 @@ public sealed class MainViewModel : ObservableObject
                 _ = afterKnownOperation ? t.ReloadAfterOperationAsync() : t.ReloadAsync();
     }
 
+    private void RefreshHomeTabs()
+    {
+        foreach (var tab in LeftPane.Tabs)
+            tab.RefreshHome();
+        if (RightPane is not null)
+        {
+            foreach (var tab in RightPane.Tabs)
+                tab.RefreshHome();
+        }
+    }
+
     /// <summary>Re-read every open tab (e.g. after an undo/redo touched the filesystem).</summary>
     public void RefreshAll(bool afterKnownOperation = false) => ReloadAllTabs(afterKnownOperation);
+
+    /// <summary>Release settings and tab resources when their window closes.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        _sessionSaveTimer.Stop();
+        _sessionSaveTimer.Tick -= OnSessionSaveTimerTick;
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
+        if (_syncedTab is not null) _syncedTab.PropertyChanged -= OnActiveTabPropChanged;
+        foreach (SidebarNode node in SidebarNodes)
+            node.TreeChanged -= SyncSidebarSelection;
+        LeftPane.Dispose();
+        RightPane?.Dispose();
+    }
 
     public PaneViewModel LeftPane { get; }
 
@@ -512,6 +585,7 @@ public sealed class MainViewModel : ObservableObject
         pane.RequestActivate += p => ActivePane = p;
         pane.EmptyRequested += OnPaneEmpty;
         pane.ProjectStateChanged += SaveActiveProject;
+        pane.WorkspaceStateChanged += OnWorkspaceStateChanged;
         // When the active pane switches tabs, re-sync the sidebar to the new tab's location.
         pane.PropertyChanged += (_, e) =>
         {
@@ -538,26 +612,38 @@ public sealed class MainViewModel : ObservableObject
         var session = settings.PreserveOpenTabsOnClose ? settings.SavedSession : null;
         if (session is null) return false;
 
-        RestorePane(LeftPane, session.LeftTabs, session.LeftPinnedTabs,
-            session.LeftTabGroups, session.LeftTabGroupNames, session.LeftSelectedIndex);
-        LeftPane.ActiveProjectId = session.LeftProjectId;
-        if (LeftPane.Tabs.Count == 0) return false;
-
-        if (session.RightTabs.Any(IsRestorableTarget))
+        _restoringSession = true;
+        try
         {
-            var right = CreatePane();
-            RestorePane(right, session.RightTabs, session.RightPinnedTabs,
-                session.RightTabGroups, session.RightTabGroupNames, session.RightSelectedIndex);
-            right.ActiveProjectId = session.RightProjectId;
-            if (right.Tabs.Count > 0)
-            {
-                RightPane = right;
-                OnPropertyChanged(nameof(IsSplit));
-            }
-        }
+            RestorePane(LeftPane, session.LeftTabs, session.LeftPinnedTabs,
+                session.LeftTabGroups, session.LeftTabGroupNames, session.LeftSelectedIndex);
+            LeftPane.ActiveProjectId = session.LeftProjectId;
+            if (LeftPane.Tabs.Count == 0) return false;
 
-        ActivePane = session.ActivePaneIsRight && RightPane is not null ? RightPane : LeftPane;
-        return true;
+            if (session.RightTabs.Any(IsRestorableTarget))
+            {
+                var right = CreatePane();
+                RestorePane(right, session.RightTabs, session.RightPinnedTabs,
+                    session.RightTabGroups, session.RightTabGroupNames, session.RightSelectedIndex);
+                right.ActiveProjectId = session.RightProjectId;
+                if (right.Tabs.Count > 0)
+                {
+                    RightPane = right;
+                    OnPropertyChanged(nameof(IsSplit));
+                }
+                else
+                {
+                    right.Dispose();
+                }
+            }
+
+            ActivePane = session.ActivePaneIsRight && RightPane is not null ? RightPane : LeftPane;
+            return true;
+        }
+        finally
+        {
+            _restoringSession = false;
+        }
     }
 
     private static void RestorePane(PaneViewModel pane, IReadOnlyList<string> paths,
@@ -584,6 +670,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Persist the current pane/tab snapshot immediately before the window closes.</summary>
     public void SaveSession()
     {
+        _sessionSaveTimer.Stop();
         var settings = SettingsStore.Instance.Settings;
 
         SaveActiveProject(LeftPane);
@@ -639,9 +726,10 @@ public sealed class MainViewModel : ObservableObject
         if (pane is null) return (paths, pinned, groups, groupNames, selected);
         foreach (var tab in pane.Tabs)
         {
-            if (!IsRestorableTarget(tab.CurrentPath)) continue;
+            string target = tab.RestoreTarget;
+            if (!IsRestorableTarget(target)) continue;
             if (ReferenceEquals(tab, pane.SelectedTab)) selected = paths.Count;
-            paths.Add(tab.CurrentPath);
+            paths.Add(target);
             pinned.Add(tab.IsPinned);
             groups.Add(tab.GroupId);
             groupNames.Add(tab.IsGrouped ? tab.GroupName : null);

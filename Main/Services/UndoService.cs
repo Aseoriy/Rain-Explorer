@@ -1,4 +1,6 @@
 using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using RainExplorer.ViewModels;
 
 namespace RainExplorer.Services;
@@ -23,19 +25,33 @@ public abstract class UndoAction
 public sealed class MoveAction : UndoAction
 {
     // Each item currently sits at Cur; undo moves it into the folder of Home.
-    private readonly List<(string Cur, string Home)> _items;
-    public MoveAction(List<(string Cur, string Home)> items) => _items = items;
+    private readonly List<(string Cur, string Home, FileIdentity? Identity)> _items;
+    public MoveAction(List<(string Cur, string Home)> items) =>
+        _items = items.Select(item =>
+            (item.Cur, item.Home, FileIdentityService.TryGet(item.Cur))).ToList();
 
     public override string Label => _items.Count == 1 ? "Move" : $"Move ({_items.Count} items)";
 
     public override (string?, UndoAction?) Invoke()
     {
         var ops = new FileOperationsService();
-        string? err = null;
-        var redo = new List<(string Cur, string Home)>();
-        foreach (var (cur, home) in _items)
+        foreach (var (cur, home, identity) in _items)
         {
             if (!PathExists(cur)) continue;
+            if (identity is null || !FileIdentityService.Matches(cur, identity.Value))
+                return ("An item at the destination changed, so undo was skipped.", null);
+            if (PathExists(home))
+                return ("An item now exists at the original location, so undo was skipped.", null);
+        }
+
+        string? err = null;
+        var redo = new List<(string Cur, string Home)>();
+        foreach (var (cur, home, identity) in _items)
+        {
+            if (!PathExists(cur)) continue;
+            if (identity is null || !FileIdentityService.Matches(cur, identity.Value)
+                || PathExists(home))
+                return ("An item changed while undo was starting, so undo stopped.", null);
             string homeParent = Path.GetDirectoryName(home.TrimEnd(Path.DirectorySeparatorChar)) ?? "";
             if (homeParent.Length == 0) continue;
             string? e = ops.MoveInto(new[] { cur }, homeParent);
@@ -51,13 +67,23 @@ public sealed class RenameAction : UndoAction
 {
     private readonly string _cur;    // path after the rename being undone
     private readonly string _home;   // path it should return to
-    public RenameAction(string cur, string home) { _cur = cur; _home = home; }
+    private readonly FileIdentity? _identity;
+    public RenameAction(string cur, string home)
+    {
+        _cur = cur;
+        _home = home;
+        _identity = FileIdentityService.TryGet(cur);
+    }
 
     public override string Label => "Rename";
 
     public override (string?, UndoAction?) Invoke()
     {
         if (!PathExists(_cur)) return ("Item no longer exists.", null);
+        if (_identity is null || !FileIdentityService.Matches(_cur, _identity.Value))
+            return ("The renamed item changed, so undo was skipped.", null);
+        if (PathExists(_home))
+            return ("An item now exists under the original name, so undo was skipped.", null);
         var ops = new FileOperationsService();
         string? e = ops.Rename(_cur, Path.GetFileName(_home.TrimEnd(Path.DirectorySeparatorChar)));
         if (e is not null) return (e, null);
@@ -68,11 +94,11 @@ public sealed class RenameAction : UndoAction
 /// <summary>Recycle a set of paths (the undo of a create/copy). Redo restores them from the bin.</summary>
 public sealed class RecycleAction : UndoAction
 {
-    private readonly List<string> _paths;
+    private readonly List<(string Path, FileIdentity? Identity)> _paths;
     private readonly string _label;
     public RecycleAction(IEnumerable<string> paths, string label)
     {
-        _paths = paths.ToList();
+        _paths = paths.Select(path => (path, FileIdentityService.TryGet(path))).ToList();
         _label = label;
     }
 
@@ -80,12 +106,89 @@ public sealed class RecycleAction : UndoAction
 
     public override (string?, UndoAction?) Invoke()
     {
-        var existing = _paths.Where(PathExists).ToList();
+        var existing = new List<string>();
+        foreach (var item in _paths)
+        {
+            if (!PathExists(item.Path)) continue;
+            if (item.Identity is null || !FileIdentityService.Matches(item.Path, item.Identity.Value))
+                return ("An item at the destination changed, so undo was skipped.", null);
+            existing.Add(item.Path);
+        }
         if (existing.Count == 0) return (null, null);
+        foreach (var item in _paths)
+        {
+            if (PathExists(item.Path)
+                && (item.Identity is null || !FileIdentityService.Matches(item.Path, item.Identity.Value)))
+                return ("An item changed while undo was starting, so undo stopped.", null);
+        }
         var res = new FileOperationsService().Delete(existing);   // to the Recycle Bin
         if (!res.Ok) return (res.Error, null);
         return (null, new RestoreFromBinAction(existing, _label));
     }
+}
+
+internal readonly record struct FileIdentity(uint VolumeSerialNumber, ulong FileIndex);
+
+internal static class FileIdentityService
+{
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+
+    public static FileIdentity? TryGet(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try
+        {
+            using SafeFileHandle handle = CreateFileW(
+                path, 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero,
+                OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
+            if (handle.IsInvalid || !GetFileInformationByHandle(handle, out ByHandleFileInformation info))
+                return null;
+            ulong index = ((ulong)info.FileIndexHigh << 32) | info.FileIndexLow;
+            return new FileIdentity(info.VolumeSerialNumber, index);
+        }
+        catch { return null; }
+    }
+
+    public static bool Matches(string path, FileIdentity expected) =>
+        TryGet(path) is { } current && current == expected;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeFileTime
+    {
+        public uint Low;
+        public uint High;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public NativeFileTime CreationTime;
+        public NativeFileTime LastAccessTime;
+        public NativeFileTime LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string fileName,
+        uint desiredAccess,
+        FileShare shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(
+        SafeFileHandle file, out ByHandleFileInformation information);
 }
 
 /// <summary>Restore a set of paths from the Recycle Bin (the undo of a delete). Redo recycles them again.</summary>

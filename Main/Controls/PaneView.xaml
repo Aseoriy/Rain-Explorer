@@ -100,7 +100,8 @@
                                             PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                             Command="{Binding DataContext.CloseTabCommand,
                                                       RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)">
+                                            CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)"
+                                            AutomationProperties.Name="Close tab">
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Border x:Name="cb" Background="{TemplateBinding Background}"
@@ -125,7 +126,8 @@
                                             PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                             Command="{Binding DataContext.CloseGroupCommand,
                                                       RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" ToolTip="Close tab group">
+                                            CommandParameter="{Binding}" ToolTip="Close tab group"
+                                            AutomationProperties.Name="Close tab group">
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Border x:Name="cb" Background="{TemplateBinding Background}"
@@ -250,6 +252,9 @@
                                 ToolTipService.InitialShowDelay="450"
                                 ToolTipService.BetweenShowDelay="100"
                                 ToolTipService.ShowDuration="12000">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="groupTabScale" ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.ToolTip>
                                 <ToolTip Placement="Bottom" HorizontalOffset="0" VerticalOffset="5"
                                          Background="{StaticResource MenuBg}"
@@ -296,7 +301,8 @@
                                         PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                         Command="{Binding DataContext.CloseTabCommand,
                                                   RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                        CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)">
+                                        CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)"
+                                        AutomationProperties.Name="Close tab">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="cb" Background="{TemplateBinding Background}" CornerRadius="4">
@@ -335,6 +341,30 @@
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsDragging}" Value="True">
                                 <Setter Property="Opacity" Value="0.72" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="groupTabScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="0.96" Duration="0:0:0.10" />
+                                            <DoubleAnimation Storyboard.TargetName="groupTabScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="0.96" Duration="0:0:0.10" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="groupTabScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1" Duration="0:0:0.13" />
+                                            <DoubleAnimation Storyboard.TargetName="groupTabScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1" Duration="0:0:0.13" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -562,7 +592,6 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="ProjectsButton" Grid.Column="0" Style="{StaticResource IconButton}" Width="Auto"
                         MinWidth="88" Padding="9,0" VerticalAlignment="Bottom"
@@ -576,33 +605,45 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <ListBox x:Name="TabBar" Grid.Column="1" ItemsSource="{Binding TopLevelTabs}"
-                         SelectedItem="{Binding SelectedTopTab, Mode=TwoWay}"
-                         ItemContainerStyle="{StaticResource TabItemStyle}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         AllowDrop="True"
-                         DragOver="TabBar_DragOver"
-                         DragLeave="TabBar_DragLeave"
-                         Drop="TabBar_Drop"
-                         PreviewMouseDown="TabBar_PreviewMouseDown"
-                         PreviewMouseMove="TabBar_PreviewMouseMove"
-                         GiveFeedback="TabBar_GiveFeedback"
-                         QueryContinueDrag="TabBar_QueryContinueDrag"
-                         MouseLeave="TabBar_MouseLeave"
-                         ContextMenuOpening="TabBar_ContextMenuOpening">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <ctrl:AdaptiveTabPanel MinimumItemWidth="52" MaximumItemWidth="208"
-                                                   PinnedItemWidth="40" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                </ListBox>
-                <Button Grid.Column="2" Style="{StaticResource IconButton}" VerticalAlignment="Bottom" Margin="4,0,0,2"
-                        Command="{Binding NewTabCommand}" ToolTip="New tab (Ctrl+T)">
-                    <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.plus}"
-                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                </Button>
+                <Grid x:Name="TopTabDropSurface" Grid.Column="1" AllowDrop="True"
+                      DragOver="TabBar_DragOver" DragLeave="TabBar_DragLeave" Drop="TabBar_Drop">
+                    <ListBox x:Name="TabBar" ItemsSource="{Binding TopLevelTabs}"
+                             SelectedItem="{Binding SelectedTopTab, Mode=TwoWay}"
+                             ItemContainerStyle="{StaticResource TabItemStyle}"
+                             Margin="0,0,36,0"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AllowDrop="True"
+                             DragOver="TabBar_DragOver"
+                             DragLeave="TabBar_DragLeave"
+                             Drop="TabBar_Drop"
+                             PreviewMouseDown="TabBar_PreviewMouseDown"
+                             PreviewMouseLeftButtonUp="TabBar_PreviewMouseLeftButtonUp"
+                             PreviewMouseMove="TabBar_PreviewMouseMove"
+                             GiveFeedback="TabBar_GiveFeedback"
+                             QueryContinueDrag="TabBar_QueryContinueDrag"
+                             MouseLeave="TabBar_MouseLeave"
+                             LayoutUpdated="TabBar_LayoutUpdated"
+                             ContextMenuOpening="TabBar_ContextMenuOpening">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ctrl:AdaptiveTabPanel MinimumItemWidth="52" MaximumItemWidth="208"
+                                                       PinnedItemWidth="40" />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                    </ListBox>
+                    <Button x:Name="NewTabButton" Style="{StaticResource IconButton}"
+                            Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Margin="0,0,0,2" Panel.ZIndex="30"
+                            Command="{Binding NewTabCommand}" ToolTip="New tab (Ctrl+T)"
+                            AutomationProperties.Name="New tab">
+                        <Button.RenderTransform>
+                            <TranslateTransform x:Name="NewTabButtonTransform" />
+                        </Button.RenderTransform>
+                        <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.plus}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </Grid>
                 </Grid>
 
                 <Border Grid.Row="1" Margin="0,3,36,0" Padding="3,2"
@@ -627,6 +668,7 @@
                              DragLeave="TabBar_DragLeave"
                              Drop="TabBar_Drop"
                              PreviewMouseDown="TabBar_PreviewMouseDown"
+                             PreviewMouseLeftButtonUp="TabBar_PreviewMouseLeftButtonUp"
                              PreviewMouseMove="TabBar_PreviewMouseMove"
                              GiveFeedback="TabBar_GiveFeedback"
                              QueryContinueDrag="TabBar_QueryContinueDrag"
@@ -658,19 +700,23 @@
 
                 <!-- nav buttons -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                    <Button Style="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip="Back (Alt+Left)">
+                    <Button Style="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip="Back (Alt+Left)"
+                            AutomationProperties.Name="Back">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-left}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip="Forward (Alt+Right)">
+                    <Button Style="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip="Forward (Alt+Right)"
+                            AutomationProperties.Name="Forward">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-right}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip="Up (Alt+Up)">
+                    <Button Style="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip="Up (Alt+Up)"
+                            AutomationProperties.Name="Up one folder">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-up}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip="Refresh (F5)">
+                    <Button Style="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip="Refresh (F5)"
+                            AutomationProperties.Name="Refresh folder">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.refresh}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
@@ -689,7 +735,8 @@
                               Data="{StaticResource Ic.search}" Stroke="{StaticResource TextMuted}" />
                         <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToggleChip}"
                                       IsChecked="{Binding Recursive, Mode=TwoWay}"
-                                      ToolTip="Search subfolders (recursive)">
+                                      ToolTip="Search subfolders (recursive)"
+                                      AutomationProperties.Name="Search subfolders recursively">
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.recursive}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                         </ToggleButton>
@@ -702,14 +749,16 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
                     <!-- Sort menu -->
                     <Button x:Name="SortButton" Style="{StaticResource IconButton}"
-                            Click="OpenButtonMenu_Click" Tag="Sort" ToolTip="Sort by">
+                            Click="OpenButtonMenu_Click" Tag="Sort" ToolTip="Sort by"
+                            AutomationProperties.Name="Sort files">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.sliders}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
 
                     <!-- Layout menu -->
                     <Button x:Name="LayoutButton" Style="{StaticResource IconButton}" Margin="2,0,0,0"
-                            Click="OpenButtonMenu_Click" Tag="Layout" ToolTip="Layout">
+                            Click="OpenButtonMenu_Click" Tag="Layout" ToolTip="Layout"
+                            AutomationProperties.Name="Choose folder layout">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.list}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
@@ -718,7 +767,8 @@
                     <ToggleButton Style="{StaticResource ToggleChip}" Margin="2,0,0,0"
                                   IsChecked="{Binding Source={x:Static svc:SettingsStore.Instance},
                                       Path=Settings.ShowPreviewPane, Mode=TwoWay}"
-                                  ToolTip="Preview pane (Space)">
+                                  ToolTip="Preview pane (Space)"
+                                  AutomationProperties.Name="Show preview pane">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.eye}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                     </ToggleButton>
@@ -727,7 +777,8 @@
                     <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
                             Command="{Binding DataContext.ToggleSplitCommand,
                                       RelativeSource={RelativeSource AncestorType=Window}}"
-                            ToolTip="Toggle split view">
+                            ToolTip="Toggle split view"
+                            AutomationProperties.Name="Toggle split view">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.split}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>

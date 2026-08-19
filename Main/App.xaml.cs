@@ -169,17 +169,6 @@ public partial class App : Application
     /// or file, open it in a new tab. Runs on the UI thread.</summary>
     private void OpenForwardedTarget(string[] args)
     {
-        var w = Current.Windows.OfType<MainWindow>()
-            .FirstOrDefault(candidate => candidate.IsActive)
-            ?? Current.Windows.OfType<MainWindow>().FirstOrDefault(candidate => candidate.IsVisible);
-        if (w is null) return;
-        Current.MainWindow = w;
-
-        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
-        w.Activate();
-        w.Topmost = true;   // nudge to the foreground, then release so it isn't pinned
-        w.Topmost = false;
-
         string? folder = null, select = null;
         foreach (string raw in args)
         {
@@ -188,6 +177,26 @@ public partial class App : Application
             if (Directory.Exists(p)) { folder = p; break; }
             if (File.Exists(p)) { folder = Path.GetDirectoryName(p); select = p; break; }
         }
+
+        var w = Current.Windows.OfType<MainWindow>()
+            .FirstOrDefault(candidate => candidate.IsActive)
+            ?? Current.Windows.OfType<MainWindow>().FirstOrDefault(candidate => candidate.IsVisible);
+        if (w is null)
+        {
+            // Recover instead of swallowing the launch if an older build ever left the
+            // single-instance process alive after its final window disappeared.
+            w = new MainWindow();
+            Current.MainWindow = w;
+            if (folder is not null) w.OpenPathInNewTab(folder, select);
+            w.Show();
+            return;
+        }
+        Current.MainWindow = w;
+
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Activate();
+        w.Topmost = true;   // nudge to the foreground, then release so it isn't pinned
+        w.Topmost = false;
 
         if (folder is not null) w.OpenPathInNewTab(folder, select);
     }

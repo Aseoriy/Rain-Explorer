@@ -19,31 +19,39 @@ public sealed class FileSystemService
             var result = new List<FileItem>();
             var dir = new DirectoryInfo(path);
 
-            foreach (var info in dir.EnumerateFileSystemInfos())
+            try
             {
-                try
+                foreach (var info in dir.EnumerateFileSystemInfos())
                 {
-                    // Skip hidden/system entries unless the user opted to show them.
-                    if (!showHidden &&
-                        (info.Attributes.HasFlag(FileAttributes.Hidden) ||
-                         info.Attributes.HasFlag(FileAttributes.System)))
-                        continue;
-
-                    bool isDir = info.Attributes.HasFlag(FileAttributes.Directory);
-                    result.Add(new FileItem
+                    try
                     {
-                        Name = info.Name,
-                        FullPath = info.FullName,
-                        IsDirectory = isDir,
-                        Size = isDir ? 0 : ((FileInfo)info).Length,
-                        Modified = info.LastWriteTime,
-                        Created = info.CreationTime,
-                    });
+                        // Skip hidden/system entries unless the user opted to show them.
+                        if (!showHidden &&
+                            (info.Attributes.HasFlag(FileAttributes.Hidden) ||
+                             info.Attributes.HasFlag(FileAttributes.System)))
+                            continue;
+
+                        bool isDir = info.Attributes.HasFlag(FileAttributes.Directory);
+                        result.Add(new FileItem
+                        {
+                            Name = info.Name,
+                            FullPath = info.FullName,
+                            IsDirectory = isDir,
+                            Size = isDir ? 0 : ((FileInfo)info).Length,
+                            Modified = info.LastWriteTime,
+                            Created = info.CreationTime,
+                        });
+                    }
+                    catch
+                    {
+                        // Entry vanished or is unreadable mid-enumeration — ignore.
+                    }
                 }
-                catch
-                {
-                    // Entry vanished or is unreadable mid-enumeration — ignore.
-                }
+            }
+            catch
+            {
+                // The directory itself may be inaccessible, or its lazy enumerator may
+                // fail after yielding a few entries. Keep the entries already read.
             }
 
             return (IReadOnlyList<FileItem>)result;
@@ -75,38 +83,56 @@ public sealed class FileSystemService
                 try { entries = Directory.EnumerateFileSystemEntries(dir); }
                 catch { continue; }   // unreadable folder — skip it
 
-                foreach (string path in entries)
+                try
                 {
-                    ct.ThrowIfCancellationRequested();
-                    bool isDir;
-                    FileSystemInfo info;
-                    try
+                    foreach (string path in entries)
                     {
-                        var attr = File.GetAttributes(path);
-                        if (!showHidden &&
-                            (attr.HasFlag(FileAttributes.Hidden) || attr.HasFlag(FileAttributes.System)))
-                            continue;
-                        isDir = attr.HasFlag(FileAttributes.Directory);
-                        info = isDir ? new DirectoryInfo(path) : new FileInfo(path);
-                    }
-                    catch { continue; }
-
-                    if (isDir) stack.Push(path);
-
-                    string name = Path.GetFileName(path);
-                    if (name.Contains(query, StringComparison.OrdinalIgnoreCase))
-                    {
-                        results.Add(new FileItem
+                        ct.ThrowIfCancellationRequested();
+                        bool isDir;
+                        FileSystemInfo info;
+                        FileAttributes attr;
+                        try
                         {
-                            Name = name,
-                            FullPath = path,
-                            IsDirectory = isDir,
-                            Size = isDir ? 0 : ((FileInfo)info).Length,
-                            Modified = info.LastWriteTime,
-                            Created = info.CreationTime,
-                        });
-                        if (results.Count >= cap) return (IReadOnlyList<FileItem>)results;
+                            attr = File.GetAttributes(path);
+                            if (!showHidden &&
+                                (attr.HasFlag(FileAttributes.Hidden) || attr.HasFlag(FileAttributes.System)))
+                                continue;
+                            isDir = attr.HasFlag(FileAttributes.Directory);
+                            info = isDir ? new DirectoryInfo(path) : new FileInfo(path);
+                        }
+                        catch { continue; }
+
+                        // Junctions and symlinked directories can point back to an
+                        // ancestor. Include a matching link, but never recurse through
+                        // it or a search can loop forever.
+                        if (isDir && !attr.HasFlag(FileAttributes.ReparsePoint))
+                            stack.Push(path);
+
+                        string name = Path.GetFileName(path);
+                        if (name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                        {
+                            results.Add(new FileItem
+                            {
+                                Name = name,
+                                FullPath = path,
+                                IsDirectory = isDir,
+                                Size = isDir ? 0 : ((FileInfo)info).Length,
+                                Modified = info.LastWriteTime,
+                                Created = info.CreationTime,
+                            });
+                            if (results.Count >= cap) return (IReadOnlyList<FileItem>)results;
+                        }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Directory enumeration is lazy and can fail after yielding
+                    // entries (for example when a folder is removed mid-search).
+                    // Continue with the remaining directories.
                 }
             }
             return results;

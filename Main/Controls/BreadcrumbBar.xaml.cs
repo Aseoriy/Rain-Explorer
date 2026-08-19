@@ -26,6 +26,7 @@ public partial class BreadcrumbBar : UserControl
     private bool _editing;
     private CancellationTokenSource? _childCts;
     private CancellationTokenSource? _acCts;
+    private Button? _dropTargetButton;
 
     /// <summary>Above this many segments the middle ones collapse into a "…" menu.</summary>
     private const int MaxCrumbs = 5;
@@ -56,6 +57,89 @@ public partial class BreadcrumbBar : UserControl
             ExitEdit();   // a navigation (ours or external) supersedes any in-progress edit
             Rebuild();
         }
+    }
+
+    // Breadcrumb segments are real folder drop targets. Dropping here uses the same
+    // copy/move rules as dropping onto a folder row, without navigating away.
+    private void CrumbHost_DragOver(object sender, DragEventArgs e)
+    {
+        Button? targetButton = CrumbButtonUnder(e.OriginalSource);
+        string? destination = targetButton?.Tag as string;
+        DragDropEffects effect = TryGetDroppedFiles(e, out var files)
+            ? FileDropService.EffectFor(files, destination, e.KeyStates)
+            : DragDropEffects.None;
+        bool valid = effect != DragDropEffects.None;
+        e.Effects = effect;
+        SetDropTarget(valid ? targetButton : null);
+        CrumbHost.BorderBrush = valid
+            ? (Brush)FindResource("AccentBright")
+            : (Brush)FindResource("Line2");
+        e.Handled = true;
+    }
+
+    private void CrumbHost_DragLeave(object sender, DragEventArgs e)
+    {
+        SetDropTarget(null);
+        CrumbHost.BorderBrush = (Brush)FindResource("Line2");
+        e.Handled = true;
+    }
+
+    private async void CrumbHost_Drop(object sender, DragEventArgs e)
+    {
+        Button? targetButton = CrumbButtonUnder(e.OriginalSource);
+        string? destination = targetButton?.Tag as string;
+        SetDropTarget(null);
+        CrumbHost.BorderBrush = (Brush)FindResource("Line2");
+        e.Handled = true;
+        if (Tab is not { } tab || !TryGetDroppedFiles(e, out var files) || destination is null)
+            return;
+
+        DragDropEffects effect = FileDropService.EffectFor(files, destination, e.KeyStates);
+        if (effect == DragDropEffects.None) return;
+        string? err = await FileDropService.Perform(files, destination,
+            effect == DragDropEffects.Move, Window.GetWindow(this));
+        if (err is not null) tab.Status = $"⚠️ {err}";
+        _ = tab.ReloadAfterOperationAsync();
+    }
+
+    private void SetDropTarget(Button? button)
+    {
+        if (ReferenceEquals(_dropTargetButton, button)) return;
+        if (_dropTargetButton is not null)
+        {
+            _dropTargetButton.ClearValue(BackgroundProperty);
+            _dropTargetButton.ClearValue(BorderBrushProperty);
+        }
+
+        _dropTargetButton = button;
+        if (_dropTargetButton is not null)
+        {
+            _dropTargetButton.Background = (Brush)FindResource("AccentWash2");
+            _dropTargetButton.BorderBrush = (Brush)FindResource("AccentBright");
+        }
+    }
+
+    private static Button? CrumbButtonUnder(object? source)
+    {
+        DependencyObject? d = source as DependencyObject;
+        while (d is not null)
+        {
+            if (d is Button button && button.Tag is string path && Directory.Exists(path)) return button;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return null;
+    }
+
+    private static bool TryGetDroppedFiles(DragEventArgs e, out string[] files)
+    {
+        files = Array.Empty<string>();
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)
+            || e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
+            return false;
+
+        files = paths.Where(path => !string.IsNullOrWhiteSpace(path)
+            && (Directory.Exists(path) || File.Exists(path))).ToArray();
+        return files.Length > 0;
     }
 
     // ===================== Breadcrumb rendering =====================

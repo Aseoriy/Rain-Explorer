@@ -43,8 +43,11 @@ public sealed class SidebarNode : ObservableObject
 
     public bool CanExpand { get; init; }
     public ObservableCollection<SidebarNode> Children { get; } = new();
+    internal event Action? TreeChanged;
 
     private bool _loaded;
+    private int _loadVersion;
+    private CancellationTokenSource? _loadCts;
     private static SidebarNode NewPlaceholder() => new() { Kind = NodeKind.Folder, Name = "" };
 
     private bool _isExpanded;
@@ -83,38 +86,85 @@ public sealed class SidebarNode : ObservableObject
     public static SidebarNode SpecialNode(string name, string token, string iconKey, string groupKey = "") =>
         new() { Name = name, Path = token, IconKey = iconKey, Kind = NodeKind.Special, GroupKey = groupKey };
 
-    private void LoadChildren()
+    private async void LoadChildren()
     {
         if (_loaded || !CanExpand) return;
         _loaded = true;
-        Children.Clear();   // drop the placeholder
+        ClearChildren();   // drop the placeholder
+
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
+        CancellationToken token = cts.Token;
+        int version = ++_loadVersion;
+        bool showHidden = SettingsStore.Instance.Settings.ShowHiddenFiles;
+
+        List<(string Name, string FullName)> directories = [];
         try
         {
-            bool showHidden = SettingsStore.Instance.Settings.ShowHiddenFiles;
-            foreach (var dir in Directory.EnumerateDirectories(Path)
-                         .OrderBy(System.IO.Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+            directories = await Task.Run(() =>
             {
-                try
+                var result = new List<(string Name, string FullName)>();
+                foreach (var dir in Directory.EnumerateDirectories(Path))
                 {
-                    var di = new DirectoryInfo(dir);
-                    if (!showHidden &&
-                        (di.Attributes.HasFlag(FileAttributes.Hidden) ||
-                         di.Attributes.HasFlag(FileAttributes.System)))
-                        continue;
-                    Children.Add(Folder(di.Name, di.FullName, "folder", NodeKind.Folder, GroupKey));
+                    token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var di = new DirectoryInfo(dir);
+                        if (!showHidden &&
+                            (di.Attributes.HasFlag(FileAttributes.Hidden) ||
+                             di.Attributes.HasFlag(FileAttributes.System)))
+                            continue;
+                        result.Add((di.Name, di.FullName));
+                    }
+                    catch { /* entry vanished — skip */ }
                 }
-                catch { /* entry vanished — skip */ }
-            }
+
+                result.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
+                return result;
+            }, token);
         }
+        catch (OperationCanceledException) { return; }
         catch { /* unreadable folder — leave empty */ }
+        finally
+        {
+            if (ReferenceEquals(_loadCts, cts)) _loadCts = null;
+            cts.Dispose();
+        }
+
+        if (version != _loadVersion) return;
+        foreach (var directory in directories)
+            AddChild(Folder(directory.Name, directory.FullName, "folder", NodeKind.Folder, GroupKey));
+        TreeChanged?.Invoke();
     }
 
     /// <summary>Re-enumerate this folder's children (used by the Refresh menu item).</summary>
     public void Refresh()
     {
+        _loadVersion++;
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
         _loaded = false;
-        Children.Clear();
+        ClearChildren();
         Children.Add(NewPlaceholder());
+        TreeChanged?.Invoke();
         if (_isExpanded) LoadChildren();
     }
+
+    private void AddChild(SidebarNode child)
+    {
+        child.TreeChanged += OnChildTreeChanged;
+        Children.Add(child);
+    }
+
+    private void ClearChildren()
+    {
+        foreach (SidebarNode child in Children)
+            child.TreeChanged -= OnChildTreeChanged;
+        Children.Clear();
+    }
+
+    private void OnChildTreeChanged() => TreeChanged?.Invoke();
 }

@@ -100,6 +100,7 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
                         <Button x:Name="SidebarToggle" Style="{StaticResource CaptionButton}" Width="34"
                                 Click="SidebarToggle_Click" ToolTip="Show/hide sidebar"
+                                AutomationProperties.Name="Show or hide sidebar"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True">
                             <Path Style="{StaticResource IconPath}" Width="17" Height="17"
                                   Data="{StaticResource Ic.panel-left}"
@@ -117,7 +118,8 @@
                         <Button x:Name="UndoButton" Style="{StaticResource CaptionButton}"
                                 Click="UndoButton_Click"
                                 IsEnabled="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanUndo}"
-                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=UndoText}">
+                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=UndoText}"
+                                AutomationProperties.Name="Undo">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.undo}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -127,7 +129,8 @@
                                 IsEnabled="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanRedo}"
                                 Visibility="{Binding Source={x:Static svc:UndoService.Instance}, Path=CanRedo,
                                     Converter={StaticResource BoolToVis}}"
-                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=RedoText}">
+                                ToolTip="{Binding Source={x:Static svc:UndoService.Instance}, Path=RedoText}"
+                                AutomationProperties.Name="Redo">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.undo}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
@@ -137,7 +140,8 @@
                             </Path>
                         </Button>
                         <Button x:Name="ActivityButton" Style="{StaticResource CaptionButton}"
-                                Click="ActivityButton_Click" ToolTip="Activity">
+                                Click="ActivityButton_Click" ToolTip="Activity"
+                                AutomationProperties.Name="Activity">
                             <Grid>
                                 <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                       Data="{StaticResource Ic.clock}"
@@ -155,25 +159,29 @@
                             </Grid>
                         </Button>
                         <Button x:Name="SettingsButton" Style="{StaticResource CaptionButton}"
-                                Command="{Binding OpenSettingsCommand}" ToolTip="Settings">
+                                Command="{Binding OpenSettingsCommand}" ToolTip="Settings"
+                                AutomationProperties.Name="Settings">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.settings}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>
                         <Button x:Name="MinButton" Style="{StaticResource CaptionButton}"
-                                Click="MinButton_Click" ToolTip="Minimize">
+                                Click="MinButton_Click" ToolTip="Minimize"
+                                AutomationProperties.Name="Minimize window">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.minus}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>
                         <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}"
-                                Click="MaxButton_Click" ToolTip="Maximize">
+                                Click="MaxButton_Click" ToolTip="Maximize"
+                                AutomationProperties.Name="Maximize or restore window">
                             <Path x:Name="MaxIcon" Style="{StaticResource IconPath}" Width="15" Height="15"
                                   Data="{StaticResource Ic.square}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>
                         <Button x:Name="CloseButton" Style="{StaticResource CloseButton}"
-                                Click="CloseButton_Click" ToolTip="Close">
+                                Click="CloseButton_Click" ToolTip="Close"
+                                AutomationProperties.Name="Close window">
                             <Path Style="{StaticResource IconPath}" Width="16" Height="16"
                                   Data="{StaticResource Ic.x}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -211,7 +219,8 @@
                                     <ItemsControl ItemsSource="{Binding Items}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Background="{StaticResource Glass2}" CornerRadius="8"
+                                                <Border x:Name="activityCard" Background="{StaticResource Glass2}" CornerRadius="8"
+                                                        BorderBrush="Transparent" BorderThickness="1"
                                                         Padding="11,9" Margin="2,2,2,5">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -230,6 +239,25 @@
                                                             <TextBlock Text="{Binding Detail}" FontSize="11"
                                                                        Foreground="{StaticResource TextFaint}"
                                                                        TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                                            <ProgressBar x:Name="activityProgress" Height="5" Margin="0,7,0,0"
+                                                                         Minimum="0" Maximum="1"
+                                                                         Value="{Binding Progress, Mode=OneWay}"
+                                                                         Visibility="{Binding ShowDeterminateProgress,
+                                                                             Converter={StaticResource BoolToVis}}" />
+                                                            <ProgressBar x:Name="activityProgressIndeterminate" Height="5"
+                                                                         Margin="0,7,0,0" IsIndeterminate="True"
+                                                                         Visibility="{Binding ShowIndeterminateProgress,
+                                                                             Converter={StaticResource BoolToVis}}" />
+                                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                                <Button Content="{Binding PauseButtonText}" Style="{StaticResource GhostButton}"
+                                                                        MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                                        Click="ActivityPause_Click"
+                                                                        Visibility="{Binding CanPause, Converter={StaticResource BoolToVis}}" />
+                                                                <Button Content="Cancel" Style="{StaticResource GhostButton}"
+                                                                        MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                                        Margin="5,0,0,0" Click="ActivityCancel_Click"
+                                                                        Visibility="{Binding CanCancel, Converter={StaticResource BoolToVis}}" />
+                                                            </StackPanel>
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
                                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -266,6 +294,9 @@
                                                     <DataTrigger Binding="{Binding Status}" Value="Canceled">
                                                         <Setter TargetName="dot" Property="Fill" Value="{StaticResource TextMuted}" />
                                                         <Setter TargetName="stext" Property="Foreground" Value="{StaticResource TextMuted}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                        <Setter TargetName="activityCard" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                                                     </DataTrigger>
                                                 </DataTemplate.Triggers>
                                             </DataTemplate>
@@ -311,6 +342,7 @@
                                       DragLeave="Sidebar_DragLeave"
                                       Drop="Sidebar_Drop"
                                       PreviewMouseLeftButtonDown="SidebarTree_PreviewMouseLeftButtonDown"
+                                      PreviewKeyDown="SidebarTree_PreviewKeyDown"
                                       MouseMove="SidebarTree_MouseMove"
                                       SelectedItemChanged="Sidebar_SelectedItemChanged">
                                 <TreeView.ItemContainerStyle>
@@ -325,7 +357,62 @@
                                                     <StackPanel>
                                                         <Border x:Name="row" Background="Transparent" CornerRadius="8"
                                                                 BorderBrush="Transparent" BorderThickness="1"
-                                                                Margin="0,1" Padding="2,1">
+                                                                Margin="0,1" Padding="2,1"
+                                                                ContextMenuOpening="NodeContextMenu_Opening">
+                                                            <Border.ContextMenu>
+                                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
+                                                                             RelativeSource={RelativeSource Self}}"
+                                                                              Opened="NodeContextMenu_Opened">
+                                                                    <MenuItem Header="Open" Click="NodeOpen_Click">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.arrow-right}" Stroke="{StaticResource AccentBright}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <MenuItem Header="Open in new tab" Click="NodeOpenNewTab_Click">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <Separator />
+                                                                    <MenuItem Header="Change icon…" Click="NodeChangeIcon_Click"
+                                                                              Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.palette}" Stroke="{StaticResource TextMuted}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <MenuItem Header="Rename…" Click="NodeRename_Click"
+                                                                              Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <MenuItem Header="Unpin" Click="NodeUnpin_Click"
+                                                                              Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <MenuItem Header="Pin to Quick Access" Click="NodePin_Click" Tag="pinTarget"
+                                                                              Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVis}}">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.star}" Stroke="{StaticResource AccentBright}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                    <Separator />
+                                                                    <MenuItem Header="Refresh" Click="NodeRefresh_Click">
+                                                                        <MenuItem.Icon>
+                                                                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                                                                  Data="{StaticResource Ic.refresh}" Stroke="{StaticResource TextMuted}" />
+                                                                        </MenuItem.Icon>
+                                                                    </MenuItem>
+                                                                </ContextMenu>
+                                                            </Border.ContextMenu>
                                                             <Grid>
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="16" />
@@ -457,60 +544,6 @@
                                             </Grid>
                                             <!-- Item look -->
                                             <StackPanel x:Name="itm" Orientation="Horizontal" Margin="2,5">
-                                                <StackPanel.ContextMenu>
-                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
-                                                                 RelativeSource={RelativeSource Self}}"
-                                                                 Opened="NodeContextMenu_Opened">
-                                                        <MenuItem Header="Open" Click="NodeOpen_Click">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.arrow-right}" Stroke="{StaticResource AccentBright}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <MenuItem Header="Open in new tab" Click="NodeOpenNewTab_Click">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <Separator />
-                                                        <MenuItem Header="Change icon…" Click="NodeChangeIcon_Click"
-                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.palette}" Stroke="{StaticResource TextMuted}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <MenuItem Header="Rename…" Click="NodeRename_Click"
-                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <MenuItem Header="Unpin" Click="NodeUnpin_Click"
-                                                                  Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.x}" Stroke="{StaticResource Danger}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <MenuItem Header="Pin to Quick Access" Click="NodePin_Click" Tag="pinTarget"
-                                                                  Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVis}}">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.star}" Stroke="{StaticResource AccentBright}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                        <Separator />
-                                                        <MenuItem Header="Refresh" Click="NodeRefresh_Click">
-                                                            <MenuItem.Icon>
-                                                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                      Data="{StaticResource Ic.refresh}" Stroke="{StaticResource TextMuted}" />
-                                                            </MenuItem.Icon>
-                                                        </MenuItem>
-                                                    </ContextMenu>
-                                                </StackPanel.ContextMenu>
                                                 <Path Style="{StaticResource IconPath}" Width="17" Height="17"
                                                       Margin="0,0,10,0" VerticalAlignment="Center"
                                                       Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
@@ -545,7 +578,8 @@
                             <ColumnDefinition x:Name="RightCol" Width="0" />
                         </Grid.ColumnDefinitions>
 
-                        <ctrl:PaneView Grid.Column="0" DataContext="{Binding LeftPane}" />
+                        <ctrl:PaneView x:Name="LeftPaneView" Grid.Column="0"
+                                       DataContext="{Binding LeftPane}" />
 
                         <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                                       Background="{StaticResource Line1}"

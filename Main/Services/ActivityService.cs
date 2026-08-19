@@ -20,8 +20,17 @@ public sealed class ActivityService : ObservableObject
     public static ActivityService Instance { get; } = new();
     private const int Cap = 60;
 
-    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+    };
     private readonly string _path;
+    private readonly object _persistGate = new();
+    private bool _loadFailed;
+    private bool _retryLoad;
 
     public ObservableCollection<ActivityEntry> Items { get; } = new();
 
@@ -41,7 +50,12 @@ public sealed class ActivityService : ObservableObject
             if (e.PropertyName == nameof(AppSettings.RememberActivity))
             {
                 if (SettingsStore.Instance.Settings.RememberActivity) Persist();
-                else { try { File.Delete(_path); } catch { } }
+                else
+                {
+                    try { File.Delete(_path); } catch { }
+                    _loadFailed = false;
+                    _retryLoad = false;
+                }
             }
         };
     }
@@ -55,21 +69,91 @@ public sealed class ActivityService : ObservableObject
             if (!File.Exists(_path)) return;
             var saved = JsonSerializer.Deserialize<List<ActivityEntry>>(File.ReadAllText(_path), JsonOpts);
             if (saved is null) return;
-            foreach (var e in saved.Take(Cap))
+            foreach (var e in saved.Where(e => e is not null).Take(Cap))
             {
                 // An op that was still running when the app closed can never complete now.
                 if (e.Status == ActivityStatus.Running) e.Status = ActivityStatus.Failed;
                 Items.Add(e);
             }
         }
-        catch { /* corrupt — start with an empty log */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _retryLoad = true;
+        }
+        catch
+        {
+            // Keep a recovery copy; a malformed activity file should not be silently
+            // replaced by the next operation's save.
+            _loadFailed = true;
+            try { File.Copy(_path, _path + ".corrupt", overwrite: true); } catch { }
+        }
     }
 
     private void Persist()
     {
-        if (!Remember) return;
-        try { File.WriteAllText(_path, JsonSerializer.Serialize(Items, JsonOpts)); }
-        catch { /* best-effort */ }
+        if (!Remember || _loadFailed) return;
+        lock (_persistGate)
+        {
+            if (_retryLoad && !TryMergeDeferredLoad()) return;
+
+            string? tmp = null;
+            try
+            {
+                tmp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+                           FileShare.None, 4096, FileOptions.WriteThrough))
+                using (var sw = new StreamWriter(fs, new System.Text.UTF8Encoding(false)))
+                {
+                    sw.Write(JsonSerializer.Serialize(Items, JsonOpts));
+                    sw.Flush();
+                    fs.Flush(flushToDisk: true);
+                }
+                if (File.Exists(_path)) File.Replace(tmp, _path, null);
+                else File.Move(tmp, _path);
+                tmp = null;
+            }
+            catch
+            {
+                if (tmp is not null) { try { File.Delete(tmp); } catch { } }
+            }
+        }
+    }
+
+    private bool TryMergeDeferredLoad()
+    {
+        try
+        {
+            if (File.Exists(_path))
+            {
+                var saved = JsonSerializer.Deserialize<List<ActivityEntry>>(
+                    File.ReadAllText(_path), JsonOpts) ?? [];
+                foreach (ActivityEntry entry in saved.Where(e => e is not null))
+                {
+                    if (Items.Count >= Cap) break;
+                    bool duplicate = Items.Any(current =>
+                        current.StartedAt == entry.StartedAt
+                        && string.Equals(current.Title, entry.Title, StringComparison.Ordinal)
+                        && string.Equals(current.Detail, entry.Detail, StringComparison.Ordinal));
+                    if (duplicate) continue;
+                    if (entry.Status == ActivityStatus.Running)
+                        entry.Status = ActivityStatus.Failed;
+                    Items.Add(entry);
+                }
+            }
+
+            _retryLoad = false;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch
+        {
+            _loadFailed = true;
+            try { File.Copy(_path, _path + ".corrupt", overwrite: true); } catch { }
+            return false;
+        }
     }
 
     private int _unseen;
@@ -101,6 +185,23 @@ public sealed class ActivityService : ObservableObject
         return e;
     }
 
+    public void AttachControls(ActivityEntry e, Action cancel, Func<bool> togglePause) =>
+        OnUi(() => e.AttachControls(cancel, togglePause));
+
+    public void DetachControls(ActivityEntry e) => OnUi(e.DetachControls);
+
+    public void RequestCancel(ActivityEntry e) => OnUi(e.RequestCancel);
+
+    public void RequestPauseToggle(ActivityEntry e) => OnUi(e.TogglePause);
+
+    /// <summary>Update an active operation without writing progress to disk.</summary>
+    public void ReportProgress(ActivityEntry e, double? progress, string? detail = null) => OnUi(() =>
+    {
+        if (!e.IsActive) return;
+        e.Progress = progress is double value ? Math.Clamp(value, 0, 1) : -1;
+        if (!string.IsNullOrWhiteSpace(detail)) e.Detail = Shorten(detail!);
+    });
+
     public void Complete(ActivityEntry e, bool ok, string? error = null)
     {
         e.Watch?.Stop();
@@ -108,7 +209,11 @@ public sealed class ActivityService : ObservableObject
         {
             e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
             if (!ok && !string.IsNullOrWhiteSpace(error)) e.Detail = Shorten(error!);
+            if (ok) e.Progress = 1;
+            e.IsPaused = false;
             e.Status = ok ? ActivityStatus.Success : ActivityStatus.Failed;
+            e.DetachControls();
+            KeepActiveAtTop();
             Persist();
         });
     }
@@ -119,13 +224,20 @@ public sealed class ActivityService : ObservableObject
     {
         e.Watch?.Stop();
         e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
+        e.IsPaused = false;
         e.Status = ActivityStatus.Canceled;
+        e.DetachControls();
+        KeepActiveAtTop();
         Persist();
     });
 
     public void Clear() => OnUi(() =>
     {
+        var active = Items.Where(e => e.IsActive).ToList();
         Items.Clear();
+        foreach (var e in active) Items.Add(e);
+        _loadFailed = false;
+        _retryLoad = false;
         UnseenCount = 0;
         OnPropertyChanged(nameof(IsEmpty));
         Persist();
@@ -133,12 +245,25 @@ public sealed class ActivityService : ObservableObject
 
     private void Add(ActivityEntry e) => OnUi(() =>
     {
-        Items.Insert(0, e);
+        int insertAt = 0;
+        while (insertAt < Items.Count && Items[insertAt].IsActive) insertAt++;
+        Items.Insert(insertAt, e);
         while (Items.Count > Cap) Items.RemoveAt(Items.Count - 1);
         UnseenCount++;
         OnPropertyChanged(nameof(IsEmpty));
         Persist();
     });
+
+    private void KeepActiveAtTop()
+    {
+        int target = 0;
+        for (int i = 0; i < Items.Count; i++)
+        {
+            if (!Items[i].IsActive) continue;
+            if (i != target) Items.Move(i, target);
+            target++;
+        }
+    }
 
     private static void OnUi(Action a)
     {

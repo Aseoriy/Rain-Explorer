@@ -11,7 +11,8 @@
                     BorderBrush="{StaticResource Line1}" BorderThickness="0,0,0,1">
                 <DockPanel LastChildFill="True">
                     <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}"
-                            Click="Close_Click" ToolTip="Hide preview (Space)">
+                            Click="Close_Click" ToolTip="Hide preview (Space)"
+                            AutomationProperties.Name="Hide preview pane">
                         <Path Style="{StaticResource IconPath}" Width="15" Height="15"
                               Data="{StaticResource Ic.x}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -54,7 +55,8 @@
                             Padding="8,5" Margin="0,10,0,0">
                         <DockPanel LastChildFill="True">
                             <Button x:Name="PlayPause" DockPanel.Dock="Left" Style="{StaticResource IconButton}"
-                                    Click="PlayPause_Click" Margin="0,0,8,0">
+                                    Click="PlayPause_Click" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Play or pause media">
                                 <Path x:Name="PlayIcon" Style="{StaticResource IconPath}" Width="16" Height="16"
                                       Data="{StaticResource Ic.play}"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -83,7 +85,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="4,3">
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="PdfPrev" Style="{StaticResource IconButton}" Click="PdfPrev_Click"
-                                ToolTip="Previous page">
+                                ToolTip="Previous page" AutomationProperties.Name="Previous PDF page">
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.arrow-left}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>
@@ -91,7 +93,7 @@
                                    Foreground="{StaticResource Text}" FontSize="12"
                                    FontFamily="{StaticResource MonoFont}" Text="1 / 1" />
                         <Button x:Name="PdfNext" Style="{StaticResource IconButton}" Click="PdfNext_Click"
-                                ToolTip="Next page">
+                                ToolTip="Next page" AutomationProperties.Name="Next PDF page">
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.arrow-right}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>

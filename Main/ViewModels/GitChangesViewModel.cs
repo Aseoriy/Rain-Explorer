@@ -112,7 +112,8 @@ public sealed class GitChangesViewModel : ObservableObject, IDisposable
         && _status.Repository.OperationState == GitRepositoryOperationState.Normal
         && !_status.Branch.IsUnborn;
     public bool CanManageBranches => !Busy
-        && _status is { Files.Count: 0 }
+        && _status is not null
+        && !_status.Files.Any(file => !file.IsIgnored)
         && _status.Repository.OperationState == GitRepositoryOperationState.Normal
         && !_status.Branch.IsDetached
         && !_status.Branch.IsUnborn;

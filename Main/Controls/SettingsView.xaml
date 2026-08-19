@@ -123,7 +123,7 @@
                         <Button Style="{StaticResource IconButton}" Width="36" Height="36"
                                 Command="{Binding DataContext.CloseSettingsCommand,
                                           RelativeSource={RelativeSource AncestorType=Window}}"
-                                ToolTip="Back (Esc)">
+                                ToolTip="Back (Esc)" AutomationProperties.Name="Close settings">
                             <Path Style="{StaticResource IconPath}" Width="18" Height="18" Data="{StaticResource Ic.arrow-left}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         </Button>

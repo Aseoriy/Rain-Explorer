@@ -54,11 +54,32 @@ public partial class PaneView : UserControl
     private GitRepositoryContext? _gitMenuRepository;
     private GitRepositoryStatus? _gitMenuStatus;
     private const string TabDragTokenFormat = "RainExplorer.TabDragToken";
-    private sealed record TabDragPayload(PaneViewModel SourcePane, TabViewModel Tab);
+    private sealed record TabDragPayload(
+        PaneView Owner,
+        PaneViewModel SourcePane,
+        TabViewModel Tab,
+        bool IsGroupDrag,
+        bool StartedInGroupRow,
+        double GrabRatio,
+        double GrabRatioY,
+        double DraggedWidth)
+    {
+        public PaneViewModel? DestinationPane { get; set; }
+    }
     private sealed record TabDragSlot(TabViewModel Tab, ListBoxItem Container, double X, double Width);
+    private sealed class TabPreviewMotion(TranslateTransform transform, double target)
+    {
+        public TranslateTransform Transform { get; } = transform;
+        public double Target { get; set; } = target;
+    }
+    private sealed record TabLayoutSnapshot(
+        Dictionary<TabViewModel, double> TopRow,
+        Dictionary<TabViewModel, double> GroupRow);
     private static readonly Dictionary<string, TabDragPayload> ActiveTabDrags = new();
+    private static readonly HashSet<PaneView> LoadedPaneViews = [];
     private TabViewModel? _tabDragCandidate;
     private ListBoxItem? _tabDragCandidateContainer;
+    private ListBox? _tabDragSourceBar;
     private Point _tabDragStart;
     private Popup? _tabDragPopup;
     private HwndSource? _tabDragPopupSource;
@@ -67,16 +88,44 @@ public partial class PaneView : UserControl
     private TabViewModel? _tabGroupSource;
     private TabViewModel? _tabGroupHoverCandidate;
     private TabViewModel? _tabGroupHoverSource;
+    private ListBox? _tabGroupHoverBar;
     private DispatcherTimer? _tabGroupHoverTimer;
-    private TabInsertionAdorner? _tabInsertionAdorner;
     private TabViewModel? _tabPreviewSource;
     private TabViewModel? _tabPreviewTarget;
     private bool _tabPreviewAfter;
     private int _tabPreviewIndex = -1;
     private readonly List<TabDragSlot> _tabDragSlots = new();
-    private static readonly TimeSpan TabGroupHoverDelay = TimeSpan.FromSeconds(1);
-    private const double TabGroupHoverStartRatio = 0.15;
-    private const double TabGroupHoverEndRatio = 0.85;
+    private readonly List<TabDragSlot> _tabPreviewRemainingSlots = new();
+    private readonly Dictionary<ListBoxItem, TabPreviewMotion> _tabPreviewMotions = new();
+    private ListBox? _tabDragSlotBar;
+    private ListBoxItem? _tabPreviewHiddenContainer;
+    private object _tabPreviewHiddenOpacity = DependencyProperty.UnsetValue;
+    private bool _tabPreviewReturning;
+    private bool _tabDragRendering;
+    private TimeSpan? _tabPreviewLastFrame;
+    private double _tabPreviewLastReorderPointerX = double.NaN;
+    private double _tabDragGrabRatio = 0.5;
+    private double _tabDragGrabRatioY = 0.5;
+    private double _tabDragGhostPointerOffsetX = 24;
+    private double _tabDragGhostPointerOffsetY = 17;
+    private int _tabDragGhostCursorX = int.MinValue;
+    private int _tabDragGhostCursorY = int.MinValue;
+    private ListBox? _tabDragGhostLockedBar;
+    private TabDragPayload? _ownedTabDragPayload;
+    private PaneView? _ownedTabDragPreviewPane;
+    private ListBox? _ownedTabDragPreviewBar;
+    private TabLayoutSnapshot? _pendingTabLayoutBefore;
+    private bool _tabLayoutAnimationScheduled;
+    private bool _newTabButtonPositionReady;
+    private double _newTabButtonTargetX = double.NaN;
+    private static readonly TimeSpan TabGroupHoverDelay = TimeSpan.FromMilliseconds(420);
+    private const double TabGroupHoverStartRatio = 0.28;
+    private const double TabGroupHoverEndRatio = 0.72;
+    private const double TabStripDetachMagnetism = 50;
+    private const double TabStripHorizontalMagnetism = 12;
+    private const double TabReorderHysteresis = 10;
+    private const double StandardTabWidth = 208;
+    private const double TabPreviewResponseSeconds = 0.032;
     private Window? _ownerWindow;
     private ContextMenu? _openTabContextMenu;
     private int _projectsAnimationVersion;
@@ -86,6 +135,21 @@ public partial class PaneView : UserControl
     private struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y,
+        int width, int height, uint flags);
+
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
 
     private static string Summarize(IReadOnlyList<string> paths) =>
         paths.Count == 1 ? Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar)) : $"{paths.Count} items";
@@ -104,13 +168,17 @@ public partial class PaneView : UserControl
         FileList.GiveFeedback += FileList_GiveFeedback;
         Loaded += PaneView_Loaded;
         Unloaded += PaneView_Unloaded;
-        SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
     }
 
     private void PaneView_Loaded(object sender, RoutedEventArgs e)
     {
+        LoadedPaneViews.Add(this);
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
+        SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
         ApplyLayout();
         ApplyPreviewVisibility();
+        Dispatcher.BeginInvoke(() => UpdateNewTabButtonPosition(animate: false),
+            DispatcherPriority.Loaded);
         _ownerWindow = Window.GetWindow(this);
         if (_ownerWindow is null) return;
         _ownerWindow.AddHandler(UIElement.PreviewMouseDownEvent,
@@ -119,7 +187,25 @@ public partial class PaneView : UserControl
 
     private void PaneView_Unloaded(object sender, RoutedEventArgs e)
     {
+        LoadedPaneViews.Remove(this);
+        EndOwnedTabDragPreview(animateBack: false);
         ResetTabGroupHover();
+        ClearTabDragCandidate();
+        HideTabDragGhost();
+        ClearTabDragPreview();
+        _pendingTabLayoutBefore = null;
+        _tabLayoutAnimationScheduled = false;
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
+        _previewTimer?.Stop();
+        Preview?.Clear();
+        _fileContextMenuOpen = false;
+        _gitMenuCts?.Cancel();
+        _gitMenuCts?.Dispose();
+        _gitMenuCts = null;
+        _shellSession?.Dispose();
+        _shellSession = null;
+        _shellMenuRequestVersion++;
+        _shellMenuPreparationQueued = false;
         if (_ownerWindow is null) return;
         _ownerWindow.RemoveHandler(UIElement.PreviewMouseDownEvent,
             (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick);
@@ -354,15 +440,214 @@ public partial class PaneView : UserControl
         {
             _vm.ActiveContentsChanged -= PlayListAnimation;
             _vm.PropertyChanged -= OnPanePropertyChanged;
+            _vm.Tabs.CollectionChanged -= OnTabsCollectionChanged;
         }
         _vm = DataContext as PaneViewModel;
         if (_vm is not null)
         {
             _vm.ActiveContentsChanged += PlayListAnimation;
             _vm.PropertyChanged += OnPanePropertyChanged;
+            _vm.Tabs.CollectionChanged += OnTabsCollectionChanged;
             OnSelectedTabChanged();
         }
         RefreshProjectsButton();
+    }
+
+    private static bool TabAnimationsEnabled => SystemParameters.ClientAreaAnimation;
+
+    private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            Dispatcher.BeginInvoke(() => UpdateNewTabButtonPosition(animate: false),
+                DispatcherPriority.Loaded);
+            return;
+        }
+
+        if (TabAnimationsEnabled)
+        {
+            PrepareTabLayoutAnimation();
+            if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems is not null)
+            {
+                foreach (var tab in e.OldItems.OfType<TabViewModel>())
+                {
+                    bool movingGroup = ActiveTabDrags.Values.Any(payload =>
+                        payload.IsGroupDrag && ReferenceEquals(payload.SourcePane, _vm)
+                        && payload.Tab.GroupId == tab.GroupId);
+                    if (tab.IsDragging || movingGroup) continue;
+                    AnimateRemovedTab(TabBar, tab);
+                    AnimateRemovedTab(GroupTabBar, tab);
+                }
+            }
+        }
+
+        ScheduleTabLayoutAnimation();
+    }
+
+    private void PrepareTabLayoutAnimation(bool includeRenderTransforms = false)
+    {
+        if (!TabAnimationsEnabled || _pendingTabLayoutBefore is not null) return;
+        _pendingTabLayoutBefore = CaptureTabLayout(includeRenderTransforms);
+    }
+
+    private TabLayoutSnapshot CaptureTabLayout(bool includeRenderTransforms = false) =>
+        new(CaptureTabRow(TabBar, includeRenderTransforms),
+            CaptureTabRow(GroupTabBar, includeRenderTransforms));
+
+    private static Dictionary<TabViewModel, double> CaptureTabRow(
+        ListBox bar, bool includeRenderTransforms)
+    {
+        var result = new Dictionary<TabViewModel, double>();
+        foreach (var item in bar.Items.OfType<TabViewModel>())
+        {
+            if (bar.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem container)
+                result[item] = includeRenderTransforms
+                    ? container.TranslatePoint(new Point(), bar).X
+                    : TabLayoutX(container, bar);
+        }
+        return result;
+    }
+
+    private static double TabLayoutX(ListBoxItem container, ListBox bar)
+    {
+        double x = container.TranslatePoint(new Point(), bar).X;
+        return x - HorizontalTransformOffset(container.RenderTransform);
+    }
+
+    private static double HorizontalTransformOffset(Transform? transform) => transform switch
+    {
+        TranslateTransform translate => translate.X,
+        TransformGroup group => group.Children.Sum(HorizontalTransformOffset),
+        _ => 0,
+    };
+
+    private static void AnimateRemovedTab(ListBox bar, TabViewModel tab)
+    {
+        if (bar.ItemContainerGenerator.ContainerFromItem(tab) is ListBoxItem container)
+            TabRemovalAdorner.Begin(bar, container);
+    }
+
+    private void ScheduleTabLayoutAnimation()
+    {
+        if (_tabLayoutAnimationScheduled) return;
+        _tabLayoutAnimationScheduled = true;
+        Dispatcher.BeginInvoke(AnimatePendingTabLayoutChange, DispatcherPriority.Render);
+    }
+
+    private void AnimatePendingTabLayoutChange()
+    {
+        _tabLayoutAnimationScheduled = false;
+        var before = _pendingTabLayoutBefore;
+        _pendingTabLayoutBefore = null;
+
+        TabBar.UpdateLayout();
+        GroupTabBar.UpdateLayout();
+        if (TabAnimationsEnabled && before is not null)
+        {
+            AnimateTabRow(TabBar, before.TopRow);
+            AnimateTabRow(GroupTabBar, before.GroupRow);
+        }
+        UpdateNewTabButtonPosition(animate: true);
+    }
+
+    private static void AnimateTabRow(ListBox bar, IReadOnlyDictionary<TabViewModel, double> before)
+    {
+        foreach (var tab in bar.Items.OfType<TabViewModel>())
+        {
+            if (bar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container) continue;
+            double newX = TabLayoutX(container, bar);
+            if (before.TryGetValue(tab, out double oldX))
+            {
+                AnimateTabOffset(container, oldX - newX);
+            }
+            else AnimateTabArrival(container);
+        }
+    }
+
+    private static void AnimateTabOffset(ListBoxItem container, double delta)
+    {
+        if (Math.Abs(delta) < 0.5) return;
+        var transform = new TranslateTransform(delta, 0);
+        container.RenderTransform = transform;
+        var animation = new DoubleAnimation(0, TimeSpan.FromMilliseconds(150))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (ReferenceEquals(container.RenderTransform, transform)) container.RenderTransform = null;
+        };
+        transform.BeginAnimation(TranslateTransform.XProperty, animation);
+    }
+
+    private static void AnimateTabArrival(ListBoxItem container)
+    {
+        var scale = new ScaleTransform(0.96, 0.96);
+        var translate = new TranslateTransform(0, 3);
+        var transforms = new TransformGroup();
+        transforms.Children.Add(scale);
+        transforms.Children.Add(translate);
+        container.RenderTransformOrigin = new Point(0.5, 0.5);
+        container.RenderTransform = transforms;
+        container.Opacity = 0;
+
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(1, TimeSpan.FromMilliseconds(145)) { EasingFunction = easing });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(1, TimeSpan.FromMilliseconds(145)) { EasingFunction = easing });
+        translate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(0, TimeSpan.FromMilliseconds(145)) { EasingFunction = easing });
+        var fade = new DoubleAnimation(1, TimeSpan.FromMilliseconds(145));
+        fade.Completed += (_, _) =>
+        {
+            container.BeginAnimation(OpacityProperty, null);
+            container.Opacity = 1;
+            if (ReferenceEquals(container.RenderTransform, transforms)) container.RenderTransform = null;
+        };
+        container.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void TabBar_LayoutUpdated(object? sender, EventArgs e) =>
+        UpdateNewTabButtonPosition(animate: _newTabButtonPositionReady);
+
+    private void UpdateNewTabButtonPosition(bool animate)
+    {
+        if (TopTabDropSurface.ActualWidth < 1 || NewTabButton.ActualWidth < 1) return;
+        double usedWidth = 0;
+        foreach (var tab in TabBar.Items.OfType<TabViewModel>())
+        {
+            if (TabBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container) continue;
+            usedWidth = Math.Max(usedWidth, TabLayoutX(container, TabBar) + container.ActualWidth);
+        }
+
+        double target = Math.Clamp(usedWidth + 4, 0,
+            Math.Max(0, TopTabDropSurface.ActualWidth - NewTabButton.ActualWidth));
+        if (!double.IsNaN(_newTabButtonTargetX) && Math.Abs(target - _newTabButtonTargetX) < 0.5)
+            return;
+        _newTabButtonTargetX = target;
+
+        if (!animate || !TabAnimationsEnabled || !_newTabButtonPositionReady)
+        {
+            NewTabButtonTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            NewTabButtonTransform.X = target;
+            _newTabButtonPositionReady = true;
+            return;
+        }
+
+        double current = NewTabButtonTransform.X;
+        NewTabButtonTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        NewTabButtonTransform.X = current;
+        var animation = new DoubleAnimation(target, TimeSpan.FromMilliseconds(145))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        animation.Completed += (_, _) =>
+        {
+            NewTabButtonTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            NewTabButtonTransform.X = target;
+        };
+        NewTabButtonTransform.BeginAnimation(TranslateTransform.XProperty, animation);
     }
 
     private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -514,6 +799,11 @@ public partial class PaneView : UserControl
     // ---- Middle-click a tab -> close it ------------------------------------
     private void TabBar_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // A completed click must never remain eligible to become a drag during a later
+        // press. In particular, a close-button press can otherwise revive the tab that
+        // was selected most recently and consume the close click as a reorder/group drag.
+        if (e.ChangedButton == MouseButton.Left) ClearTabDragCandidate();
+
         if (e.ChangedButton == MouseButton.Right
             && TabUnder(e.OriginalSource) is { } contextTab)
         {
@@ -524,13 +814,30 @@ public partial class PaneView : UserControl
 
         if (e.ChangedButton == MouseButton.Left && !IsWithin<Button>(e.OriginalSource))
         {
-            if (_vm?.SelectedTab is { } current
-                && ItemFromPoint<TabViewModel>(e) is { } clicked
-                && !ReferenceEquals(current, clicked))
-                CaptureTabPreview(current);
+            var sourceBar = sender as ListBox ?? TabBar;
             _tabDragCandidate = ItemFromPoint<TabViewModel>(e);
             _tabDragCandidateContainer = TabContainer(e.OriginalSource);
-            _tabDragStart = e.GetPosition(sender as ListBox ?? TabBar);
+            _tabDragSourceBar = sourceBar;
+            _tabDragStart = e.GetPosition(sourceBar);
+            if (_tabDragCandidateContainer is { ActualWidth: > 0, ActualHeight: > 0 } container)
+            {
+                Point grabPoint = e.GetPosition(container);
+                _tabDragGrabRatio = Math.Clamp(grabPoint.X / container.ActualWidth, 0, 1);
+                _tabDragGrabRatioY = Math.Clamp(grabPoint.Y / container.ActualHeight, 0, 1);
+            }
+            else
+            {
+                _tabDragGrabRatio = 0.5;
+                _tabDragGrabRatioY = 0.5;
+            }
+            if (_tabDragCandidate is not null)
+            {
+                Mouse.Capture(sourceBar, CaptureMode.SubTree);
+                // ListBox normally activates a tab on mouse-down. Hold that selection
+                // until mouse-up (click) or drop (drag), so a background tab's complete
+                // content tree is never swapped in while the drag loop is starting.
+                e.Handled = true;
+            }
         }
 
         if (e.ChangedButton != MouseButton.Middle) return;
@@ -541,10 +848,29 @@ public partial class PaneView : UserControl
         }
     }
 
+    private void TabBar_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var candidate = _tabDragCandidate;
+        var sourceBar = _tabDragSourceBar ?? sender as ListBox ?? TabBar;
+        ClearTabDragCandidate();
+        if (candidate is null || _vm is null || !_vm.Tabs.Contains(candidate)) return;
+        if (ReferenceEquals(sourceBar, GroupTabBar)) _vm.SelectedTab = candidate;
+        else _vm.SelectedTopTab = candidate;
+        e.Handled = true;
+    }
+
+    private void ClearTabDragCandidate()
+    {
+        if (_tabDragSourceBar?.IsMouseCaptured == true) _tabDragSourceBar.ReleaseMouseCapture();
+        _tabDragCandidate = null;
+        _tabDragCandidateContainer = null;
+        _tabDragSourceBar = null;
+    }
+
     private void TabBar_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (_tabDragCandidate is null || e.LeftButton != MouseButtonState.Pressed) return;
-        var sourceBar = sender as ListBox ?? TabBar;
+        var sourceBar = _tabDragSourceBar ?? sender as ListBox ?? TabBar;
         Point here = e.GetPosition(sourceBar);
         if (Math.Abs(here.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
             && Math.Abs(here.Y - _tabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
@@ -552,36 +878,64 @@ public partial class PaneView : UserControl
 
         var tab = _tabDragCandidate;
         _tabDragCandidate = null;
+        if (sourceBar.IsMouseCaptured) sourceBar.ReleaseMouseCapture();
+        bool startedInGroupRow = ReferenceEquals(sourceBar, GroupTabBar);
+        bool isGroupDrag = !startedInGroupRow && tab.IsGroupLeader;
+        double draggedWidth = Math.Max(1, _tabDragCandidateContainer?.ActualWidth ?? 154);
         _tabDragCancelled = false;
         tab.IsDragging = true;
         CaptureTabDragSlots(sourceBar);
-        ShowTabDragGhost(tab);
+        ShowTabDragGhost(tab, draggedWidth, _tabDragGrabRatio, _tabDragGrabRatioY);
         string? dragToken = null;
+        PaneViewModel? activatePaneAfterDrag = null;
         try
         {
             if (_vm is null) return;
             dragToken = Guid.NewGuid().ToString("N");
-            ActiveTabDrags[dragToken] = new TabDragPayload(_vm, tab);
+            var payload = new TabDragPayload(
+                this, _vm, tab, isGroupDrag, startedInGroupRow,
+                _tabDragGrabRatio, _tabDragGrabRatioY, draggedWidth);
+            ActiveTabDrags[dragToken] = payload;
+            _ownedTabDragPayload = payload;
+            if (GetCursorPos(out var initialCursor))
+            {
+                UpdateOwnedTabDragPreview(initialCursor);
+                UpdateTabDragGhostPosition(initialCursor);
+            }
             var data = new DataObject();
             data.SetData(TabDragTokenFormat, dragToken);
             var result = DragDrop.DoDragDrop(sourceBar, data, DragDropEffects.Move);
             if (result == DragDropEffects.None && !_tabDragCancelled
-                && GetCursorPos(out var cursor) && CursorIsOutsideOwner(cursor))
-                MainWindow.OpenDetachedTab(_vm, tab,
-                    DevicePixelsToDips(new Point(cursor.X, cursor.Y)));
+                && GetCursorPos(out var cursor))
+            {
+                bool completedTabDrop = TryFindTabDragSurface(
+                        cursor,
+                        payload.Owner._ownedTabDragPreviewPane,
+                        payload.Owner._ownedTabDragPreviewBar,
+                        out var targetPane, out var targetBar, out var targetPoint)
+                    && targetPane.CompleteTabDrop(payload, targetBar, targetPoint);
+                if (!completedTabDrop && CursorIsOutsideTabStrip(cursor, sourceBar))
+                    MainWindow.OpenDetachedTab(_vm, tab, isGroupDrag,
+                        new Point(cursor.X, cursor.Y), payload.GrabRatio, payload.GrabRatioY);
+            }
+            activatePaneAfterDrag = payload.DestinationPane;
         }
         catch { /* a cancelled tab drag is harmless */ }
         finally
         {
             if (dragToken is not null) ActiveTabDrags.Remove(dragToken);
+            EndOwnedTabDragPreview(animateBack: false);
             HideTabDragGhost();
             ClearTabDragPreview();
             _tabDragSlots.Clear();
+            _tabDragSlotBar = null;
             tab.IsDragging = false;
-            _tabDragCandidateContainer = null;
+            ClearTabDragCandidate();
             ResetTabGroupHover();
             SetTabGroupTarget(null, null);
         }
+        if (activatePaneAfterDrag?.Tabs.Contains(tab) == true)
+            activatePaneAfterDrag.SelectedTab = tab;
     }
 
     private void TabItem_MouseEnter(object sender, MouseEventArgs e)
@@ -626,10 +980,17 @@ public partial class PaneView : UserControl
         }
     }
 
-    private void ShowTabDragGhost(TabViewModel tab)
+    private void ShowTabDragGhost(TabViewModel tab, double draggedWidth,
+        double grabRatio, double grabRatioY)
     {
         HideTabDragGhost();
-        double width = Math.Clamp(_tabDragCandidateContainer?.ActualWidth ?? 154, 112, 220);
+        double minimumWidth = tab.IsPinned ? 46 : 92;
+        double width = Math.Clamp(draggedWidth, minimumWidth, 208);
+        _tabDragGhostPointerOffsetX = Math.Clamp(grabRatio, 0, 1) * width;
+        _tabDragGhostPointerOffsetY = Math.Clamp(grabRatioY, 0, 1) * 34;
+        _tabDragGhostCursorX = int.MinValue;
+        _tabDragGhostCursorY = int.MinValue;
+        _tabDragGhostLockedBar = null;
         var row = new DockPanel { LastChildFill = true };
         if (TryFindResource("Ic.folder") is Geometry folder)
             row.Children.Add(new System.Windows.Shapes.Path
@@ -645,7 +1006,7 @@ public partial class PaneView : UserControl
             });
         row.Children.Add(new TextBlock
         {
-            Text = tab.Title,
+            Text = tab.TopLevelTitle,
             Foreground = (Brush)FindResource("Text"),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -667,24 +1028,13 @@ public partial class PaneView : UserControl
                 BorderBrush = (Brush)FindResource("AccentLine"),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8, 8, 3, 3),
-                Effect = new DropShadowEffect
-                {
-                    Color = Colors.Black,
-                    Opacity = 0.55,
-                    BlurRadius = 18,
-                    ShadowDepth = 4,
-                },
                 Child = row,
             },
         };
         _tabDragPopup.Opened += TabDragPopup_Opened;
-        if (GetCursorPos(out var cursor))
-        {
-            Point screen = DevicePixelsToDips(new Point(cursor.X, cursor.Y));
-            _tabDragPopup.HorizontalOffset = screen.X - 24;
-            _tabDragPopup.VerticalOffset = screen.Y - 18;
-        }
+        if (GetCursorPos(out var cursor)) UpdateTabDragGhostPosition(cursor);
         _tabDragPopup.IsOpen = true;
+        EnsureTabDragRendering();
     }
 
     private void TabDragPopup_Opened(object? sender, EventArgs e)
@@ -692,6 +1042,9 @@ public partial class PaneView : UserControl
         if (_tabDragPopup?.Child is not Visual child) return;
         _tabDragPopupSource = PresentationSource.FromVisual(child) as HwndSource;
         _tabDragPopupSource?.AddHook(TabDragPopupWndProc);
+        _tabDragGhostCursorX = int.MinValue;
+        _tabDragGhostCursorY = int.MinValue;
+        if (GetCursorPos(out var cursor)) UpdateTabDragGhostPosition(cursor);
     }
 
     private static IntPtr TabDragPopupWndProc(
@@ -713,14 +1066,15 @@ public partial class PaneView : UserControl
         _tabDragPopup.IsOpen = false;
         _tabDragPopup.Child = null;
         _tabDragPopup = null;
+        _tabDragGhostCursorX = int.MinValue;
+        _tabDragGhostCursorY = int.MinValue;
+        _tabDragGhostLockedBar = null;
+        StopTabDragRenderingIfIdle();
     }
 
     private void TabBar_GiveFeedback(object sender, GiveFeedbackEventArgs e)
     {
-        if (_tabDragPopup is null || !GetCursorPos(out var p)) return;
-        Point screen = DevicePixelsToDips(new Point(p.X, p.Y));
-        _tabDragPopup.HorizontalOffset = screen.X - 24;
-        _tabDragPopup.VerticalOffset = screen.Y - 18;
+        if (_tabDragPopup is null) return;
         e.UseDefaultCursors = false;
         Mouse.SetCursor(Cursors.Hand);
         e.Handled = true;
@@ -733,6 +1087,7 @@ public partial class PaneView : UserControl
 
     private void TabClose_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        ClearTabDragCandidate();
         var bar = IsWithin(sender as DependencyObject, GroupTabBar) ? GroupTabBar : TabBar;
         FindVisualChild<AdaptiveTabPanel>(bar)?.LockCurrentWidths();
     }
@@ -740,11 +1095,13 @@ public partial class PaneView : UserControl
     private void TabClose_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var bar = IsWithin(sender as DependencyObject, GroupTabBar) ? GroupTabBar : TabBar;
-        // Let the Button click remove the tab, then release the temporary width lock
-        // almost immediately. This keeps a second close click stable without making
-        // an overflowing strip wait for MouseLeave before it expands again.
-        Dispatcher.BeginInvoke(() => FindVisualChild<AdaptiveTabPanel>(bar)?.UnlockWidths(),
-            DispatcherPriority.Input);
+        // Keep compressed tabs at the same width while the pointer stays in the strip,
+        // matching browser tab bars: the next close button remains under the cursor
+        // instead of expanding sideways during the removal animation.
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!bar.IsMouseOver) FindVisualChild<AdaptiveTabPanel>(bar)?.UnlockWidths();
+        }, DispatcherPriority.Loaded);
     }
 
     private void TabBar_MouseLeave(object sender, MouseEventArgs e) =>
@@ -768,16 +1125,11 @@ public partial class PaneView : UserControl
         return source?.CompositionTarget?.TransformFromDevice.Transform(point) ?? point;
     }
 
-    private bool CursorIsOutsideOwner(POINT cursor)
+    private bool CursorIsOutsideTabStrip(POINT cursor, ListBox sourceBar)
     {
-        var owner = _ownerWindow ?? Window.GetWindow(this);
-        if (owner is null) return false;
         try
         {
-            Point topLeft = owner.PointToScreen(new Point(0, 0));
-            Point bottomRight = owner.PointToScreen(new Point(owner.ActualWidth, owner.ActualHeight));
-            return cursor.X < topLeft.X || cursor.X > bottomRight.X
-                || cursor.Y < topLeft.Y || cursor.Y > bottomRight.Y;
+            return !PointIsInsideTabStripMagneticBand(sourceBar, cursor);
         }
         catch
         {
@@ -1387,108 +1739,87 @@ public partial class PaneView : UserControl
         if (_dropTarget is not null) _dropTarget.IsDropTarget = true;
     }
 
-    private void FileList_Drop(object sender, DragEventArgs e)
+    private async void FileList_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
         SetDropTarget(null);   // clear the hover highlight
         if (_tab is null || !_tab.IsFolderView) return;
+        var tab = _tab;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
 
         string dest = DropTargetDir(e);
         if (string.IsNullOrEmpty(dest)) return;
 
         bool move = ComputeDropEffect(e) == DragDropEffects.Move;
-        string? err = FileDropService.Perform(files, dest, move);
+        string? err = await FileDropService.Perform(files, dest, move, Window.GetWindow(this));
         if (err is not null) SetStatus($"⚠️ {err}");
-        _ = _tab.ReloadAfterOperationAsync();
+        _ = tab.ReloadAfterOperationAsync();
     }
 
     // ===================== Drop onto a tab header =====================
     // Drops the dragged files into that tab's folder (move/copy by the same rules).
     private TabViewModel? _tabDropTarget;
 
-    private static bool TryResolveTabDrag(
-        IDataObject data, out PaneViewModel? sourcePane, out TabViewModel? tab)
+    private static bool TryResolveTabDrag(IDataObject data, out TabDragPayload? payload)
     {
-        sourcePane = null;
-        tab = null;
+        payload = null;
         if (!data.GetDataPresent(TabDragTokenFormat)
             || data.GetData(TabDragTokenFormat) is not string token
-            || !ActiveTabDrags.TryGetValue(token, out var payload))
+            || !ActiveTabDrags.TryGetValue(token, out var resolved))
             return false;
 
-        sourcePane = payload.SourcePane;
-        tab = payload.Tab;
+        payload = resolved;
         return true;
+    }
+
+    private bool IsValidTabDrop(TabDragPayload payload, ListBox bar) =>
+        _vm is not null
+        && (!ReferenceEquals(bar, GroupTabBar)
+            || (!payload.IsGroupDrag && !payload.Tab.IsPinned));
+
+    private void UpdateTabGroupHoverIntent(
+        TabDragPayload payload, ListBox bar, Point pointer)
+    {
+        var dragged = payload.Tab;
+        var stableSlot = TabDragSlotAt(pointer.X);
+        var target = stableSlot?.Tab;
+        bool groupRow = ReferenceEquals(bar, GroupTabBar);
+        bool alreadyInSameGroup = dragged.GroupId is { Length: > 0 } draggedGroupId
+            && draggedGroupId == target?.GroupId;
+        if (target is null || dragged.IsPinned || payload.IsGroupDrag
+            || ReferenceEquals(dragged, target) || alreadyInSameGroup)
+        {
+            ResetTabGroupHover();
+            SetTabGroupTarget(null, null);
+            return;
+        }
+
+        if (groupRow && target.IsGrouped)
+        {
+            ResetTabGroupHover();
+            SetTabGroupTarget(dragged, target);
+            return;
+        }
+
+        double ratio = (pointer.X - stableSlot!.X) / stableSlot.Width;
+        if (ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio)
+        {
+            BeginTabGroupHover(dragged, target, bar);
+            return;
+        }
+
+        ResetTabGroupHover();
+        SetTabGroupTarget(null, null);
     }
 
     private void TabBar_DragOver(object sender, DragEventArgs e)
     {
-        if (TryResolveTabDrag(e.Data, out var sourcePane, out var dragged))
+        if (TryResolveTabDrag(e.Data, out var payload) && payload is not null)
         {
             var dragBar = sender as ListBox ?? TabBar;
-            if (ReferenceEquals(dragBar, TabBar)) EnsureTopLevelTabDragSlots();
-            Point pointer = e.GetPosition(dragBar);
-            var stableSlot = ReferenceEquals(sourcePane, _vm) && ReferenceEquals(dragBar, TabBar)
-                ? TabDragSlotAt(pointer.X)
-                : null;
-            var target = stableSlot?.Tab ?? TabUnder(e.OriginalSource);
-            bool valid = dragged is not null && sourcePane is not null
-                && (target is null || dragged.IsPinned == target.IsPinned);
+            bool valid = IsValidTabDrop(payload, dragBar);
             e.Effects = valid ? DragDropEffects.Move : DragDropEffects.None;
             SetTabDropTarget(null);
-            bool waitingToGroup = false;
-            bool alreadyInSameGroup = dragged?.GroupId is { Length: > 0 } draggedGroupId
-                && draggedGroupId == target?.GroupId;
-            if (valid && dragged is not null && target is not null && !dragged.IsPinned
-                && !ReferenceEquals(dragged, target) && !alreadyInSameGroup)
-            {
-                double? ratio = stableSlot is not null
-                    ? (pointer.X - stableSlot.X) / stableSlot.Width
-                    : TabContainer(e.OriginalSource) is { ActualWidth: > 0 } targetBox
-                        ? e.GetPosition(targetBox).X / targetBox.ActualWidth
-                        : null;
-                if (ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio)
-                {
-                    waitingToGroup = true;
-                    BeginTabGroupHover(dragged, target);
-                }
-                else
-                {
-                    ResetTabGroupHover();
-                    SetTabGroupTarget(null, null);
-                }
-            }
-            else
-            {
-                ResetTabGroupHover();
-                SetTabGroupTarget(null, null);
-            }
-
-            // Preview ordinary same-pane reordering as a ghost. The live collection stays
-            // untouched until drop, so the dragged tab can always return to its origin.
-            if (valid && !waitingToGroup && ReferenceEquals(sourcePane, _vm)
-                && dragged is not null && target is not null && stableSlot is not null
-                && dragged.IsGrouped)
-            {
-                PreviewGroupedTabMove(dragged, stableSlot,
-                    pointer.X - stableSlot.X >= stableSlot.Width / 2);
-            }
-            else if (valid && !waitingToGroup && ReferenceEquals(sourcePane, _vm)
-                && dragged is not null && target is not null
-                && !ReferenceEquals(dragged, target) && !target.IsGrouped && stableSlot is not null)
-            {
-                var display = _tabDragSlots.Select(slot => slot.Tab).ToList();
-                int targetIndex = display.IndexOf(target);
-                if (pointer.X - stableSlot.X >= stableSlot.Width / 2) targetIndex++;
-                int sourceIndex = display.IndexOf(dragged);
-                if (sourceIndex >= 0 && sourceIndex < targetIndex) targetIndex--;
-                PreviewTabMove(dragged, targetIndex);
-            }
-            else
-            {
-                ClearTabDragPreview();
-            }
             e.Handled = true;
             return;
         }
@@ -1512,88 +1843,22 @@ public partial class PaneView : UserControl
                 return;
         }
         SetTabDropTarget(null);
-        if (e.Data.GetDataPresent(TabDragTokenFormat))
+        if (TryResolveTabDrag(e.Data, out var payload) && payload is not null)
         {
-            ClearTabDragPreview();
-            ResetTabGroupHover();
-            SetTabGroupTarget(null, null);
+            if (GetCursorPos(out var cursor)) payload.Owner.UpdateOwnedTabDragPreview(cursor);
         }
     }
 
-    private void TabBar_Drop(object sender, DragEventArgs e)
+    private async void TabBar_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
-        if (TryResolveTabDrag(e.Data, out var sourcePane, out var dragged))
+        if (TryResolveTabDrag(e.Data, out var payload) && payload is not null)
         {
             var dropBar = sender as ListBox ?? TabBar;
             Point pointer = e.GetPosition(dropBar);
-            var stableSlot = ReferenceEquals(sourcePane, _vm) && ReferenceEquals(dropBar, TabBar)
-                ? TabDragSlotAt(pointer.X)
-                : null;
-            var target = stableSlot?.Tab ?? TabUnder(e.OriginalSource);
-            int previewIndex = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewIndex : -1;
-            var previewTarget = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewTarget : null;
-            bool previewAfter = _tabPreviewAfter;
-            double? stableRatio = stableSlot is null ? null : (pointer.X - stableSlot.X) / stableSlot.Width;
-            ClearTabDragPreview();
-            if (_vm is not null && sourcePane is not null && dragged is not null
-                && (target is null || dragged.IsPinned == target.IsPinned))
-            {
-                bool groupDrop = ReferenceEquals(_tabGroupSource, dragged)
-                    && ReferenceEquals(_tabGroupTarget, target);
-                if (!ReferenceEquals(sourcePane, _vm))
-                {
-                    int targetIndex = target is null ? _vm.Tabs.Count : _vm.Tabs.IndexOf(target);
-                    if (!groupDrop && target is not null
-                        && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } foreignBox
-                        && e.GetPosition(foreignBox).X >= foreignBox.ActualWidth / 2)
-                        targetIndex++;
-                    if (_vm.TransferTabFrom(sourcePane, dragged, targetIndex,
-                            activate: true, preserveGroup: false)
-                        && groupDrop)
-                        _vm.GroupTabs(dragged, target);
-                }
-                else
-                {
-                    if (groupDrop)
-                    {
-                        _vm.GroupTabs(dragged, target);
-                    }
-                    else if (dragged.IsGrouped)
-                    {
-                        var moveTarget = previewTarget ?? target;
-                        bool dropsAfter = previewTarget is not null
-                            ? previewAfter
-                            : stableRatio is double ratio
-                                ? ratio >= 0.5
-                                : target is not null
-                                  && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } groupedBox
-                                  && e.GetPosition(groupedBox).X >= groupedBox.ActualWidth / 2;
-                        _vm.MoveTabOutOfGroup(dragged, moveTarget, dropsAfter);
-                    }
-                    else
-                    {
-                        int targetIndex = previewIndex;
-                        if (targetIndex < 0)
-                        {
-                            targetIndex = target is null ? _vm.Tabs.Count - 1 : _vm.Tabs.IndexOf(target);
-                            bool dropsAfter = stableRatio is double ratio
-                                ? ratio >= 0.5
-                                : target is not null
-                                  && TabContainer(e.OriginalSource) is { ActualWidth: > 0 } box
-                                  && e.GetPosition(box).X >= box.ActualWidth / 2;
-                            if (target is not null && dropsAfter) targetIndex++;
-                            int sourceIndex = _vm.Tabs.IndexOf(dragged);
-                            if (sourceIndex >= 0 && sourceIndex < targetIndex) targetIndex--;
-                        }
-                        MoveTabWithAnimation(dragged, targetIndex);
-                    }
-                }
-                e.Effects = DragDropEffects.Move;
-            }
-            SetTabGroupTarget(null, null);
-            ResetTabGroupHover();
-            SetTabDropTarget(null);
+            e.Effects = CompleteTabDrop(payload, dropBar, pointer)
+                ? DragDropEffects.Move
+                : DragDropEffects.None;
             return;
         }
 
@@ -1603,20 +1868,125 @@ public partial class PaneView : UserControl
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
 
         bool move = FileDropService.EffectFor(files, tab.CurrentPath, e.KeyStates) == DragDropEffects.Move;
-        string? err = FileDropService.Perform(files, tab.CurrentPath, move);
+        string? err = await FileDropService.Perform(files, tab.CurrentPath, move, Window.GetWindow(this));
         if (err is not null) SetStatus($"⚠️ {err}");
         _ = tab.ReloadAfterOperationAsync();
         if (_tab is not null && !ReferenceEquals(_tab, tab))
             _ = _tab.ReloadAfterOperationAsync();   // source tab is now stale
     }
 
+    private bool CompleteTabDrop(TabDragPayload payload, ListBox dropBar, Point pointer)
+    {
+        payload.Owner.StopOwnedTabDragTracking();
+        EnsureTabDragSlots(dropBar);
+        bool valid = IsValidTabDrop(payload, dropBar);
+        if (!valid)
+        {
+            ClearTabDragPreview();
+            ResetTabGroupHover();
+            SetTabGroupTarget(null, null);
+            SetTabDropTarget(null);
+            return false;
+        }
+
+        var sourcePane = payload.SourcePane;
+        var dragged = payload.Tab;
+        bool groupRow = ReferenceEquals(dropBar, GroupTabBar);
+        var stableSlot = TabDragSlotAt(pointer.X);
+        var target = stableSlot?.Tab;
+        UpdateTabGroupHoverIntent(payload, dropBar, pointer);
+        UpdateTabDragPreview(payload, dropBar, pointer);
+        var previewTarget = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewTarget : null;
+        bool previewAfter = _tabPreviewAfter;
+        double? stableRatio = stableSlot is null
+            ? null
+            : (pointer.X - stableSlot.X) / stableSlot.Width;
+        if (ReferenceEquals(_tabPreviewSource, dragged))
+            PrepareTabLayoutAnimation(includeRenderTransforms: true);
+        ClearTabDragPreview();
+
+        bool centeredOnTarget = stableRatio is >= TabGroupHoverStartRatio
+            and <= TabGroupHoverEndRatio;
+        bool groupDrop = !payload.IsGroupDrag && !dragged.IsPinned
+            && target is not null && !ReferenceEquals(dragged, target)
+            && dragged.GroupId != target.GroupId
+            && ((groupRow && target.IsGrouped)
+                || (ReferenceEquals(_tabGroupSource, dragged)
+                    && ReferenceEquals(_tabGroupTarget, target)));
+        var moveTarget = previewTarget ?? target;
+        bool dropsAfter = previewTarget is not null
+            ? previewAfter
+            : stableRatio is double ratio && ratio >= 0.5;
+
+        if (_vm is not null)
+        {
+            if (payload.IsGroupDrag)
+            {
+                if (ReferenceEquals(sourcePane, _vm))
+                    _vm.MoveGroupBesideTopLevel(dragged, moveTarget, dropsAfter);
+                else
+                    _vm.TransferGroupFrom(sourcePane, dragged,
+                        _vm.GetTopLevelInsertionIndex(moveTarget, dropsAfter), activate: false);
+            }
+            else if (!ReferenceEquals(sourcePane, _vm))
+            {
+                int targetIndex = _vm.GetTopLevelInsertionIndex(moveTarget, dropsAfter);
+                if (_vm.TransferTabFrom(sourcePane, dragged, targetIndex,
+                        activate: false, preserveGroup: false))
+                {
+                    if (groupRow && moveTarget?.IsGrouped == true)
+                        _vm.MoveTabIntoGroup(dragged, moveTarget, dropsAfter, activate: false);
+                    else if (groupDrop)
+                        _vm.GroupTabs(dragged, target, activate: false);
+                }
+            }
+            else if (groupRow)
+            {
+                if (moveTarget?.IsGrouped == true)
+                {
+                    if (dragged.GroupId == moveTarget.GroupId)
+                        _vm.MoveTabWithinGroup(dragged, moveTarget, dropsAfter);
+                    else
+                        _vm.MoveTabIntoGroup(dragged, moveTarget, dropsAfter, activate: false);
+                }
+            }
+            else if (groupDrop)
+            {
+                _vm.GroupTabs(dragged, target, activate: false);
+            }
+            else if (dragged.IsGrouped && target?.GroupId == dragged.GroupId
+                && centeredOnTarget)
+            {
+                // Dropping a child back on its own group header keeps it in the group.
+            }
+            else if (dragged.IsGrouped)
+            {
+                _vm.MoveTabOutOfGroup(dragged, moveTarget, dropsAfter, activate: false);
+            }
+            else
+            {
+                _vm.MoveTabBesideTopLevel(dragged, moveTarget, dropsAfter);
+            }
+
+            ScheduleTabLayoutAnimation();
+            if (_vm.Tabs.Contains(dragged)) payload.DestinationPane = _vm;
+        }
+
+        SetTabGroupTarget(null, null);
+        ResetTabGroupHover();
+        SetTabDropTarget(null);
+        return true;
+    }
+
     private void SetTabGroupTarget(TabViewModel? source, TabViewModel? target)
     {
+        if (ReferenceEquals(_tabGroupSource, source)
+            && ReferenceEquals(_tabGroupTarget, target))
+            return;
         if (_tabGroupSource is not null) _tabGroupSource.IsGroupDropTarget = false;
         if (_tabGroupTarget is not null) _tabGroupTarget.IsGroupDropTarget = false;
         _tabGroupSource = source;
         _tabGroupTarget = target;
-        if (_tabGroupSource is not null) _tabGroupSource.IsGroupDropTarget = true;
         if (_tabGroupTarget is not null) _tabGroupTarget.IsGroupDropTarget = true;
     }
 
@@ -1625,18 +1995,21 @@ public partial class PaneView : UserControl
         _tabGroupHoverTimer?.Stop();
         _tabGroupHoverCandidate = null;
         _tabGroupHoverSource = null;
+        _tabGroupHoverBar = null;
     }
 
-    private void BeginTabGroupHover(TabViewModel source, TabViewModel target)
+    private void BeginTabGroupHover(TabViewModel source, TabViewModel target, ListBox bar)
     {
         if (ReferenceEquals(_tabGroupHoverSource, source)
-            && ReferenceEquals(_tabGroupHoverCandidate, target))
+            && ReferenceEquals(_tabGroupHoverCandidate, target)
+            && ReferenceEquals(_tabGroupHoverBar, bar))
             return;
 
         ResetTabGroupHover();
         SetTabGroupTarget(null, null);
         _tabGroupHoverSource = source;
         _tabGroupHoverCandidate = target;
+        _tabGroupHoverBar = bar;
         _tabGroupHoverTimer ??= CreateTabGroupHoverTimer();
         _tabGroupHoverTimer.Interval = TabGroupHoverDelay;
         _tabGroupHoverTimer.Start();
@@ -1654,10 +2027,12 @@ public partial class PaneView : UserControl
         _tabGroupHoverTimer?.Stop();
         var source = _tabGroupHoverSource;
         var target = _tabGroupHoverCandidate;
+        var bar = _tabGroupHoverBar;
         var slot = target is null
             ? null
             : _tabDragSlots.FirstOrDefault(candidate => ReferenceEquals(candidate.Tab, target));
-        if (source is null || target is null || slot is null || !GetCursorPos(out var cursor))
+        if (source is null || target is null || bar is null || slot is null
+            || !GetCursorPos(out var cursor))
         {
             ResetTabGroupHover();
             SetTabGroupTarget(null, null);
@@ -1666,9 +2041,9 @@ public partial class PaneView : UserControl
 
         try
         {
-            Point pointer = TabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+            Point pointer = bar.PointFromScreen(new Point(cursor.X, cursor.Y));
             double ratio = (pointer.X - slot.X) / slot.Width;
-            bool stillCentered = pointer.Y >= 0 && pointer.Y <= TabBar.ActualHeight
+            bool stillCentered = pointer.Y >= 0 && pointer.Y <= bar.ActualHeight
                 && ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio;
             if (stillCentered)
             {
@@ -1685,95 +2060,200 @@ public partial class PaneView : UserControl
         SetTabGroupTarget(null, null);
     }
 
-    private void PreviewTabMove(TabViewModel dragged, int targetIndex)
+    private void UpdateTabDragPreview(TabDragPayload payload, ListBox bar, Point pointer)
     {
-        if (_vm is null || _tabDragSlots.Count == 0) return;
-        var display = _tabDragSlots.Select(slot => slot.Tab).ToList();
-        int sourceIndex = display.IndexOf(dragged);
-        if (sourceIndex < 0) return;
-        targetIndex = Math.Clamp(targetIndex, 0, display.Count - 1);
-        if (sourceIndex == targetIndex)
+        if (_tabDragSlots.Count == 0)
         {
-            ClearTabDragPreview();
+            ClearTabDragPreview(animateBack: true);
             return;
         }
-        if (ReferenceEquals(_tabPreviewSource, dragged) && _tabPreviewIndex == targetIndex) return;
 
-        var reordered = display.ToList();
-        reordered.RemoveAt(sourceIndex);
-        reordered.Insert(targetIndex, dragged);
-        var slotsByTab = _tabDragSlots.ToDictionary(slot => slot.Tab);
-        for (int index = 0; index < reordered.Count; index++)
+        var dragged = payload.Tab;
+        TabDragSlot? draggedSlot = null;
+        foreach (var slot in _tabDragSlots)
         {
-            var candidate = reordered[index];
-            var original = slotsByTab[candidate];
-            double destination = _tabDragSlots[index].X;
-            original.Container.RenderTransform = new TranslateTransform(destination - original.X, 0);
+            if (!ReferenceEquals(slot.Tab, dragged)) continue;
+            draggedSlot = slot;
+            break;
+        }
+        bool groupChildEnteringTopRow = ReferenceEquals(bar, TabBar)
+            && payload.StartedInGroupRow && dragged.IsGrouped;
+        bool occupiesRow = draggedSlot is not null && !groupChildEnteringTopRow;
+        _tabPreviewRemainingSlots.Clear();
+        foreach (var slot in _tabDragSlots)
+        {
+            if (!occupiesRow || !ReferenceEquals(slot, draggedSlot))
+                _tabPreviewRemainingSlots.Add(slot);
+        }
+        var remaining = _tabPreviewRemainingSlots;
+
+        double previewWidth = PreviewDraggedTabWidth(payload, bar, draggedSlot, occupiesRow);
+        double projectedLeft = pointer.X - Math.Clamp(payload.GrabRatio, 0, 1) * previewWidth;
+        int minimumIndex = 0;
+        int maximumIndex = remaining.Count;
+        if (ReferenceEquals(bar, TabBar))
+        {
+            int pinnedCount = 0;
+            foreach (var slot in remaining)
+                if (slot.Tab.IsPinned) pinnedCount++;
+            if (dragged.IsPinned) maximumIndex = pinnedCount;
+            else minimumIndex = pinnedCount;
         }
 
+        int candidateIndex = FindClosestTabInsertionIndex(
+            projectedLeft, remaining, occupiesRow, minimumIndex, maximumIndex);
+        bool continuingPreview = ReferenceEquals(_tabPreviewSource, dragged)
+            && ReferenceEquals(_tabDragSlotBar, bar) && _tabPreviewIndex >= 0;
+        int previewIndex = continuingPreview
+            ? Math.Clamp(_tabPreviewIndex, minimumIndex, maximumIndex)
+            : candidateIndex;
+
+        if (continuingPreview && candidateIndex != previewIndex)
+        {
+            double threshold = Math.Clamp(
+                previewWidth / StandardTabWidth * TabReorderHysteresis, 4, TabReorderHysteresis);
+            if (!double.IsNaN(_tabPreviewLastReorderPointerX)
+                && Math.Abs(pointer.X - _tabPreviewLastReorderPointerX) <= threshold)
+                candidateIndex = previewIndex;
+        }
+
+        if (!continuingPreview || candidateIndex != previewIndex)
+            _tabPreviewLastReorderPointerX = pointer.X;
+        previewIndex = candidateIndex;
+
+        _tabPreviewReturning = false;
+        if (occupiesRow && draggedSlot is not null)
+        {
+            for (int index = 0; index < _tabDragSlots.Count; index++)
+            {
+                var slot = index == previewIndex
+                    ? draggedSlot
+                    : remaining[index < previewIndex ? index : index - 1];
+                SetTabPreviewOffset(slot.Container, _tabDragSlots[index].X - slot.X);
+            }
+            SetTabPreviewHiddenContainer(draggedSlot.Container);
+        }
+        else
+        {
+            for (int index = 0; index < remaining.Count; index++)
+            {
+                var slot = remaining[index];
+                SetTabPreviewOffset(slot.Container, index >= previewIndex ? previewWidth : 0);
+            }
+            SetTabPreviewHiddenContainer(null);
+        }
+
+        if (remaining.Count == 0)
+        {
+            _tabPreviewTarget = dragged;
+            _tabPreviewAfter = false;
+        }
+        else if (previewIndex < remaining.Count)
+        {
+            _tabPreviewTarget = remaining[previewIndex].Tab;
+            _tabPreviewAfter = false;
+        }
+        else
+        {
+            _tabPreviewTarget = remaining[^1].Tab;
+            _tabPreviewAfter = true;
+        }
         _tabPreviewSource = dragged;
-        _tabPreviewTarget = null;
-        _tabPreviewAfter = false;
-        _tabPreviewIndex = targetIndex;
-        EnsureTabInsertionAdorner();
-        if (_tabInsertionAdorner is not null)
-            _tabInsertionAdorner.X = _tabDragSlots[targetIndex].X;
+        _tabPreviewIndex = previewIndex;
+        EnsureTabDragRendering();
     }
 
-    private void PreviewGroupedTabMove(TabViewModel dragged, TabDragSlot targetSlot, bool after)
+    private double PreviewDraggedTabWidth(TabDragPayload payload, ListBox bar,
+        TabDragSlot? draggedSlot, bool occupiesRow)
     {
-        if (ReferenceEquals(_tabPreviewSource, dragged)
-            && ReferenceEquals(_tabPreviewTarget, targetSlot.Tab)
-            && _tabPreviewAfter == after)
-            return;
+        if (occupiesRow && draggedSlot is not null) return draggedSlot.Width;
+        double totalWidth = 0;
+        int compatibleCount = 0;
+        foreach (var slot in _tabDragSlots)
+        {
+            if (ReferenceEquals(bar, TabBar)
+                && slot.Tab.IsPinned != payload.Tab.IsPinned)
+                continue;
+            totalWidth += slot.Width;
+            compatibleCount++;
+        }
+        return compatibleCount > 0
+            ? totalWidth / compatibleCount
+            : Math.Max(1, payload.DraggedWidth);
+    }
 
-        ClearTabDragPreview();
-        _tabPreviewSource = dragged;
-        _tabPreviewTarget = targetSlot.Tab;
-        _tabPreviewAfter = after;
-        EnsureTabInsertionAdorner();
-        if (_tabInsertionAdorner is not null)
-            _tabInsertionAdorner.X = targetSlot.X + (after ? targetSlot.Width : 0);
+    private int FindClosestTabInsertionIndex(double projectedLeft,
+        IReadOnlyList<TabDragSlot> remaining, bool occupiesRow,
+        int minimumIndex, int maximumIndex)
+    {
+        minimumIndex = Math.Clamp(minimumIndex, 0, remaining.Count);
+        maximumIndex = Math.Clamp(maximumIndex, minimumIndex, remaining.Count);
+        int closestIndex = minimumIndex;
+        double closestDistance = double.MaxValue;
+        for (int index = minimumIndex; index <= maximumIndex; index++)
+        {
+            double insertionX;
+            if (occupiesRow)
+            {
+                insertionX = _tabDragSlots[Math.Min(index, _tabDragSlots.Count - 1)].X;
+            }
+            else if (remaining.Count == 0)
+            {
+                insertionX = 0;
+            }
+            else if (index == remaining.Count)
+            {
+                insertionX = remaining[^1].X + remaining[^1].Width;
+            }
+            else
+            {
+                insertionX = remaining[index].X;
+            }
+
+            double distance = Math.Abs(projectedLeft - insertionX);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestIndex = index;
+            }
+        }
+        return closestIndex;
     }
 
     private void CaptureTabDragSlots(ListBox sourceBar)
     {
         _tabDragSlots.Clear();
-        if (!ReferenceEquals(sourceBar, TabBar) || _vm is null) return;
-        foreach (var tab in _vm.TopLevelTabs)
+        _tabDragSlotBar = sourceBar;
+        foreach (var tab in sourceBar.Items.OfType<TabViewModel>())
         {
-            if (TabBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container)
+            if (sourceBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container)
             {
                 _tabDragSlots.Clear();
                 return;
             }
             _tabDragSlots.Add(new TabDragSlot(tab, container,
-                container.TranslatePoint(new Point(), TabBar).X,
+                TabLayoutX(container, sourceBar),
                 Math.Max(1, container.ActualWidth)));
         }
     }
 
-    private void EnsureTopLevelTabDragSlots()
+    private void EnsureTabDragSlots(ListBox bar)
     {
-        if (_vm is null) return;
-        var topLevelTabs = _vm.TopLevelTabs;
-        if (_tabDragSlots.Count == topLevelTabs.Count
-            && _tabDragSlots.Select(slot => slot.Tab).SequenceEqual(topLevelTabs))
-            return;
+        if (ReferenceEquals(_tabDragSlotBar, bar)
+            && _tabDragSlots.Count == bar.Items.Count)
+        {
+            bool unchanged = true;
+            for (int index = 0; index < _tabDragSlots.Count; index++)
+            {
+                if (ReferenceEquals(_tabDragSlots[index].Tab, bar.Items[index])) continue;
+                unchanged = false;
+                break;
+            }
+            if (unchanged) return;
+        }
 
         ClearTabDragPreview();
-        _tabDragSlots.Clear();
-        foreach (var tab in topLevelTabs)
-        {
-            if (TabBar.ItemContainerGenerator.ContainerFromItem(tab) is not ListBoxItem container)
-            {
-                _tabDragSlots.Clear();
-                return;
-            }
-            _tabDragSlots.Add(new TabDragSlot(tab, container,
-                container.TranslatePoint(new Point(), TabBar).X,
-                Math.Max(1, container.ActualWidth)));
-        }
+        CaptureTabDragSlots(bar);
     }
 
     private TabDragSlot? TabDragSlotAt(double x)
@@ -1785,60 +2265,438 @@ public partial class PaneView : UserControl
         return _tabDragSlots[^1];
     }
 
-    private void EnsureTabInsertionAdorner()
+    private void SetTabPreviewOffset(ListBoxItem container, double target)
     {
-        if (_tabInsertionAdorner is not null) return;
-        var layer = AdornerLayer.GetAdornerLayer(TabBar);
-        if (layer is null) return;
-        _tabInsertionAdorner = new TabInsertionAdorner(TabBar);
-        layer.Add(_tabInsertionAdorner);
+        if (!_tabPreviewMotions.TryGetValue(container, out var motion))
+        {
+            double current = HorizontalTransformOffset(container.RenderTransform);
+            var transform = new TranslateTransform(current, 0);
+            container.RenderTransform = transform;
+            motion = new TabPreviewMotion(transform, target);
+            _tabPreviewMotions.Add(container, motion);
+        }
+        else
+        {
+            motion.Target = target;
+        }
+
+        if (!TabAnimationsEnabled) motion.Transform.X = target;
     }
 
-    private void ClearTabDragPreview()
+    private void SetTabPreviewHiddenContainer(ListBoxItem? container)
     {
-        if (_tabPreviewSource is null && _tabInsertionAdorner is null) return;
-        foreach (var slot in _tabDragSlots) slot.Container.RenderTransform = null;
-        if (_tabInsertionAdorner is not null)
+        if (ReferenceEquals(_tabPreviewHiddenContainer, container)) return;
+        RestoreTabPreviewHiddenContainer();
+        if (container is null) return;
+        _tabPreviewHiddenContainer = container;
+        _tabPreviewHiddenOpacity = container.ReadLocalValue(OpacityProperty);
+        container.SetCurrentValue(OpacityProperty, 0d);
+    }
+
+    private void RestoreTabPreviewHiddenContainer()
+    {
+        if (_tabPreviewHiddenContainer is null) return;
+        if (ReferenceEquals(_tabPreviewHiddenOpacity, DependencyProperty.UnsetValue))
+            _tabPreviewHiddenContainer.ClearValue(OpacityProperty);
+        else
+            _tabPreviewHiddenContainer.SetValue(OpacityProperty, _tabPreviewHiddenOpacity);
+        _tabPreviewHiddenContainer = null;
+        _tabPreviewHiddenOpacity = DependencyProperty.UnsetValue;
+    }
+
+    private static bool TryFindTabDragSurface(POINT cursor,
+        PaneView? preferredPane, ListBox? preferredBar,
+        out PaneView pane, out ListBox bar, out Point barPoint)
+    {
+        const uint GaRoot = 2;
+        const uint GwHwndNext = 2;
+        IntPtr windowAtCursor = WindowFromPoint(cursor);
+        IntPtr root = GetAncestor(windowAtCursor, GaRoot);
+        for (int depth = 0; depth < 4 && root != IntPtr.Zero; depth++)
         {
-            AdornerLayer.GetAdornerLayer(TabBar)?.Remove(_tabInsertionAdorner);
-            _tabInsertionAdorner = null;
+            bool dragPopup = false;
+            foreach (var candidate in LoadedPaneViews)
+            {
+                if (candidate._tabDragPopupSource?.Handle != root) continue;
+                dragPopup = true;
+                break;
+            }
+            if (!dragPopup) break;
+            windowAtCursor = GetWindow(root, GwHwndNext);
+            root = GetAncestor(windowAtCursor, GaRoot);
         }
+
+        foreach (var candidate in LoadedPaneViews)
+        {
+            var window = Window.GetWindow(candidate);
+            if (window is null || new WindowInteropHelper(window).Handle != root
+                || !candidate.TryGetTabDragSurface(
+                    cursor,
+                    ReferenceEquals(candidate, preferredPane) ? preferredBar : null,
+                    out bar, out barPoint))
+                continue;
+            pane = candidate;
+            return true;
+        }
+
+        PaneView? fallbackPane = null;
+        ListBox? fallbackBar = null;
+        Point fallbackPoint = default;
+        foreach (var candidate in LoadedPaneViews)
+        {
+            if (!candidate.TryGetTabDragSurface(
+                    cursor,
+                    ReferenceEquals(candidate, preferredPane) ? preferredBar : null,
+                    out var candidateBar, out var candidatePoint))
+                continue;
+            if (Window.GetWindow(candidate)?.IsActive == true)
+            {
+                pane = candidate;
+                bar = candidateBar;
+                barPoint = candidatePoint;
+                return true;
+            }
+            fallbackPane ??= candidate;
+            fallbackBar ??= candidateBar;
+            fallbackPoint = candidatePoint;
+        }
+
+        if (fallbackPane is not null && fallbackBar is not null)
+        {
+            pane = fallbackPane;
+            bar = fallbackBar;
+            barPoint = fallbackPoint;
+            return true;
+        }
+
+        pane = null!;
+        bar = null!;
+        barPoint = default;
+        return false;
+    }
+
+    private bool TryGetTabDragSurface(POINT cursor, ListBox? preferredBar,
+        out ListBox bar, out Point barPoint)
+    {
+        bar = null!;
+        barPoint = default;
+        if (!IsLoaded || !IsVisible) return false;
+        try
+        {
+            if (GroupTabBar.IsVisible && PointIsInside(GroupTabBar, cursor))
+            {
+                bar = GroupTabBar;
+                barPoint = GroupTabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+                return true;
+            }
+            if (TopTabDropSurface.IsVisible && PointIsInside(TopTabDropSurface, cursor))
+            {
+                bar = TabBar;
+                barPoint = TabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+                return true;
+            }
+
+            bool nearGroup = GroupTabBar.IsVisible
+                && PointIsInsideTabStripMagneticBand(GroupTabBar, cursor);
+            bool nearTop = TopTabDropSurface.IsVisible
+                && PointIsInsideTabStripMagneticBand(TopTabDropSurface, cursor);
+            if (!nearGroup && !nearTop) return false;
+
+            if (ReferenceEquals(preferredBar, GroupTabBar) && nearGroup)
+            {
+                bar = GroupTabBar;
+                barPoint = GroupTabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+                return true;
+            }
+            if (ReferenceEquals(preferredBar, TabBar) && nearTop)
+            {
+                bar = TabBar;
+                barPoint = TabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+                return true;
+            }
+
+            if (nearGroup && (!nearTop
+                || VerticalDistanceFromCenter(GroupTabBar, cursor)
+                    < VerticalDistanceFromCenter(TopTabDropSurface, cursor)))
+            {
+                bar = GroupTabBar;
+                barPoint = GroupTabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+                return true;
+            }
+
+            bar = TabBar;
+            barPoint = TabBar.PointFromScreen(new Point(cursor.X, cursor.Y));
+            return true;
+        }
+        catch
+        {
+            // A window can close between the screen hit test and coordinate conversion.
+        }
+        return false;
+    }
+
+    private static bool PointIsInside(FrameworkElement element, POINT cursor)
+    {
+        if (element.ActualWidth < 1 || element.ActualHeight < 1) return false;
+        Point point = element.PointFromScreen(new Point(cursor.X, cursor.Y));
+        return point.X >= 0 && point.X <= element.ActualWidth
+            && point.Y >= 0 && point.Y <= element.ActualHeight;
+    }
+
+    private bool PointIsInsideTabStripMagneticBand(FrameworkElement strip, POINT cursor)
+    {
+        if (strip.ActualWidth < 1 || strip.ActualHeight < 1
+            || ActualWidth < 1 || ActualHeight < 1)
+            return false;
+
+        Point paneTopLeft = PointToScreen(new Point(0, 0));
+        Point paneBottomRight = PointToScreen(new Point(ActualWidth, ActualHeight));
+        Point stripTopLeft = strip.PointToScreen(new Point(0, 0));
+        Point stripBottomRight = strip.PointToScreen(
+            new Point(strip.ActualWidth, strip.ActualHeight));
+        DpiScale dpi = VisualTreeHelper.GetDpi(strip);
+        double horizontalMargin = TabStripHorizontalMagnetism * dpi.DpiScaleX;
+        double verticalMargin = TabStripDetachMagnetism * dpi.DpiScaleY;
+        return cursor.X >= paneTopLeft.X - horizontalMargin
+            && cursor.X <= paneBottomRight.X + horizontalMargin
+            && cursor.Y >= stripTopLeft.Y - verticalMargin
+            && cursor.Y <= stripBottomRight.Y + verticalMargin;
+    }
+
+    private static double VerticalDistanceFromCenter(FrameworkElement element, POINT cursor)
+    {
+        Point topLeft = element.PointToScreen(new Point(0, 0));
+        Point bottomRight = element.PointToScreen(new Point(0, element.ActualHeight));
+        return Math.Abs(cursor.Y - (topLeft.Y + bottomRight.Y) / 2);
+    }
+
+    internal bool TryGetTabDragGrabScreenPoint(TabViewModel tab,
+        double grabRatioX, double grabRatioY, out Point screenPoint)
+    {
+        screenPoint = default;
+        var container = TabBar.ItemContainerGenerator.ContainerFromItem(tab) as ListBoxItem
+            ?? GroupTabBar.ItemContainerGenerator.ContainerFromItem(tab) as ListBoxItem;
+        if (container is not { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 })
+            return false;
+
+        try
+        {
+            screenPoint = container.PointToScreen(new Point(
+                container.ActualWidth * Math.Clamp(grabRatioX, 0, 1),
+                container.ActualHeight * Math.Clamp(grabRatioY, 0, 1)));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void UpdateOwnedTabDragPreview(POINT cursor)
+    {
+        var payload = _ownedTabDragPayload;
+        if (payload is null) return;
+        if (!TryFindTabDragSurface(
+                cursor, _ownedTabDragPreviewPane, _ownedTabDragPreviewBar,
+                out var pane, out var bar, out var pointer))
+        {
+            if (_ownedTabDragPreviewPane is not null)
+            {
+                _ownedTabDragPreviewPane.ClearTabDragPreview(animateBack: true);
+                _ownedTabDragPreviewPane.ResetTabGroupHover();
+                _ownedTabDragPreviewPane.SetTabGroupTarget(null, null);
+            }
+            _ownedTabDragPreviewPane = null;
+            _ownedTabDragPreviewBar = null;
+            return;
+        }
+
+        if (!ReferenceEquals(_ownedTabDragPreviewPane, pane)
+            || !ReferenceEquals(_ownedTabDragPreviewBar, bar))
+        {
+            if (_ownedTabDragPreviewPane is not null)
+            {
+                _ownedTabDragPreviewPane.ClearTabDragPreview(animateBack: true);
+                _ownedTabDragPreviewPane.ResetTabGroupHover();
+                _ownedTabDragPreviewPane.SetTabGroupTarget(null, null);
+            }
+            _ownedTabDragPreviewPane = pane;
+            _ownedTabDragPreviewBar = bar;
+        }
+
+        pane.EnsureTabDragSlots(bar);
+        if (pane.IsValidTabDrop(payload, bar))
+        {
+            pane.UpdateTabGroupHoverIntent(payload, bar, pointer);
+            pane.UpdateTabDragPreview(payload, bar, pointer);
+        }
+        else
+        {
+            pane.ClearTabDragPreview(animateBack: true);
+            pane.ResetTabGroupHover();
+            pane.SetTabGroupTarget(null, null);
+        }
+    }
+
+    private void StopOwnedTabDragTracking()
+    {
+        _ownedTabDragPayload = null;
+        _ownedTabDragPreviewPane = null;
+        _ownedTabDragPreviewBar = null;
+        StopTabDragRenderingIfIdle();
+    }
+
+    private void EndOwnedTabDragPreview(bool animateBack)
+    {
+        var previewPane = _ownedTabDragPreviewPane;
+        StopOwnedTabDragTracking();
+        if (previewPane is null) return;
+        previewPane.ClearTabDragPreview(animateBack);
+        previewPane.ResetTabGroupHover();
+        previewPane.SetTabGroupTarget(null, null);
+    }
+
+    private void EnsureTabDragRendering()
+    {
+        if (_tabDragRendering) return;
+        CompositionTarget.Rendering += TabDragVisuals_Rendering;
+        _tabDragRendering = true;
+    }
+
+    private void StopTabDragRenderingIfIdle()
+    {
+        if (!_tabDragRendering || _tabDragPopup is not null || _ownedTabDragPayload is not null
+            || _tabPreviewMotions.Count > 0)
+            return;
+        CompositionTarget.Rendering -= TabDragVisuals_Rendering;
+        _tabDragRendering = false;
+        _tabPreviewLastFrame = null;
+    }
+
+    private void TabDragVisuals_Rendering(object? sender, EventArgs e)
+    {
+        if ((_tabDragPopup is not null || _ownedTabDragPayload is not null)
+            && GetCursorPos(out var cursor))
+        {
+            UpdateOwnedTabDragPreview(cursor);
+            UpdateTabDragGhostPosition(cursor);
+        }
+        AdvanceTabPreviewMotion(e as RenderingEventArgs);
+    }
+
+    private void UpdateTabDragGhostPosition(POINT cursor)
+    {
+        if (_tabDragPopup is null)
+            return;
+        var lockedBar = _ownedTabDragPreviewBar;
+        if (_tabDragGhostCursorX == cursor.X && _tabDragGhostCursorY == cursor.Y
+            && ReferenceEquals(_tabDragGhostLockedBar, lockedBar))
+            return;
+        _tabDragGhostCursorX = cursor.X;
+        _tabDragGhostCursorY = cursor.Y;
+        _tabDragGhostLockedBar = lockedBar;
+
+        if (_tabDragPopupSource?.Handle is { } popupHandle && popupHandle != IntPtr.Zero)
+        {
+            uint popupDpi = Math.Max(96u, GetDpiForWindow(popupHandle));
+            DpiScale dpi = lockedBar is not null
+                ? VisualTreeHelper.GetDpi(lockedBar)
+                : new DpiScale(popupDpi / 96d, popupDpi / 96d);
+            int left = (int)Math.Round(cursor.X - _tabDragGhostPointerOffsetX * dpi.DpiScaleX);
+            int top;
+            if (lockedBar is not null)
+            {
+                Point barTopLeft = lockedBar.PointToScreen(new Point(0, 0));
+                top = (int)Math.Round(barTopLeft.Y);
+            }
+            else
+            {
+                top = (int)Math.Round(cursor.Y - _tabDragGhostPointerOffsetY * dpi.DpiScaleY);
+            }
+
+            SetWindowPos(popupHandle, IntPtr.Zero, left, top, 0, 0,
+                SwpNoSize | SwpNoZOrder | SwpNoActivate);
+            return;
+        }
+
+        Point screen = DevicePixelsToDips(new Point(cursor.X, cursor.Y));
+        _tabDragPopup.HorizontalOffset = screen.X - _tabDragGhostPointerOffsetX;
+        _tabDragPopup.VerticalOffset = screen.Y - _tabDragGhostPointerOffsetY;
+    }
+
+    private void AdvanceTabPreviewMotion(RenderingEventArgs? e)
+    {
+        if (_tabPreviewMotions.Count == 0)
+        {
+            StopTabDragRenderingIfIdle();
+            return;
+        }
+
+        TimeSpan frame = e?.RenderingTime ?? TimeSpan.Zero;
+        double elapsed = _tabPreviewLastFrame is { } previous && frame > previous
+            ? (frame - previous).TotalSeconds
+            : 1.0 / 60.0;
+        _tabPreviewLastFrame = frame;
+        elapsed = Math.Clamp(elapsed, 1.0 / 240.0, 0.05);
+        double blend = TabAnimationsEnabled
+            ? 1 - Math.Exp(-elapsed / TabPreviewResponseSeconds)
+            : 1;
+        bool settled = true;
+        foreach (var pair in _tabPreviewMotions)
+        {
+            var container = pair.Key;
+            var motion = pair.Value;
+            if (!ReferenceEquals(container.RenderTransform, motion.Transform)) continue;
+            double remaining = motion.Target - motion.Transform.X;
+            if (Math.Abs(remaining) <= 0.12)
+            {
+                motion.Transform.X = motion.Target;
+                continue;
+            }
+            motion.Transform.X += remaining * blend;
+            settled = false;
+        }
+
+        if (!_tabPreviewReturning || !settled) return;
+        ClearTabPreviewMotions();
+    }
+
+    private void ClearTabPreviewMotions()
+    {
+        foreach (var pair in _tabPreviewMotions)
+        {
+            if (ReferenceEquals(pair.Key.RenderTransform, pair.Value.Transform))
+                pair.Key.RenderTransform = null;
+        }
+        _tabPreviewMotions.Clear();
+        _tabPreviewReturning = false;
+        _tabPreviewLastFrame = null;
+        StopTabDragRenderingIfIdle();
+    }
+
+    private void ClearTabDragPreview(bool animateBack = false)
+    {
+        if (_tabPreviewSource is null && _tabPreviewMotions.Count == 0
+            && _tabPreviewHiddenContainer is null)
+            return;
+
+        RestoreTabPreviewHiddenContainer();
         _tabPreviewSource = null;
         _tabPreviewTarget = null;
         _tabPreviewAfter = false;
         _tabPreviewIndex = -1;
-    }
+        _tabPreviewLastReorderPointerX = double.NaN;
 
-    private void MoveTabWithAnimation(TabViewModel tab, int targetIndex)
-    {
-        if (_vm is null) return;
-        var before = _vm.Tabs
-            .Select(candidate => (candidate,
-                container: TabBar.ItemContainerGenerator.ContainerFromItem(candidate) as ListBoxItem))
-            .Where(pair => pair.container is not null)
-            .ToDictionary(pair => pair.candidate,
-                pair => pair.container!.TranslatePoint(new Point(), TabBar).X);
-
-        if (!_vm.MoveTab(tab, targetIndex)) return;
-        Dispatcher.BeginInvoke(() =>
+        if (animateBack && TabAnimationsEnabled && _tabPreviewMotions.Count > 0)
         {
-            foreach (var candidate in _vm.Tabs)
-            {
-                if (!before.TryGetValue(candidate, out double oldX)
-                    || TabBar.ItemContainerGenerator.ContainerFromItem(candidate) is not ListBoxItem container)
-                    continue;
-                double newX = container.TranslatePoint(new Point(), TabBar).X;
-                double delta = oldX - newX;
-                if (Math.Abs(delta) < 0.5) continue;
-                var transform = new TranslateTransform(delta, 0);
-                container.RenderTransform = transform;
-                var animation = new DoubleAnimation(0, TimeSpan.FromMilliseconds(145))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                };
-                transform.BeginAnimation(TranslateTransform.XProperty, animation);
-            }
-        }, DispatcherPriority.Render);
+            foreach (var motion in _tabPreviewMotions.Values) motion.Target = 0;
+            _tabPreviewReturning = true;
+            EnsureTabDragRendering();
+        }
+        else
+        {
+            ClearTabPreviewMotions();
+        }
     }
 
     private void SetTabDropTarget(TabViewModel? tab)
@@ -1942,12 +2800,9 @@ public partial class PaneView : UserControl
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        // Set up the native menu once the regular menu has painted. The submenu then opens
-        // immediately in normal use, while an instant hover still falls back to its loader.
-        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-        {
-            if (_fileContextMenuOpen) PrepareShowMoreOptions();
-        }));
+        // Native shell items are prepared only if the user opens "Show more options".
+        // Shell extensions can do arbitrary work in-process, so loading them for every
+        // ordinary right-click made the main menu slower and exposed it to extension faults.
     }
 
     private void BuildPinMenu(IReadOnlyList<FileItem> dirs)
@@ -2037,9 +2892,10 @@ public partial class PaneView : UserControl
 
     private void Paste_Click(object sender, RoutedEventArgs e) => PasteFromClipboard();
 
-    private void PasteFromClipboard()
+    private async void PasteFromClipboard()
     {
         if (_tab is null) return;
+        var tab = _tab;
         IDataObject? data;
         try { data = Clipboard.GetDataObject(); } catch { return; }
         if (data is null || !data.GetDataPresent(DataFormats.FileDrop)) return;
@@ -2055,9 +2911,9 @@ public partial class PaneView : UserControl
             move = (BitConverter.ToInt32(b, 0) & 2) == 2;
         }
 
-        string? err = FileDropService.Perform(files, _tab.CurrentPath, move);
+        string? err = await FileDropService.Perform(files, tab.CurrentPath, move, Window.GetWindow(this));
         if (err is not null) SetStatus($"⚠️ {err}");
-        _ = _tab.ReloadAfterOperationAsync();
+        _ = tab.ReloadAfterOperationAsync();
     }
 
     // ---- Delete (Recycle Bin) ----
@@ -2326,6 +3182,7 @@ public partial class PaneView : UserControl
             }
 
             GitRepositoryContext? repository = await runtime.RepositoryLocator.FindAsync(candidate, token);
+            if (!_fileContextMenuOpen || token.IsCancellationRequested) return;
             if (repository is null)
             {
                 BuildGitInitializeMenu(candidate);
@@ -2593,6 +3450,8 @@ public partial class PaneView : UserControl
 
     // ---- Native Windows shell items, rendered in our themed submenu --------
     private ShellContextMenu? _shellSession;
+    private int _shellMenuRequestVersion;
+    private bool _shellMenuPreparationQueued;
 
     private void ShowMore_SubmenuOpened(object sender, RoutedEventArgs e)
     {
@@ -2602,29 +3461,66 @@ public partial class PaneView : UserControl
     private void PrepareShowMoreOptions(MenuItem? more = null)
     {
         more ??= MenuShowMore;
-        if (_shellSession is not null) return;   // already populated this session
+        if (_shellSession is not null || _shellMenuPreparationQueued) return;
 
         var paths = SelectedPaths();
         if (paths.Count == 0 && _tab is not null && Directory.Exists(_tab.CurrentPath))
             paths = new List<string> { _tab.CurrentPath };
 
         more.Items.Clear();
-        var owner = Window.GetWindow(this);
-        _shellSession = owner is null ? null : ShellContextMenu.Create(paths, owner);
-        if (_shellSession is null)
-        {
-            more.Items.Add(new MenuItem { Header = "Unavailable", IsEnabled = false });
-            return;
-        }
+        more.Items.Add(new MenuItem { Header = "Loading…", IsEnabled = false });
 
-        var items = _shellSession.BuildItems();
-        if (items.Count == 0) { more.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false }); return; }
-        foreach (var c in items) more.Items.Add(c);
+        int requestVersion = ++_shellMenuRequestVersion;
+        _shellMenuPreparationQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            _shellMenuPreparationQueued = false;
+            if (!_fileContextMenuOpen || requestVersion != _shellMenuRequestVersion)
+                return;
+
+            ShellContextMenu? session = null;
+            try
+            {
+                var owner = Window.GetWindow(this);
+                session = owner is null ? null : ShellContextMenu.Create(paths, owner);
+                if (!_fileContextMenuOpen || requestVersion != _shellMenuRequestVersion)
+                {
+                    session?.Dispose();
+                    return;
+                }
+
+                if (session is null)
+                {
+                    more.Items.Clear();
+                    more.Items.Add(new MenuItem { Header = "Unavailable", IsEnabled = false });
+                    return;
+                }
+
+                var items = session.BuildItems();
+                _shellSession = session;
+                more.Items.Clear();
+                if (items.Count == 0)
+                {
+                    more.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false });
+                    return;
+                }
+
+                foreach (var c in items) more.Items.Add(c);
+            }
+            catch
+            {
+                session?.Dispose();
+                more.Items.Clear();
+                more.Items.Add(new MenuItem { Header = "Unavailable", IsEnabled = false });
+            }
+        }));
     }
 
     private void FileContextMenu_Closed(object sender, RoutedEventArgs e)
     {
         _fileContextMenuOpen = false;
+        _shellMenuRequestVersion++;
+        _shellMenuPreparationQueued = false;
         _shellSession?.Dispose();
         _shellSession = null;
         _gitMenuCts?.Cancel();
@@ -2726,9 +3622,10 @@ public partial class PaneView : UserControl
     }
 
     // ---- Compress selection to a .zip in the current folder ----------------
-    private void Compress_Click(object sender, RoutedEventArgs e)
+    private async void Compress_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is null) return;
+        if (_tab is null || _fileOperationInProgress) return;
+        var tab = _tab;
         var items = SelectedItems();
         if (items.Count == 0) return;
 
@@ -2741,32 +3638,66 @@ public partial class PaneView : UserControl
 
         var act = Activity.Begin("Compress",
             $"{items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}", "package");
+        using var control = new CompressionControl();
+        Activity.AttachControls(act, control.Cancel, control.TogglePause);
+        tab.BeginKnownFileOperation();
+        _fileOperationInProgress = true;
+        SetStatus($"Compressing… {Path.GetFileName(zipPath)}");
+
+        var progress = new Progress<CompressionProgress>(p =>
+        {
+            if (p.IsScanning)
+            {
+                Activity.ReportProgress(act, null, "Scanning files…");
+                return;
+            }
+
+            int current = p.TotalFiles == 0
+                ? 0
+                : Math.Min(p.CompletedFiles + 1, p.TotalFiles);
+            string detail = p.TotalFiles == 0
+                ? "Creating archive…"
+                : $"Compressing {current}/{p.TotalFiles} · {Path.GetFileName(p.CurrentFile)}";
+            Activity.ReportProgress(act, p.Fraction, detail);
+        });
+
         try
         {
-            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
-            {
-                foreach (var item in items)
-                {
-                    if (item.IsDirectory) AddDirToZip(zip, item.FullPath, item.Name);
-                    else zip.CreateEntryFromFile(item.FullPath, item.Name, CompressionLevel.Optimal);
-                }
-            }
+            await Task.Run(() => CompressionService.CreateZip(
+                items.Select(item => item.FullPath), zipPath, control, progress));
+            act.Detail = $"{items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}";
             Activity.Complete(act, true);
             UndoService.Instance.Push(new RecycleAction(new[] { zipPath }, "Compress"));
             SetStatus($"Compressed {items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}");
-            _ = _tab.ReloadAfterOperationAsync();
+            _ = tab.ReloadAfterOperationAsync();
         }
-        catch (Exception ex) { Activity.Complete(act, false, ex.Message); SetStatus($"⚠️ {ex.Message}"); }
+        catch (OperationCanceledException)
+        {
+            bool removed = TryDeletePartialArchive(zipPath);
+            Activity.Cancel(act);
+            SetStatus(removed ? "Compression canceled." : "Compression canceled; the partial archive could not be removed.");
+        }
+        catch (Exception ex)
+        {
+            bool removed = TryDeletePartialArchive(zipPath);
+            string message = removed ? ex.Message : $"{ex.Message} The partial archive could not be removed.";
+            Activity.Complete(act, false, message);
+            SetStatus($"⚠️ {message}");
+        }
+        finally
+        {
+            _fileOperationInProgress = false;
+        }
     }
 
-    private static void AddDirToZip(ZipArchive zip, string dir, string entryRoot)
+    private static bool TryDeletePartialArchive(string path)
     {
-        foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        try
         {
-            string rel = Path.Combine(entryRoot, Path.GetRelativePath(dir, file)).Replace('\\', '/');
-            try { zip.CreateEntryFromFile(file, rel, CompressionLevel.Optimal); }
-            catch { /* skip locked/unreadable */ }
+            if (File.Exists(path)) File.Delete(path);
+            return !File.Exists(path);
         }
+        catch { return false; }
     }
 
     // ---- Extract selected .zip(s) into sibling folders ---------------------

@@ -81,12 +81,13 @@ public partial class GitSetupWindow : Window
     {
         if (_busy) return;
         _operationCts?.Dispose();
-        _operationCts = new CancellationTokenSource();
+        var cts = new CancellationTokenSource();
+        _operationCts = cts;
         SetBusy(true);
         StatusText.Text = status;
         try
         {
-            await operation(_operationCts.Token);
+            await operation(cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -98,6 +99,8 @@ public partial class GitSetupWindow : Window
         }
         finally
         {
+            if (ReferenceEquals(_operationCts, cts)) _operationCts = null;
+            cts.Dispose();
             SetBusy(false);
         }
     }

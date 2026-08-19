@@ -169,9 +169,16 @@ public sealed class GitRepositoryLocator
     {
         string full = Path.GetFullPath(path);
         foreach (string key in _cache.Keys.Where(key =>
-                     key.StartsWith(full, StringComparison.OrdinalIgnoreCase)
-                     || full.StartsWith(key, StringComparison.OrdinalIgnoreCase)))
+                     IsSameOrDescendant(key, full) || IsSameOrDescendant(full, key)))
             _cache.TryRemove(key, out _);
+    }
+
+    private static bool IsSameOrDescendant(string path, string root)
+    {
+        if (string.Equals(path, root, StringComparison.OrdinalIgnoreCase)) return true;
+        string prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private GitRepositoryContext? Cache(string candidate, GitRepositoryContext? context)
@@ -230,6 +237,8 @@ public sealed class GitStatusReader
              "--porcelain=v2", "-z", "--branch", "--show-stash",
              "--untracked-files=all", "--ignored=matching"],
             ReadOnly: true), cancellationToken);
+        if (result.OutcomeUnknown)
+            throw new InvalidOperationException(FriendlyError(result, "Git status outcome is unknown."));
         if (result.WasCanceled) throw new OperationCanceledException(cancellationToken);
         if (!result.Succeeded)
             throw new InvalidOperationException(FriendlyError(result, "Git status failed."));
@@ -248,6 +257,9 @@ public sealed class GitStatusReader
                 repository.WorkTreeRoot,
                 ["-C", repository.WorkTreeRoot, "write-tree"],
                 ReadOnly: true), cancellationToken);
+            if (treeResult.OutcomeUnknown)
+                throw new InvalidOperationException(FriendlyError(treeResult, "Git index snapshot outcome is unknown."));
+            if (treeResult.WasCanceled) throw new OperationCanceledException(cancellationToken);
             if (treeResult.Succeeded) tree = treeResult.StandardOutputText.Trim();
         }
 
@@ -790,6 +802,11 @@ public sealed class GitCloneService
                 parent,
                 ["clone", "--progress", "--", repositoryUrl, temporary]),
                 cancellationToken);
+            if (result.OutcomeUnknown)
+                return new GitCloneResult(
+                    GitOperationOutcome.OutcomeUnknown,
+                    temporary,
+                    "Clone cancellation is still being cleaned up. Its temporary folder was left in place; refresh before retrying.");
             if (result.WasCanceled)
             {
                 string? cleanup = CleanupTemporaryClone(parent, temporary);
@@ -936,6 +953,12 @@ public sealed class GitMutationService
                 : $"{summary}\n\n{description.Trim()}";
             var result = await Run(repository, installation,
                 ["commit", "-F", "-"], Encoding.UTF8.GetBytes(message), false, cancellationToken);
+            if (result.OutcomeUnknown)
+                return new GitOperationResult(
+                    GitOperationOutcome.OutcomeUnknown,
+                    "Git is still shutting down. The commit outcome is unknown; refresh before retrying.",
+                    before,
+                    before);
             string? after = await ReadHead(repository, installation, CancellationToken.None);
             if (result.WasCanceled)
             {
@@ -985,6 +1008,12 @@ public sealed class GitMutationService
             args.Add(remote);
             args.Add(branch);
             var result = await Run(repository, installation, args, null, false, cancellationToken);
+            if (result.OutcomeUnknown)
+                return new GitOperationResult(
+                    GitOperationOutcome.OutcomeUnknown,
+                    "Git is still shutting down. The remote outcome is unknown; refresh before retrying.",
+                    before,
+                    before);
             if (result.WasCanceled)
                 return new GitOperationResult(
                     GitOperationOutcome.OutcomeUnknown,
@@ -1136,6 +1165,10 @@ public sealed class GitMutationService
 
     private static GitOperationResult ToOperation(GitProcessResult result, string fallback)
     {
+        if (result.OutcomeUnknown)
+            return new GitOperationResult(
+                GitOperationOutcome.OutcomeUnknown,
+                GitStatusReader.FriendlyError(result, fallback));
         if (result.WasCanceled)
             return new GitOperationResult(GitOperationOutcome.Canceled, "Operation canceled.");
         return result.Succeeded
@@ -1146,7 +1179,7 @@ public sealed class GitMutationService
 
 public static class GitOperationCoordinator
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates =
+    private static readonly ConcurrentDictionary<string, GateEntry> Gates =
         new(StringComparer.OrdinalIgnoreCase);
 
     public static async Task<T> RunAsync<T>(
@@ -1155,9 +1188,42 @@ public static class GitOperationCoordinator
         CancellationToken cancellationToken)
     {
         string key = Path.GetFullPath(repositoryKey);
-        SemaphoreSlim gate = Gates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try { return await action(); }
-        finally { gate.Release(); }
+        GateEntry entry;
+        while (true)
+        {
+            entry = Gates.GetOrAdd(key, _ => new GateEntry());
+            lock (entry.Sync)
+            {
+                if (entry.Retired) continue;
+                entry.References++;
+                break;
+            }
+        }
+        try
+        {
+            await entry.Semaphore.WaitAsync(cancellationToken);
+            try { return await action(); }
+            finally { entry.Semaphore.Release(); }
+        }
+        finally
+        {
+            lock (entry.Sync)
+            {
+                if (--entry.References == 0)
+                {
+                    entry.Retired = true;
+                    Gates.TryRemove(new KeyValuePair<string, GateEntry>(key, entry));
+                    entry.Semaphore.Dispose();
+                }
+            }
+        }
+    }
+
+    private sealed class GateEntry
+    {
+        public readonly object Sync = new();
+        public readonly SemaphoreSlim Semaphore = new(1, 1);
+        public int References;
+        public bool Retired;
     }
 }

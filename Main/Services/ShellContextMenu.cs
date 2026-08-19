@@ -32,6 +32,7 @@ public sealed class ShellContextMenu : IDisposable
     private IContextMenu2? _ctx2;
     private IContextMenu3? _ctx3;
     private readonly HashSet<MenuItem> _loadedSubmenus = new();
+    private bool _disposed;
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -92,9 +93,12 @@ public sealed class ShellContextMenu : IDisposable
 
     public void Invoke(uint cmdId)
     {
-        if (_ctx is null) return;
-        GetCursorPos(out POINT pt);
-        try { InvokeVerb(_ctx, cmdId - IdFirst, _hwnd, pt); }
+        if (_disposed || _ctx is null) return;
+        try
+        {
+            GetCursorPos(out POINT pt);
+            InvokeVerb(_ctx, cmdId - IdFirst, _hwnd, pt);
+        }
         catch (Exception ex) { Log($"Invoke EXCEPTION: {ex.Message}"); }
     }
 
@@ -109,41 +113,74 @@ public sealed class ShellContextMenu : IDisposable
         if (_fullPidls.Count == 0) return false;
 
         Guid iidFolder = IID_IShellFolder;
-        if (SHBindToParent(_fullPidls[0], ref iidFolder, out IntPtr pParent, out IntPtr firstChild) != 0
-            || pParent == IntPtr.Zero)
+        int parentResult = SHBindToParent(_fullPidls[0], ref iidFolder,
+            out IntPtr pParent, out IntPtr firstChild);
+        if (parentResult != 0 || pParent == IntPtr.Zero)
+        {
+            if (pParent != IntPtr.Zero) Marshal.Release(pParent);
             return false;
-        _parent = (IShellFolder)Marshal.GetObjectForIUnknown(pParent);
-        Marshal.Release(pParent);
+        }
+
+        try { _parent = (IShellFolder)Marshal.GetObjectForIUnknown(pParent); }
+        finally { Marshal.Release(pParent); }
 
         var childPidls = new List<IntPtr> { firstChild };
         for (int i = 1; i < _fullPidls.Count; i++)
-            if (SHBindToParent(_fullPidls[i], ref iidFolder, out IntPtr _, out IntPtr child) == 0)
+        {
+            int childResult = SHBindToParent(_fullPidls[i], ref iidFolder,
+                out IntPtr childParent, out IntPtr child);
+            if (childParent != IntPtr.Zero) Marshal.Release(childParent);
+            if (childResult == 0 && child != IntPtr.Zero)
+            {
+                // The child PIDL is owned by the full PIDL and must not be freed.
                 childPidls.Add(child);
+            }
+        }
 
         Guid iidCtx = IID_IContextMenu;
         var apidl = childPidls.ToArray();
-        if (_parent.GetUIObjectOf(_hwnd, (uint)apidl.Length, apidl, ref iidCtx, IntPtr.Zero, out IntPtr pCtx) != 0
-            || pCtx == IntPtr.Zero)
+        int contextResult = _parent.GetUIObjectOf(_hwnd, (uint)apidl.Length, apidl,
+            ref iidCtx, IntPtr.Zero, out IntPtr pCtx);
+        if (contextResult != 0 || pCtx == IntPtr.Zero)
+        {
+            if (pCtx != IntPtr.Zero) Marshal.Release(pCtx);
             return false;
+        }
 
-        _ctx = (IContextMenu)Marshal.GetObjectForIUnknown(pCtx);
-        Marshal.Release(pCtx);
+        try { _ctx = (IContextMenu)Marshal.GetObjectForIUnknown(pCtx); }
+        finally { Marshal.Release(pCtx); }
         _ctx2 = _ctx as IContextMenu2;
         _ctx3 = _ctx as IContextMenu3;
 
         _hMenu = CreatePopupMenu();
-        _ctx.QueryContextMenu(_hMenu, 0, IdFirst, IdLast, CMF_NORMAL | CMF_EXPLORE);
-        return true;
+        if (_hMenu == IntPtr.Zero) return false;
+        int menuResult = _ctx.QueryContextMenu(_hMenu, 0, IdFirst, IdLast, CMF_NORMAL | CMF_EXPLORE);
+        return menuResult >= 0;
     }
 
     public void Dispose()
     {
-        if (_hMenu != IntPtr.Zero) { DestroyMenu(_hMenu); _hMenu = IntPtr.Zero; }
-        foreach (var p in _fullPidls) if (p != IntPtr.Zero) ILFree(p);
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_hMenu != IntPtr.Zero)
+        {
+            try { DestroyMenu(_hMenu); } catch { }
+            _hMenu = IntPtr.Zero;
+        }
+
+        foreach (var p in _fullPidls)
+            if (p != IntPtr.Zero)
+                try { ILFree(p); } catch { }
         _fullPidls.Clear();
-        if (_ctx is not null) { Marshal.ReleaseComObject(_ctx); _ctx = null; }
-        if (_parent is not null) { Marshal.ReleaseComObject(_parent); _parent = null; }
-        _ctx2 = null; _ctx3 = null;
+        var ctx = _ctx;
+        var parent = _parent;
+        _ctx = null;
+        _ctx2 = null;
+        _ctx3 = null;
+        _parent = null;
+        try { if (ctx is not null) Marshal.ReleaseComObject(ctx); } catch { }
+        try { if (parent is not null) Marshal.ReleaseComObject(parent); } catch { }
         _loadedSubmenus.Clear();
     }
 
@@ -151,6 +188,7 @@ public sealed class ShellContextMenu : IDisposable
     private List<Control> Walk(IntPtr menu, int depth)
     {
         var items = new List<Control>();
+        if (_disposed || menu == IntPtr.Zero) return items;
         int count = GetMenuItemCount(menu);
         if (count <= 0) return items;
 
@@ -211,11 +249,20 @@ public sealed class ShellContextMenu : IDisposable
     {
         if (!_loadedSubmenus.Add(item)) return;
 
-        item.Items.Clear();
-        try { _ctx2?.HandleMenuMsg(WM_INITMENUPOPUP, submenu, (IntPtr)position); } catch { }
-        foreach (var child in Walk(submenu, depth)) item.Items.Add(child);
-        if (item.Items.Count == 0)
-            item.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false });
+        try
+        {
+            item.Items.Clear();
+            try { _ctx2?.HandleMenuMsg(WM_INITMENUPOPUP, submenu, (IntPtr)position); } catch { }
+            foreach (var child in Walk(submenu, depth)) item.Items.Add(child);
+            if (item.Items.Count == 0)
+                item.Items.Add(new MenuItem { Header = "(no items)", IsEnabled = false });
+        }
+        catch (Exception ex)
+        {
+            Log($"PopulateSubmenu EXCEPTION: {ex.Message}");
+            item.Items.Clear();
+            item.Items.Add(new MenuItem { Header = "Unavailable", IsEnabled = false });
+        }
     }
 
     private static string ReadText(IntPtr menu, int pos)

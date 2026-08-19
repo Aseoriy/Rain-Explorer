@@ -18,6 +18,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
 
     private readonly FileSystemService _fs;
     private readonly Stack<ClosedTab> _closedTabs = new();
+    private readonly LinkedList<TabViewModel> _selectionHistory = new();
     private bool _loadingProject;
     private bool _batchingTabStructure;
 
@@ -66,6 +67,9 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
     /// <summary>The active project's tab snapshot changed and should be persisted.</summary>
     public event Action<PaneViewModel>? ProjectStateChanged;
 
+    /// <summary>The pane's restorable tabs, order, or selection changed.</summary>
+    public event Action<PaneViewModel>? WorkspaceStateChanged;
+
     public PaneViewModel(FileSystemService fs)
     {
         _fs = fs;
@@ -86,6 +90,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         {
             if (ReferenceEquals(_selectedTab, value)) return;
             if (_selectedTab is not null) _selectedTab.ContentsChanged -= OnActiveContentsChanged;
+            if (value is not null) RememberSelection(value);
             if (!Set(ref _selectedTab, value)) return;
             if (_selectedTab is not null) _selectedTab.ContentsChanged += OnActiveContentsChanged;
             NotifyTabRows();
@@ -116,7 +121,8 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
 
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.IsPinned)
+        if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.RestoreTarget)
+            or nameof(TabViewModel.IsPinned)
             or nameof(TabViewModel.GroupId) or nameof(TabViewModel.GroupName))
             NotifyProjectStateChanged();
         if (e.PropertyName is nameof(TabViewModel.GroupId) or nameof(TabViewModel.GroupName))
@@ -125,8 +131,31 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
 
     private void NotifyProjectStateChanged()
     {
-        if (!_loadingProject && !_batchingTabStructure && ActiveProjectId is { Length: > 0 })
+        if (_loadingProject || _batchingTabStructure) return;
+        WorkspaceStateChanged?.Invoke(this);
+        if (ActiveProjectId is { Length: > 0 })
             ProjectStateChanged?.Invoke(this);
+    }
+
+    private void RememberSelection(TabViewModel tab)
+    {
+        _selectionHistory.Remove(tab);
+        _selectionHistory.AddFirst(tab);
+    }
+
+    private void ForgetSelection(TabViewModel tab) => _selectionHistory.Remove(tab);
+
+    private TabViewModel? MostRecentRemainingTab()
+    {
+        var node = _selectionHistory.First;
+        while (node is not null)
+        {
+            var next = node.Next;
+            if (Tabs.Contains(node.Value)) return node.Value;
+            _selectionHistory.Remove(node);
+            node = next;
+        }
+        return null;
     }
 
     public bool HasClosedTabs => _closedTabs.Count > 0;
@@ -154,32 +183,43 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         if (tab is null) return;
         int idx = Tabs.IndexOf(tab);
         if (idx < 0) return;
+        string? formerGroupId = tab.GroupId;
+        var selectedBeforeClose = SelectedTab;
+        bool wasSelected = ReferenceEquals(tab, selectedBeforeClose);
 
-        if (tab == SelectedTab) tab.ContentsChanged -= OnActiveContentsChanged;
+        if (wasSelected) tab.ContentsChanged -= OnActiveContentsChanged;
         tab.PropertyChanged -= OnTabPropertyChanged;
-        if (IsRestorableTarget(tab.CurrentPath))
+        if (IsRestorableTarget(tab.RestoreTarget))
         {
-            _closedTabs.Push(new ClosedTab(tab.CurrentPath, tab.IsPinned, tab.GroupId, tab.GroupName));
+            _closedTabs.Push(new ClosedTab(tab.RestoreTarget, tab.IsPinned, tab.GroupId, tab.GroupName));
             OnPropertyChanged(nameof(HasClosedTabs));
         }
         Tabs.Remove(tab);
+        ForgetSelection(tab);
         tab.Dispose();
+        DissolveOrphanedGroup(formerGroupId);
         RefreshGroupLeaders();
         NotifyProjectStateChanged();
 
         if (Tabs.Count == 0)
         {
+            SelectedTab = null;
+            _selectionHistory.Clear();
             EmptyRequested?.Invoke(this);
             return;
         }
-        SelectedTab = Tabs[Math.Min(idx, Tabs.Count - 1)];
+
+        if (wasSelected)
+            SelectedTab = MostRecentRemainingTab() ?? Tabs[Math.Min(idx, Tabs.Count - 1)];
+        else if (selectedBeforeClose is not null && Tabs.Contains(selectedBeforeClose))
+            SelectedTab = selectedBeforeClose;
     }
 
     /// <summary>Open a copy of a tab at its current location.</summary>
     public TabViewModel? DuplicateTab(TabViewModel? tab)
     {
-        if (tab is null || !IsRestorableTarget(tab.CurrentPath)) return null;
-        return NewTab(tab.CurrentPath, activate: true, pinned: tab.IsPinned,
+        if (tab is null || !IsRestorableTarget(tab.RestoreTarget)) return null;
+        return NewTab(tab.RestoreTarget, activate: true, pinned: tab.IsPinned,
             groupId: tab.GroupId, groupName: tab.GroupName);
     }
 
@@ -212,6 +252,142 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    /// <summary>Move an ungrouped tab beside a top-row tab, treating groups as one slot.</summary>
+    public bool MoveTabBesideTopLevel(TabViewModel? tab, TabViewModel? target, bool after)
+    {
+        if (tab is null || tab.IsGrouped) return false;
+        int from = Tabs.IndexOf(tab);
+        if (from < 0) return false;
+
+        int insertionIndex = GetTopLevelInsertionIndex(target, after);
+        if (from < insertionIndex) insertionIndex--;
+        return MoveTab(tab, insertionIndex);
+    }
+
+    /// <summary>Reorder one member inside its existing group without pulling it out.</summary>
+    public bool MoveTabWithinGroup(TabViewModel? tab, TabViewModel? target, bool after)
+    {
+        if (tab?.GroupId is not { Length: > 0 } groupId
+            || target?.GroupId != groupId)
+            return false;
+
+        int from = Tabs.IndexOf(tab);
+        int insertionIndex = Tabs.IndexOf(target);
+        if (from < 0 || insertionIndex < 0) return false;
+        if (after) insertionIndex++;
+        if (from < insertionIndex) insertionIndex--;
+        return MoveTab(tab, insertionIndex);
+    }
+
+    /// <summary>Insert a tab at an exact point in an existing group.</summary>
+    public bool MoveTabIntoGroup(TabViewModel? tab, TabViewModel? target, bool after,
+        bool activate = true)
+    {
+        if (tab is null || tab.IsPinned || target?.GroupId is not { Length: > 0 } groupId
+            || target.IsPinned)
+            return false;
+        if (tab.GroupId == groupId) return MoveTabWithinGroup(tab, target, after);
+        if (Tabs.IndexOf(tab) < 0 || Tabs.IndexOf(target) < 0) return false;
+
+        string groupName = target.GroupName;
+        bool changed = true;
+        _batchingTabStructure = true;
+        try
+        {
+            if (tab.IsGrouped) RemoveFromGroup(tab);
+            tab.GroupId = groupId;
+            tab.GroupName = groupName;
+
+            int from = Tabs.IndexOf(tab);
+            int insertionIndex = Tabs.IndexOf(target);
+            if (after) insertionIndex++;
+            if (from < insertionIndex) insertionIndex--;
+            changed = MoveTab(tab, insertionIndex) || changed;
+        }
+        finally
+        {
+            _batchingTabStructure = false;
+        }
+
+        RefreshGroupLeaders();
+        if (activate) SelectedTab = tab;
+        NotifyProjectStateChanged();
+        return changed;
+    }
+
+    /// <summary>Move a complete tab group beside another top-row slot.</summary>
+    public bool MoveGroupBesideTopLevel(TabViewModel? member, TabViewModel? target, bool after)
+    {
+        if (member?.GroupId is not { Length: > 0 } groupId
+            || target?.GroupId == groupId)
+            return false;
+
+        var members = Tabs.Where(tab => tab.GroupId == groupId).ToList();
+        if (members.Count == 0) return false;
+        var current = Tabs.ToList();
+        var desired = current.Where(tab => tab.GroupId != groupId).ToList();
+
+        int insertionIndex;
+        if (target is null)
+        {
+            insertionIndex = desired.Count;
+        }
+        else if (target.GroupId is { Length: > 0 } targetGroupId)
+        {
+            var targetIndexes = desired.Select((tab, index) => (tab, index))
+                .Where(pair => pair.tab.GroupId == targetGroupId)
+                .Select(pair => pair.index)
+                .ToList();
+            if (targetIndexes.Count == 0) insertionIndex = desired.Count;
+            else insertionIndex = after ? targetIndexes.Max() + 1 : targetIndexes.Min();
+        }
+        else
+        {
+            insertionIndex = desired.IndexOf(target);
+            if (insertionIndex < 0) insertionIndex = desired.Count;
+            else if (after) insertionIndex++;
+        }
+
+        desired.InsertRange(Math.Clamp(insertionIndex, 0, desired.Count), members);
+        if (desired.SequenceEqual(current)) return false;
+
+        _batchingTabStructure = true;
+        try
+        {
+            for (int index = 0; index < desired.Count; index++)
+            {
+                int currentIndex = Tabs.IndexOf(desired[index]);
+                if (currentIndex != index) Tabs.Move(currentIndex, index);
+            }
+        }
+        finally
+        {
+            _batchingTabStructure = false;
+        }
+
+        RefreshGroupLeaders();
+        NotifyProjectStateChanged();
+        return true;
+    }
+
+    public int GetTopLevelInsertionIndex(TabViewModel? target, bool after)
+    {
+        if (target is null) return Tabs.Count;
+        if (target.GroupId is { Length: > 0 } groupId)
+        {
+            var indexes = Tabs.Select((tab, index) => (tab, index))
+                .Where(pair => pair.tab.GroupId == groupId)
+                .Select(pair => pair.index)
+                .ToList();
+            if (indexes.Count == 0) return Tabs.Count;
+            return after ? indexes.Max() + 1 : indexes.Min();
+        }
+
+        int index = Tabs.IndexOf(target);
+        if (index < 0) return Tabs.Count;
+        return after ? index + 1 : index;
+    }
+
     /// <summary>Take a serializable snapshot of the currently open tabs for a project.</summary>
     public (List<TabProjectTab> Tabs, int SelectedIndex) CaptureProject()
     {
@@ -219,11 +395,12 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         int selected = 0;
         foreach (var tab in Tabs)
         {
-            if (!IsRestorableTarget(tab.CurrentPath)) continue;
+            string target = tab.RestoreTarget;
+            if (!IsRestorableTarget(target)) continue;
             if (ReferenceEquals(tab, SelectedTab)) selected = tabs.Count;
             tabs.Add(new TabProjectTab
             {
-                Target = tab.CurrentPath,
+                Target = target,
                 IsPinned = tab.IsPinned,
                 GroupId = tab.GroupId,
                 GroupName = tab.GroupName,
@@ -239,6 +416,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         try
         {
             SelectedTab = null;
+            _selectionHistory.Clear();
             foreach (var tab in Tabs)
             {
                 tab.PropertyChanged -= OnTabPropertyChanged;
@@ -272,7 +450,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void GroupTabs(TabViewModel? dragged, TabViewModel? target)
+    public void GroupTabs(TabViewModel? dragged, TabViewModel? target, bool activate = true)
     {
         if (dragged is null || target is null || ReferenceEquals(dragged, target)
             || dragged.IsPinned || target.IsPinned)
@@ -303,12 +481,13 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
             _batchingTabStructure = false;
         }
         RefreshGroupLeaders();
-        SelectedTab = dragged;
+        if (activate) SelectedTab = dragged;
         NotifyProjectStateChanged();
     }
 
     /// <summary>Extract a grouped tab and place it beside a top-row tab in one layout update.</summary>
-    public bool MoveTabOutOfGroup(TabViewModel? tab, TabViewModel? target, bool after)
+    public bool MoveTabOutOfGroup(TabViewModel? tab, TabViewModel? target, bool after,
+        bool activate = true)
     {
         if (tab?.GroupId is not { Length: > 0 } sourceGroupId || tab.IsPinned) return false;
 
@@ -359,7 +538,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         }
 
         RefreshGroupLeaders();
-        SelectedTab = tab;
+        if (activate) SelectedTab = tab;
         NotifyProjectStateChanged();
         return changed;
     }
@@ -438,6 +617,19 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         NotifyTabRows();
     }
 
+    private void DissolveOrphanedGroup(string? groupId)
+    {
+        if (groupId is not { Length: > 0 }) return;
+        var remaining = Tabs.Where(tab => tab.GroupId == groupId).ToList();
+        if (remaining.Count >= 2) return;
+        foreach (var tab in remaining)
+        {
+            tab.GroupId = null;
+            tab.IsGroupLeader = false;
+            tab.GroupCount = 0;
+        }
+    }
+
     /// <summary>Move a live tab from another pane without recreating its navigation state.</summary>
     public bool TransferTabFrom(PaneViewModel source, TabViewModel tab, int targetIndex = -1,
         bool activate = true, bool preserveGroup = true)
@@ -445,15 +637,19 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         if (ReferenceEquals(source, this)) return MoveTab(tab, targetIndex);
         int sourceIndex = source.Tabs.IndexOf(tab);
         if (sourceIndex < 0) return false;
+        string? sourceGroupId = tab.GroupId;
         bool wasSelected = ReferenceEquals(source.SelectedTab, tab);
 
         if (wasSelected) source.SelectedTab = null;
         tab.PropertyChanged -= source.OnTabPropertyChanged;
         source.Tabs.Remove(tab);
+        source.ForgetSelection(tab);
+        source.DissolveOrphanedGroup(sourceGroupId);
         source.RefreshGroupLeaders();
         source.NotifyProjectStateChanged();
         if (source.Tabs.Count > 0 && wasSelected)
-            source.SelectedTab = source.Tabs[Math.Min(sourceIndex, source.Tabs.Count - 1)];
+            source.SelectedTab = source.MostRecentRemainingTab()
+                ?? source.Tabs[Math.Min(sourceIndex, source.Tabs.Count - 1)];
 
         if (!preserveGroup)
         {
@@ -474,6 +670,58 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    /// <summary>Move a live group from another pane while preserving its member state and order.</summary>
+    public bool TransferGroupFrom(PaneViewModel source, TabViewModel member, int targetIndex = -1,
+        bool activate = true)
+    {
+        if (ReferenceEquals(source, this)
+            || member.GroupId is not { Length: > 0 } groupId)
+            return false;
+
+        var members = source.Tabs.Where(tab => tab.GroupId == groupId).ToList();
+        if (members.Count == 0 || !members.Contains(member)) return false;
+        bool movedSelection = source.SelectedTab is not null && members.Contains(source.SelectedTab);
+        var selectedMember = movedSelection ? source.SelectedTab! : member;
+        int sourceIndex = source.Tabs.IndexOf(member);
+
+        source._batchingTabStructure = true;
+        _batchingTabStructure = true;
+        try
+        {
+            if (movedSelection) source.SelectedTab = null;
+            foreach (var tab in members)
+            {
+                tab.PropertyChanged -= source.OnTabPropertyChanged;
+                source.Tabs.Remove(tab);
+                source.ForgetSelection(tab);
+            }
+
+            if (targetIndex < 0 || targetIndex > Tabs.Count) targetIndex = Tabs.Count;
+            foreach (var tab in members)
+            {
+                tab.PropertyChanged += OnTabPropertyChanged;
+                Tabs.Insert(targetIndex++, tab);
+            }
+
+            if (source.Tabs.Count > 0 && movedSelection)
+                source.SelectedTab = source.MostRecentRemainingTab()
+                    ?? source.Tabs[Math.Min(sourceIndex, source.Tabs.Count - 1)];
+            if (activate) SelectedTab = selectedMember ?? member;
+        }
+        finally
+        {
+            source._batchingTabStructure = false;
+            _batchingTabStructure = false;
+        }
+
+        source.RefreshGroupLeaders();
+        RefreshGroupLeaders();
+        source.NotifyProjectStateChanged();
+        NotifyProjectStateChanged();
+        if (source.Tabs.Count == 0) source.EmptyRequested?.Invoke(source);
+        return true;
+    }
+
     private void NotifyTabRows()
     {
         if (_batchingTabStructure) return;
@@ -489,6 +737,9 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         if (ReferenceEquals(this, source)) return;
         var movedTabs = source.Tabs.ToList();
         var selected = source.SelectedTab;
+        var selectionHistory = source._selectionHistory
+            .Where(movedTabs.Contains)
+            .ToList();
         string? projectId = source.ActiveProjectId;
 
         _loadingProject = true;
@@ -498,12 +749,15 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
             source.SelectedTab = null;
             foreach (var tab in movedTabs) tab.PropertyChanged -= source.OnTabPropertyChanged;
             source.Tabs.Clear();
+            source._selectionHistory.Clear();
 
             foreach (var tab in movedTabs)
             {
                 tab.PropertyChanged += OnTabPropertyChanged;
                 Tabs.Add(tab);
             }
+            _selectionHistory.Clear();
+            foreach (var tab in selectionHistory) _selectionHistory.AddLast(tab);
             SelectedTab = selected ?? Tabs.FirstOrDefault();
             ActiveProjectId = projectId;
         }
@@ -524,6 +778,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
             tab.Dispose();
         }
         Tabs.Clear();
+        _selectionHistory.Clear();
     }
 
     /// <summary>Close every non-pinned tab except <paramref name="keep"/>.</summary>

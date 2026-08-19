@@ -36,6 +36,8 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     private bool _watchedRefreshPending;
     private bool _reloadAfterBusy;
     private bool _disposed;
+    private int _navigationVersion;
+    private string? _pendingRestoreTarget;
 
     private string _sortKey = "Name";
     private int _sortDir = 1;                            // 1 asc, -1 desc
@@ -105,6 +107,17 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     // ---- Bindable properties ------------------------------------------------
     private string _currentPath = string.Empty;
     public string CurrentPath { get => _currentPath; set => Set(ref _currentPath, value); }
+
+    /// <summary>The location session persistence should restore, including a folder that
+    /// is still loading and has not replaced <see cref="CurrentPath"/> yet.</summary>
+    public string RestoreTarget => _pendingRestoreTarget ?? CurrentPath;
+
+    private void SetPendingRestoreTarget(string? target)
+    {
+        if (string.Equals(_pendingRestoreTarget, target, StringComparison.Ordinal)) return;
+        _pendingRestoreTarget = target;
+        OnPropertyChanged(nameof(RestoreTarget));
+    }
 
     private string _title = "New Tab";
     public string Title
@@ -238,30 +251,39 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     // ---- Navigation ---------------------------------------------------------
     public async Task NavigateAsync(string? path, bool pushHistory)
     {
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (_disposed || string.IsNullOrWhiteSpace(path)) return;
         path = path.Trim();
+        int navigationVersion = unchecked(++_navigationVersion);
 
         // Special dashboard pages.
         if (path is HomeToken or DrivesToken)
         {
+            SetPendingRestoreTarget(null);
+            Busy = false;
             ShowPage(path == HomeToken ? PageKind.Home : PageKind.Drives, path, pushHistory);
             return;
         }
 
         if (!Directory.Exists(path))
         {
+            SetPendingRestoreTarget(null);
+            Busy = false;
             Status = $"⚠️ Not a folder: {path}";
             return;
         }
 
+        SetPendingRestoreTarget(path);
         Busy = true;
         try
         {
             var entries = await _fs.ReadDirectoryAsync(path);
+            if (_disposed || navigationVersion != _navigationVersion) return;
+
             _all.Clear();
             _all.AddRange(entries);
             Page = PageKind.Folder;
             CurrentPath = path;
+            SetPendingRestoreTarget(null);
             Title = FolderDisplayName(path);
             RecentsStore.Instance.Add(path, isDirectory: true);
             WatchFolder(path);
@@ -284,11 +306,15 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Status = $"⚠️ {ex.Message}";
+            if (!_disposed && navigationVersion == _navigationVersion)
+            {
+                SetPendingRestoreTarget(null);
+                Status = $"⚠️ {ex.Message}";
+            }
         }
         finally
         {
-            Busy = false;
+            if (!_disposed && navigationVersion == _navigationVersion) Busy = false;
         }
     }
 
@@ -358,6 +384,15 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
 
         LoadDrivesCollection();
+    }
+
+    /// <summary>Refresh the visible Home dashboard after shared pins change.</summary>
+    public void RefreshHome()
+    {
+        if (Page != PageKind.Home) return;
+        LoadHome();
+        Status = "Home";
+        ContentsChanged?.Invoke();
     }
 
     private static string NiceName(string path)
@@ -468,6 +503,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     /// <summary>Re-read the current folder (used after a file operation).</summary>
     public async Task ReloadAsync(bool animate = true, bool automatic = false)
     {
+        if (_disposed) return;
         if (automatic && !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
 
         if (Page != PageKind.Folder || !Directory.Exists(CurrentPath))
@@ -502,11 +538,11 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Status = $"⚠️ {ex.Message}";
+            if (!_disposed) Status = $"⚠️ {ex.Message}";
         }
         finally
         {
-            Busy = false;
+            if (!_disposed) Busy = false;
             if (_reloadAfterBusy && !_disposed)
             {
                 _reloadAfterBusy = false;
@@ -716,14 +752,19 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        unchecked { _navigationVersion++; }
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
         StopWatchingFolder();
         _watchRefreshTimer?.Stop();
         _statusClearTimer?.Stop();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
+        _searchCts = null;
         _driveCountCts?.Cancel();
         _driveCountCts?.Dispose();
+        _sizeCts?.Cancel();
+        _sizeCts?.Dispose();
+        _sizeCts = null;
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
@@ -784,14 +825,16 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     private async Task RunSearchAsync(string query)
     {
+        if (_disposed) return;
         var cts = new CancellationTokenSource();
         _searchCts = cts;
+        CancellationToken token = cts.Token;
         _isSearchView = true;
         Status = "Searching…";
         try
         {
-            var results = await _fs.SearchAsync(CurrentPath, query, cts.Token);
-            if (cts.Token.IsCancellationRequested) return;
+            var results = await _fs.SearchAsync(CurrentPath, query, token);
+            if (_disposed || token.IsCancellationRequested) return;
             _searchResults.Clear();
             _searchResults.AddRange(results);
             PopulateSorted(_searchResults);
@@ -799,7 +842,12 @@ public sealed class TabViewModel : ObservableObject, IDisposable
                      + (results.Count >= 10_000 ? " (showing first 10,000)" : "");
         }
         catch (OperationCanceledException) { /* superseded by a newer query */ }
-        catch (Exception ex) { Status = $"⚠️ {ex.Message}"; }
+        catch (Exception ex) { if (!_disposed) Status = $"⚠️ {ex.Message}"; }
+        finally
+        {
+            if (ReferenceEquals(_searchCts, cts)) _searchCts = null;
+            cts.Dispose();
+        }
     }
 
     // ---- Sort + populate (shared by folder view and search view) -----------
@@ -852,24 +900,33 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     private void CalcFolderSizesIfEnabled()
     {
         _sizeCts?.Cancel();
+        _sizeCts?.Dispose();
+        _sizeCts = null;
         if (!SettingsStore.Instance.Settings.CalculateFolderSizes || Page != PageKind.Folder) return;
+
+        var dirs = Items.Where(i => i.IsDirectory && !i.FolderSizeKnown).ToList();
+        if (dirs.Count == 0) return;
 
         var cts = new CancellationTokenSource();
         _sizeCts = cts;
-        var dirs = Items.Where(i => i.IsDirectory && !i.FolderSizeKnown).ToList();
-        if (dirs.Count == 0) return;
+        CancellationToken token = cts.Token;
 
         _ = Task.Run(() =>
         {
             foreach (var d in dirs)
             {
-                if (cts.IsCancellationRequested) return;
-                long size = DirSize(d.FullPath, cts.Token);
-                if (cts.IsCancellationRequested) return;
+                if (token.IsCancellationRequested) return;
+                long size = DirSize(d.FullPath, token);
+                if (token.IsCancellationRequested) return;
                 var item = d;
-                App.Current?.Dispatcher.BeginInvoke(() => item.SetFolderSize(size));
+                App.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    if (_disposed || token.IsCancellationRequested
+                        || !ReferenceEquals(_sizeCts, cts)) return;
+                    item.SetFolderSize(size);
+                });
             }
-        }, cts.Token);
+        }, token);
     }
 
     private static long DirSize(string root, CancellationToken ct)

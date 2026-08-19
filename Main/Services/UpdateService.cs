@@ -53,7 +53,7 @@ public static class UpdateService
                 return plus >= 0 ? info[..plus] : info;
             }
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            return v is null ? "1.1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
+            return v is null ? "1.2.0" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }
 
@@ -78,18 +78,22 @@ public static class UpdateService
             foreach (var rel in doc.RootElement.EnumerateArray())
             {
                 if (rel.TryGetProperty("draft", out var d) && d.ValueKind == JsonValueKind.True) continue;
+                bool githubPrerelease = rel.TryGetProperty("prerelease", out var p)
+                    && p.ValueKind == JsonValueKind.True;
 
                 string tag = Str(rel, "tag_name");
                 if (string.IsNullOrWhiteSpace(tag)) continue;
 
                 var ver = Parse(tag);
-                bool isBeta = ver.HasPre && ver.PreLabel.Contains("beta", StringComparison.OrdinalIgnoreCase);
+                bool hasBetaTag = ver.HasPre
+                    && ver.PreLabel.Equals("beta", StringComparison.OrdinalIgnoreCase);
+                bool isPrerelease = githubPrerelease || ver.HasPre;
 
                 // Only the "-beta" channel is ever offered as an update. Other pre-release
                 // suffixes (e.g. "-Pre") are internal dev/test tags, not public builds — never
                 // surface them regardless of the Beta updates toggle.
-                if (ver.HasPre && !isBeta) continue;
-                if (isBeta && !includeBeta) continue;
+                if (ver.HasPre && !hasBetaTag) continue;
+                if (isPrerelease && !includeBeta) continue;
 
                 if (Compare(ver, bestVer) <= 0) continue;   // not newer than current best
 
@@ -97,7 +101,7 @@ public static class UpdateService
                 best = new UpdateInfo(
                     Version: Normalize(tag),
                     Tag: tag,
-                    IsPrerelease: isBeta,
+                    IsPrerelease: isPrerelease,
                     Notes: Str(rel, "body"),
                     DownloadUrl: url,
                     HtmlUrl: Str(rel, "html_url"),
@@ -115,34 +119,63 @@ public static class UpdateService
     public static async Task<string?> DownloadAsync(
         UpdateInfo info, IProgress<double>? progress, CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(info.DownloadUrl)) return null;
+        if (!Uri.TryCreate(info.DownloadUrl, UriKind.Absolute, out Uri? downloadUri)
+            || !IsTrustedReleaseUrl(downloadUri, allowAssetHost: false))
+            return null;
+
+        string? partial = null;
         try
         {
-            string name = string.IsNullOrWhiteSpace(info.AssetName)
-                ? $"RainExplorer-Setup-{info.Version}.exe" : info.AssetName!;
+            string name = SafeAssetName(info.AssetName)
+                ?? $"RainExplorer-Setup-{SafeVersionName(info.Version)}.exe";
             string dir = Path.Combine(Path.GetTempPath(), "RainExplorerUpdate");
             Directory.CreateDirectory(dir);
             string dest = Path.Combine(dir, name);
+            string partialPath = $"{dest}.{Guid.NewGuid():N}.download";
+            partial = partialPath;
 
-            using var resp = await Http.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-            resp.EnsureSuccessStatusCode();
-            long? total = resp.Content.Headers.ContentLength;
-
-            await using var src = await resp.Content.ReadAsStreamAsync(ct);
-            await using var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None);
-            var buffer = new byte[81920];
-            long read = 0;
-            int n;
-            while ((n = await src.ReadAsync(buffer, ct)) > 0)
+            using (HttpResponseMessage resp = await Http.GetAsync(
+                downloadUri, HttpCompletionOption.ResponseHeadersRead, ct))
             {
-                await fs.WriteAsync(buffer.AsMemory(0, n), ct);
-                read += n;
-                if (total is > 0) progress?.Report((double)read / total.Value);
+                if (resp.RequestMessage?.RequestUri is not Uri responseUri
+                    || !IsTrustedReleaseUrl(responseUri, allowAssetHost: true))
+                    return null;
+
+                resp.EnsureSuccessStatusCode();
+                long? total = resp.Content.Headers.ContentLength;
+
+                await using (Stream src = await resp.Content.ReadAsStreamAsync(ct))
+                await using (var fs = new FileStream(
+                    partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    var buffer = new byte[81920];
+                    long read = 0;
+                    int n;
+                    while ((n = await src.ReadAsync(buffer, ct)) > 0)
+                    {
+                        await fs.WriteAsync(buffer.AsMemory(0, n), ct);
+                        read += n;
+                        if (total is > 0) progress?.Report((double)read / total.Value);
+                    }
+                }
             }
+
+            // The staged stream is closed before replacing the destination. This is
+            // required on Windows because the file is opened with FileShare.None.
+            File.Move(partialPath, dest, overwrite: true);
+            partial = null;
             progress?.Report(1.0);
             return dest;
         }
-        catch { return null; }
+        catch
+        {
+            // Never leave a truncated installer behind for a later launch to pick up.
+            if (partial is not null)
+            {
+                try { File.Delete(partial); } catch { }
+            }
+            return null;
+        }
     }
 
     /// <summary>Launch the downloaded installer and close this instance so it can replace files.</summary>
@@ -180,6 +213,41 @@ public static class UpdateService
             firstExeName ??= name;
         }
         return (firstExe, firstExeName);
+    }
+
+    private static string? SafeAssetName(string? assetName)
+    {
+        if (string.IsNullOrWhiteSpace(assetName)) return null;
+        string name = assetName.Trim();
+        if (name is "." or ".."
+            || !string.Equals(Path.GetFileName(name), name, StringComparison.Ordinal)
+            || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            return null;
+        return name;
+    }
+
+    private static string SafeVersionName(string version)
+    {
+        string name = Normalize(version);
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+            name = name.Replace(invalid, '_');
+        return string.IsNullOrWhiteSpace(name) ? "latest" : name;
+    }
+
+    private static bool IsTrustedReleaseUrl(Uri uri, bool allowAssetHost)
+    {
+        if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps) return false;
+
+        if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            string expectedPrefix = $"/{Owner}/{Repo}/releases/download/";
+            return uri.AbsolutePath.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!allowAssetHost) return false;
+        return uri.Host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("github-releases.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
     }
 
     // ===================== Version parsing / comparison =====================

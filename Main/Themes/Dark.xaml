@@ -149,6 +149,9 @@
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                             <Setter Property="Foreground" Value="{StaticResource Text}" />
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.3" />
                         </Trigger>
@@ -175,6 +178,10 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource DangerStrong}" />
                             <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            <Setter TargetName="bg" Property="BorderThickness" Value="1" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -238,6 +245,9 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                             <Setter Property="Foreground" Value="{StaticResource Text}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash}" />
@@ -374,6 +384,9 @@
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass4}" />
                             <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource Line3}" />
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
                         </Trigger>
@@ -400,6 +413,9 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                             <Setter Property="Foreground" Value="{StaticResource Text}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -432,6 +448,9 @@
                                     <DropShadowEffect Color="#A855F7" BlurRadius="24" ShadowDepth="0" Opacity="0.7" />
                                 </Setter.Value>
                             </Setter>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />

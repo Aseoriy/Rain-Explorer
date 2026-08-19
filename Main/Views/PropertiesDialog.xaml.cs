@@ -84,7 +84,11 @@ public partial class PropertiesDialog : Window
             SizeOnDiskText.Text = $"{FormatSize(onDisk)}  ({onDisk:N0} bytes)";
         }
 
-        Closed += (_, _) => _cts.Cancel();
+        Closed += (_, _) =>
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+        };
         Loaded += (_, _) => { NameBox.Focus(); NameBox.SelectAll(); };
     }
 

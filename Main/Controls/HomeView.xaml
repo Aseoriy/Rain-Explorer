@@ -38,6 +38,9 @@
                                 <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
                                 <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -76,6 +79,9 @@
                                 <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
                                 <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Line2}" />
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -112,6 +118,9 @@
                                 <Setter TargetName="b" Property="Background" Value="{StaticResource Glass3}" />
                                 <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentBright}" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -143,7 +152,8 @@
                         <Button Style="{StaticResource PinTile}"
                                 Command="{Binding DataContext.OpenEntryCommand,
                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}" ToolTip="{Binding FullPath}"
+                                AutomationProperties.Name="{Binding Name}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -159,7 +169,8 @@
                         <Button Style="{StaticResource RecentRow}"
                                 Command="{Binding DataContext.OpenEntryCommand,
                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}" ToolTip="{Binding FullPath}"
+                                AutomationProperties.Name="{Binding Name}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -175,7 +186,8 @@
                         <Button Style="{StaticResource MiniDrive}"
                                 Command="{Binding DataContext.OpenEntryCommand,
                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}" ToolTip="{Binding Path}"
+                                AutomationProperties.Name="{Binding Label}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

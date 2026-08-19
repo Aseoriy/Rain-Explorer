@@ -26,6 +26,7 @@ public sealed class SettingsStore
     };
 
     private readonly string _path;
+    private readonly object _saveGate = new();
     public AppSettings Settings { get; }
 
     private SettingsStore()
@@ -64,8 +65,10 @@ public sealed class SettingsStore
             {
                 using var fs = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using var sr = new StreamReader(fs);
-                return JsonSerializer.Deserialize<AppSettings>(sr.ReadToEnd(), JsonOpts)
-                       ?? new AppSettings();
+                var loaded = JsonSerializer.Deserialize<AppSettings>(sr.ReadToEnd(), JsonOpts)
+                             ?? new AppSettings();
+                Normalize(loaded);
+                return loaded;
             }
             catch (IOException)
             {
@@ -99,19 +102,79 @@ public sealed class SettingsStore
         // (and the .corrupt copy) stays intact until a clean run can read it.
         if (LoadFailed) return;
 
-        try
+        lock (_saveGate)
         {
-            string json = JsonSerializer.Serialize(Settings, JsonOpts);
-            string tmp = _path + ".tmp";
-            File.WriteAllText(tmp, json);
-            if (File.Exists(_path)) File.Replace(tmp, _path, null);
-            else File.Move(tmp, _path);
+            string? tmp = null;
+            try
+            {
+                string json = JsonSerializer.Serialize(Settings, JsonOpts);
+                tmp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+                           FileShare.None, 4096, FileOptions.WriteThrough))
+                using (var sw = new StreamWriter(fs, new System.Text.UTF8Encoding(false)))
+                {
+                    sw.Write(json);
+                    sw.Flush();
+                    fs.Flush(flushToDisk: true);
+                }
+
+                if (File.Exists(_path)) File.Replace(tmp, _path, null);
+                else File.Move(tmp, _path);
+                tmp = null;
+            }
+            catch
+            {
+                // Never fall back to writing settings.json directly: a failed or
+                // interrupted write must not truncate the last known-good file.
+                if (tmp is not null) { try { File.Delete(tmp); } catch { } }
+            }
         }
-        catch
+    }
+
+    private static void Normalize(AppSettings settings)
+    {
+        // JSON nulls are valid input even though these collections are initialized
+        // for normal construction. Keep older/hand-edited settings from causing a
+        // later sidebar or workspace operation to throw.
+        settings.Pinned ??= new();
+        settings.CustomGroups ??= new();
+        settings.TabProjects ??= new();
+        settings.SidebarOrder ??= new();
+        settings.GitHubAccounts ??= new();
+        settings.DefaultFolder ??= string.Empty;
+        settings.Theme ??= "Violet";
+        settings.FontFamily ??= "Segoe UI";
+        settings.GitExecutablePath ??= string.Empty;
+        settings.GitDefaultCloneFolder ??= string.Empty;
+        settings.QuickAccessName ??= "Quick access";
+        settings.DrivesName ??= "Drives";
+        settings.SkippedUpdateVersion ??= string.Empty;
+
+        foreach (var group in settings.CustomGroups)
         {
-            // Last resort: a plain write (e.g. if File.Replace isn't supported here).
-            try { File.WriteAllText(_path, JsonSerializer.Serialize(Settings, JsonOpts)); }
-            catch { /* best-effort */ }
+            if (group is null) continue;
+            group.Items ??= new();
+            group.Name ??= "New list";
+            group.Id ??= Guid.NewGuid().ToString("N");
+        }
+        foreach (var project in settings.TabProjects)
+        {
+            if (project is null) continue;
+            project.Tabs ??= new();
+            project.Id ??= Guid.NewGuid().ToString("N");
+            project.Name ??= "New project";
+        }
+
+        if (settings.SavedSession is { } session)
+        {
+            session.LeftTabs ??= new();
+            session.LeftPinnedTabs ??= new();
+            session.LeftTabGroups ??= new();
+            session.LeftTabGroupNames ??= new();
+            session.RightTabs ??= new();
+            session.RightPinnedTabs ??= new();
+            session.RightTabGroups ??= new();
+            session.RightTabGroupNames ??= new();
         }
     }
 }

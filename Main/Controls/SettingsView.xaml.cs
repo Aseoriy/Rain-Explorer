@@ -45,7 +45,7 @@ public partial class SettingsView : UserControl
             .ToList();
         FontBox.ItemsSource = _installedFonts;
 
-        // Prefer the informational version (e.g. "1.1.0-PreRelease"); fall back to the numeric one.
+        // Prefer the informational version (e.g. "1.2.0-PreRelease"); fall back to the numeric one.
         var info = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(info))
@@ -56,7 +56,7 @@ public partial class SettingsView : UserControl
         else
         {
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            VersionText.Text = v is null ? "v1.0" : $"v{v.Major}.{v.Minor}.{v.Build}";
+            VersionText.Text = v is null ? "v1.2.0" : $"v{v.Major}.{v.Minor}.{v.Build}";
         }
 
         ConfigPathText.Text = Path.Combine(

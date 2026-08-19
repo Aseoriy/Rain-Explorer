@@ -17,6 +17,7 @@ public sealed class SortStore
     private static readonly SortPref Default = new("Name", 1);
     private readonly string _path;
     private readonly Dictionary<string, SortPref> _map;
+    private readonly object _saveGate = new();
 
     private SortStore()
     {
@@ -27,17 +28,34 @@ public sealed class SortStore
         _map = Load();
     }
 
-    public SortPref Get(string folder) =>
-        _map.TryGetValue(Norm(folder), out var p) ? p : Default;
+    public SortPref Get(string folder)
+    {
+        if (!_map.TryGetValue(Norm(folder), out var p) || p is null) return Default;
+        return p.Dir is 1 or -1 ? p : p with { Dir = p.Dir < 0 ? -1 : 1 };
+    }
 
     public void Set(string folder, SortPref pref)
     {
-        _map[Norm(folder)] = pref;
+        if (pref is null) return;
+        _map[Norm(folder)] = pref.Dir is 1 or -1
+            ? pref
+            : pref with { Dir = pref.Dir < 0 ? -1 : 1 };
         Save();
     }
 
-    private static string Norm(string folder) =>
-        folder.TrimEnd(Path.DirectorySeparatorChar).ToLowerInvariant();
+    private static string Norm(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return string.Empty;
+        try
+        {
+            string full = Path.GetFullPath(folder.Trim());
+            string root = Path.GetPathRoot(full) ?? string.Empty;
+            return string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
+                ? root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant()
+                : full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
+        }
+        catch { return folder.Trim().ToLowerInvariant(); }
+    }
 
     private Dictionary<string, SortPref> Load()
     {
@@ -46,7 +64,18 @@ public sealed class SortStore
             if (File.Exists(_path))
             {
                 var data = JsonSerializer.Deserialize<Dictionary<string, SortPref>>(File.ReadAllText(_path));
-                if (data is not null) return data;
+                if (data is not null)
+                {
+                    var normalized = new Dictionary<string, SortPref>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var pair in data)
+                    {
+                        if (pair.Value is null) continue;
+                        normalized[Norm(pair.Key)] = pair.Value.Dir is 1 or -1
+                            ? pair.Value
+                            : pair.Value with { Dir = pair.Value.Dir < 0 ? -1 : 1 };
+                    }
+                    return normalized;
+                }
             }
         }
         catch
@@ -58,13 +87,29 @@ public sealed class SortStore
 
     private void Save()
     {
-        try
+        lock (_saveGate)
         {
-            File.WriteAllText(_path, JsonSerializer.Serialize(_map));
-        }
-        catch
-        {
-            // Best-effort; a failed write shouldn't break browsing.
+            string? tmp = null;
+            try
+            {
+                tmp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write,
+                           FileShare.None, 4096, FileOptions.WriteThrough))
+                using (var sw = new StreamWriter(fs, new System.Text.UTF8Encoding(false)))
+                {
+                    sw.Write(JsonSerializer.Serialize(_map));
+                    sw.Flush();
+                    fs.Flush(flushToDisk: true);
+                }
+                if (File.Exists(_path)) File.Replace(tmp, _path, null);
+                else File.Move(tmp, _path);
+                tmp = null;
+            }
+            catch
+            {
+                // Best-effort; never truncate the last known-good preference file.
+                if (tmp is not null) { try { File.Delete(tmp); } catch { } }
+            }
         }
     }
 }

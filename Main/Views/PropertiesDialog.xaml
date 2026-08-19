@@ -74,7 +74,8 @@
                 <TextBlock Text="Properties" FontWeight="Bold" FontSize="14"
                            VerticalAlignment="Center" Margin="18,0" Foreground="{StaticResource Text}" />
                 <Button Style="{StaticResource CloseButton}" HorizontalAlignment="Right" Margin="0,0,7,0"
-                        Width="34" Height="30" Click="Cancel_Click" ToolTip="Close">
+                        Width="34" Height="30" Click="Cancel_Click" ToolTip="Close"
+                        AutomationProperties.Name="Close properties">
                     <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.x}"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                 </Button>
@@ -178,12 +179,13 @@
                                                FontFamily="{StaticResource MonoFont}" FontSize="12" />
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,3,0,0">
                                         <Button Style="{StaticResource IconButton}" Width="26" Height="26" Click="CopyPath_Click"
-                                                ToolTip="Copy full path">
+                                                ToolTip="Copy full path" AutomationProperties.Name="Copy full path">
                                             <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.copy}"
                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                         </Button>
                                         <Button Style="{StaticResource IconButton}" Width="26" Height="26" Click="OpenLocation_Click"
-                                                ToolTip="Open containing folder">
+                                                ToolTip="Open containing folder"
+                                                AutomationProperties.Name="Open containing folder">
                                             <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.external-link}"
                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                         </Button>
@@ -350,7 +352,8 @@
                                          Style="{StaticResource FieldBox}" Margin="0,4" Height="30"
                                          FontFamily="{StaticResource MonoFont}" FontSize="11" />
                                 <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource IconButton}" Width="28" Height="28"
-                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="md5" ToolTip="Copy MD5">
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="md5" ToolTip="Copy MD5"
+                                        AutomationProperties.Name="Copy MD5 hash">
                                     <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.copy}"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                 </Button>
@@ -360,7 +363,8 @@
                                          Style="{StaticResource FieldBox}" Margin="0,4" Height="30"
                                          FontFamily="{StaticResource MonoFont}" FontSize="11" />
                                 <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource IconButton}" Width="28" Height="28"
-                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha1" ToolTip="Copy SHA-1">
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha1" ToolTip="Copy SHA-1"
+                                        AutomationProperties.Name="Copy SHA-1 hash">
                                     <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.copy}"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                 </Button>
@@ -370,7 +374,8 @@
                                          Style="{StaticResource FieldBox}" Margin="0,4" Height="30"
                                          FontFamily="{StaticResource MonoFont}" FontSize="11" />
                                 <Button Grid.Row="2" Grid.Column="2" Style="{StaticResource IconButton}" Width="28" Height="28"
-                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha256" ToolTip="Copy SHA-256">
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha256" ToolTip="Copy SHA-256"
+                                        AutomationProperties.Name="Copy SHA-256 hash">
                                     <Path Style="{StaticResource IconPath}" Width="14" Height="14" Data="{StaticResource Ic.copy}"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                 </Button>

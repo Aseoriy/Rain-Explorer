@@ -153,6 +153,10 @@
         <Border x:Name="CrumbHost" Background="{StaticResource Glass2}"
                 BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="8" Height="30"
                 Cursor="IBeam"
+                AllowDrop="True"
+                DragOver="CrumbHost_DragOver"
+                DragLeave="CrumbHost_DragLeave"
+                Drop="CrumbHost_Drop"
                 PreviewMouseLeftButtonDown="CrumbHost_MouseDown">
             <ScrollViewer x:Name="CrumbScroll" Padding="6,0" Background="Transparent" Focusable="False"
                           HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">

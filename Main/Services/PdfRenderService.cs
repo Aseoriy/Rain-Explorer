@@ -35,6 +35,7 @@ public static class PdfRenderService
             var options = new PdfPageRenderOptions { DestinationWidth = targetWidth };
             await page.RenderToStreamAsync(stream, options);
             ct.ThrowIfCancellationRequested();
+            stream.Seek(0);
 
             var bmp = new BitmapImage();
             bmp.BeginInit();

@@ -21,6 +21,9 @@ namespace RainExplorer.Services;
 /// </summary>
 public static class ShellIconService
 {
+    // Per-file icons are keyed by full path, so cap the process-wide cache when a
+    // long-running session browses many executable/icon-bearing files.
+    private const int MaxCacheEntries = 1024;
     private static readonly Dictionary<string, BitmapSource> Cache = new(StringComparer.OrdinalIgnoreCase);
     // Requests for a key that's already being resolved piggyback on that one native
     // call instead of issuing their own — see the threading note on NativeGate below.
@@ -56,7 +59,7 @@ public static class ShellIconService
         {
             if (Cache.TryGetValue(key, out var cached))
             {
-                onLoaded(cached);
+                try { onLoaded(cached); } catch { /* a row may have been unloaded */ }
                 return;
             }
 
@@ -81,14 +84,21 @@ public static class ShellIconService
                 // A failed resolve is NOT cached — a transient extraction failure
                 // must stay retryable on the next request for this key, not get
                 // stuck as a permanent miss for the rest of the process's lifetime.
-                if (img is not null) Cache[key] = img;
+                if (img is not null)
+                {
+                    if (Cache.Count >= MaxCacheEntries) Cache.Clear();
+                    Cache[key] = img;
+                }
                 InFlight.Remove(key, out waiters);
             }
 
             if (img is not null && waiters is not null)
                 Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
-                    foreach (var cb in waiters) cb(img);
+                    foreach (var cb in waiters)
+                    {
+                        try { cb(img); } catch { /* a row may have been unloaded */ }
+                    }
                 });
         });
     }

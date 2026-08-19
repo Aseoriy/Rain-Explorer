@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private readonly bool _skipInitialTab;
     private readonly bool _persistWindowPlacement;
     private NativeRect? _lastNormalPixelBounds;
+    private bool _sidebarInputSelectionPending;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -40,18 +41,42 @@ public partial class MainWindow : Window
         public readonly int Height => Bottom - Top;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y,
         int width, int height, uint flags);
 
+    private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private const uint MonitorDefaultToNearest = 0x0002;
 
     public MainWindow() : this(skipInitialTab: false, persistWindowPlacement: true)
     {
@@ -64,8 +89,11 @@ public partial class MainWindow : Window
         _vm = new MainViewModel();
         InitializeComponent();
         DataContext = _vm;
-        ApplySavedWindowPlacement();
-        SourceInitialized += (_, _) => ApplyNativeWindowPlacement();
+        if (_persistWindowPlacement)
+        {
+            ApplySavedWindowPlacement();
+            SourceInitialized += (_, _) => ApplyNativeWindowPlacement();
+        }
         _windowPlacementTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _windowPlacementTimer.Tick += (_, _) =>
         {
@@ -256,30 +284,144 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Create a second Rain Explorer window and move the live tab into it.</summary>
-    internal static void OpenDetachedTab(PaneViewModel source, TabViewModel tab, Point screenPosition)
+    internal static void OpenDetachedTab(PaneViewModel source, TabViewModel tab,
+        bool includeGroup, Point screenPositionPixels,
+        double grabRatioX, double grabRatioY)
     {
         var window = new MainWindow(skipInitialTab: true, persistWindowPlacement: false)
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
             WindowState = WindowState.Normal,
+            Opacity = 0,
         };
-        double width = double.IsNaN(window.Width) ? 1120 : window.Width;
-        double maxLeft = SystemParameters.VirtualScreenLeft
-            + Math.Max(0, SystemParameters.VirtualScreenWidth - width);
-        window.Left = Math.Clamp(screenPosition.X - 120,
-            SystemParameters.VirtualScreenLeft,
-            maxLeft);
-        window.Top = Math.Clamp(screenPosition.Y - 22,
-            SystemParameters.VirtualScreenTop,
-            SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 80);
+
+        // Put the native window on the destination display before its first layout so
+        // WPF realizes the tab strip at that monitor's DPI. The exact tab-under-pointer
+        // alignment is refined below once the new tab container exists.
+        Point estimatedDragOffsetPixels = new(360, 64);
+        window.SourceInitialized += (_, _) => PositionDetachedWindow(
+            window, screenPositionPixels, estimatedDragOffsetPixels);
+
+        ScaleTransform? arrivalScale = null;
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            window.RootBorder.Opacity = 0;
+            window.RootBorder.RenderTransformOrigin = new Point(0.5, 0.08);
+            arrivalScale = new ScaleTransform(0.985, 0.985);
+            window.RootBorder.RenderTransform = arrivalScale;
+        }
         window.Show();
-        if (!window._vm.LeftPane.TransferTabFrom(source, tab,
-                activate: true, preserveGroup: false))
+
+        bool transferred = includeGroup
+            ? window._vm.LeftPane.TransferGroupFrom(source, tab, activate: true)
+            : window._vm.LeftPane.TransferTabFrom(source, tab,
+                activate: true, preserveGroup: false);
+        if (!transferred)
         {
             window.Close();
             return;
         }
-        window.Activate();
+
+        window.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (!window.IsVisible) return;
+            window.UpdateLayout();
+            Point dragOffsetPixels = estimatedDragOffsetPixels;
+            IntPtr handle = new WindowInteropHelper(window).Handle;
+            if (handle != IntPtr.Zero && GetWindowRect(handle, out var currentBounds)
+                && window.LeftPaneView.TryGetTabDragGrabScreenPoint(
+                    tab, grabRatioX, grabRatioY, out var grabPointPixels))
+            {
+                dragOffsetPixels = new Point(
+                    grabPointPixels.X - currentBounds.Left,
+                    grabPointPixels.Y - currentBounds.Top);
+            }
+
+            PositionDetachedWindow(window, screenPositionPixels, dragOffsetPixels);
+            window.Opacity = 1;
+            if (arrivalScale is null)
+            {
+                window.RootBorder.Opacity = 1;
+            }
+            else
+            {
+                window.RootBorder.Opacity = 0.72;
+                var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+                arrivalScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                    new DoubleAnimation(1, TimeSpan.FromMilliseconds(170)) { EasingFunction = easing });
+                arrivalScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                    new DoubleAnimation(1, TimeSpan.FromMilliseconds(170)) { EasingFunction = easing });
+                var fade = new DoubleAnimation(1, TimeSpan.FromMilliseconds(145));
+                fade.Completed += (_, _) =>
+                {
+                    window.RootBorder.BeginAnimation(OpacityProperty, null);
+                    window.RootBorder.Opacity = 1;
+                    if (ReferenceEquals(window.RootBorder.RenderTransform, arrivalScale))
+                        window.RootBorder.RenderTransform = null;
+                };
+                window.RootBorder.BeginAnimation(OpacityProperty, fade);
+            }
+            window.Activate();
+        });
+    }
+
+    private static void PositionDetachedWindow(MainWindow window,
+        Point screenPositionPixels, Point dragOffsetPixels)
+    {
+        IntPtr handle = new WindowInteropHelper(window).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var currentBounds)
+            || !TryGetMonitorWorkArea(screenPositionPixels, out var workAreaPixels))
+            return;
+
+        Rect bounds = CalculateDetachedWindowBounds(
+            workAreaPixels,
+            new Size(currentBounds.Width, currentBounds.Height),
+            screenPositionPixels,
+            dragOffsetPixels);
+        SetWindowPos(handle, IntPtr.Zero,
+            (int)Math.Round(bounds.Left), (int)Math.Round(bounds.Top), 0, 0,
+            SwpNoSize | SwpNoZOrder | SwpNoActivate);
+    }
+
+    private static bool TryGetMonitorWorkArea(Point screenPositionPixels, out Rect workAreaPixels)
+    {
+        var point = new NativePoint
+        {
+            X = (int)Math.Round(screenPositionPixels.X),
+            Y = (int)Math.Round(screenPositionPixels.Y),
+        };
+        IntPtr monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info))
+        {
+            workAreaPixels = Rect.Empty;
+            return false;
+        }
+
+        workAreaPixels = new Rect(
+            info.WorkArea.Left,
+            info.WorkArea.Top,
+            info.WorkArea.Width,
+            info.WorkArea.Height);
+        return workAreaPixels.Width > 0 && workAreaPixels.Height > 0;
+    }
+
+    internal static Rect CalculateDetachedWindowBounds(Rect workAreaPixels,
+        Size windowSizePixels, Point screenPositionPixels, Point dragOffsetPixels)
+    {
+        double width = Math.Max(1, windowSizePixels.Width);
+        double height = Math.Max(1, windowSizePixels.Height);
+        double maxLeft = Math.Max(workAreaPixels.Left, workAreaPixels.Right - width);
+        double maxTop = Math.Max(workAreaPixels.Top, workAreaPixels.Bottom - height);
+        double left = Math.Clamp(
+            screenPositionPixels.X - dragOffsetPixels.X,
+            workAreaPixels.Left,
+            maxLeft);
+        double top = Math.Clamp(
+            screenPositionPixels.Y - dragOffsetPixels.Y,
+            workAreaPixels.Top,
+            maxTop);
+        return new Rect(left, top, width, height);
     }
 
     // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs in the active pane.
@@ -368,6 +510,19 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
+        _vm.Dispose();
+        base.OnClosed(e);
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            if (Application.Current is { } app
+                && !app.Windows.OfType<MainWindow>().Any(window => window.IsVisible))
+                app.Shutdown();
+        });
+    }
+
     // StaysOpen="True" on ActivityPopup (see XAML) disables WPF's own outside-click
     // light-dismiss, which otherwise always closes the popup before this Click even fires
     // (it needs a MouseUp; the light-dismiss reacts to MouseDown), making a "close" click
@@ -383,6 +538,18 @@ public partial class MainWindow : Window
     private void ClearActivity_Click(object sender, RoutedEventArgs e) =>
         ActivityService.Instance.Clear();
 
+    private void ActivityPause_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)
+            ActivityService.Instance.RequestPauseToggle(activity);
+    }
+
+    private void ActivityCancel_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)
+            ActivityService.Instance.RequestCancel(activity);
+    }
+
     // ===================== Sidebar tree =====================
     private static SidebarNode? NodeFrom(object sender) =>
         (sender as FrameworkElement)?.DataContext as SidebarNode;
@@ -390,11 +557,12 @@ public partial class MainWindow : Window
     // Navigate when a selectable node is chosen.
     private void Sidebar_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        // Ignore selection changes we made ourselves while syncing the highlight to the
-        // active tab — only a real user pick should navigate.
-        if (_vm.SuppressSidebarNav) return;
-        if (e.NewValue is SidebarNode n && n.IsSelectable && !string.IsNullOrEmpty(n.Path))
-            _vm.NavigateTo(n.Path);
+        if (e.NewValue is not SidebarNode n || !n.IsSelectable || string.IsNullOrEmpty(n.Path)) return;
+        bool userInitiated = _sidebarInputSelectionPending;
+        _sidebarInputSelectionPending = false;
+        // A selection update that already matches the active tab is highlight sync,
+        // not a user request to navigate the tab a second time.
+        if (userInitiated || !_vm.IsActiveSidebarTarget(n)) _vm.NavigateTo(n.Path);
     }
 
     // The (+) on a list header: browse for a folder and pin it to THAT list.
@@ -472,6 +640,12 @@ public partial class MainWindow : Window
                      ?? new NodePinMenuTarget("quick", SettingsStore.Instance.Settings.QuickAccessName, false);
         if (MainViewModel.IsPinnedTo(target.Key, n.Path)) MainViewModel.UnpinFrom(target.Key, n.Path);
         else MainViewModel.PinTo(target.Key, n.Path, n.Name, n.IconKey);
+    }
+
+    private void NodeContextMenu_Opening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SidebarNode { IsHeader: true } })
+            e.Handled = true;
     }
 
     private void NodeContextMenu_Opened(object sender, RoutedEventArgs e)
@@ -564,10 +738,25 @@ public partial class MainWindow : Window
 
     private void SidebarTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        MarkSidebarInputSelection();
         _pinDragStart = e.GetPosition(null);
         var n = NodeUnder(e.OriginalSource);
         _pinDragNode = n is { Kind: NodeKind.Pinned } ? n : null;
         _sectionDragNode = n is { IsHeader: true } ? n : null;
+    }
+
+    private void SidebarTree_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right
+            or Key.Home or Key.End or Key.PageUp or Key.PageDown or Key.Enter or Key.Space)
+            MarkSidebarInputSelection();
+    }
+
+    private void MarkSidebarInputSelection()
+    {
+        _sidebarInputSelectionPending = true;
+        Dispatcher.BeginInvoke(
+            () => _sidebarInputSelectionPending = false, DispatcherPriority.Input);
     }
 
     private void SidebarTree_MouseMove(object sender, MouseEventArgs e)
@@ -688,7 +877,7 @@ public partial class MainWindow : Window
         HideInsertion();
     }
 
-    private void Sidebar_Drop(object sender, DragEventArgs e)
+    private async void Sidebar_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
         SetSidebarDropTarget(null);
@@ -729,7 +918,9 @@ public partial class MainWindow : Window
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
 
         bool move = FileDropService.EffectFor(files, dest, e.KeyStates) == DragDropEffects.Move;
-        string? err = FileDropService.Perform(files, dest, move);
+        string? err = await FileDropService.Perform(files, dest, move, this);
+        if (err is not null && _vm.ActivePane.SelectedTab is { } activeTab)
+            activeTab.Status = $"⚠️ {err}";
         // A move emptied the source folder — refresh the active tab if it's showing it.
         if (err is null && move) _ = _vm.ActivePane.SelectedTab?.ReloadAsync();
     }
