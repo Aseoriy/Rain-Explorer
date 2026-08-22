@@ -133,6 +133,10 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     /// <summary>Whether this tab is kept while using bulk-close commands.</summary>
     public bool IsPinned { get => _isPinned; set => Set(ref _isPinned, value); }
 
+    private bool _isActive;
+    /// <summary>Whether this is the tab whose contents are currently displayed.</summary>
+    public bool IsActive { get => _isActive; set => Set(ref _isActive, value); }
+
     private string? _groupId;
     public string? GroupId
     {

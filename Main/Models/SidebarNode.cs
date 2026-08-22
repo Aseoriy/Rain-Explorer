@@ -57,8 +57,9 @@ public sealed class SidebarNode : ObservableObject
         set { if (Set(ref _isExpanded, value) && value) LoadChildren(); }
     }
 
-    private bool _isSelected;
-    public bool IsSelected { get => _isSelected; set => Set(ref _isSelected, value); }
+    private bool _isActive;
+    /// <summary>Whether this node matches the active tab and receives the location highlight.</summary>
+    public bool IsActive { get => _isActive; set => Set(ref _isActive, value); }
 
     private bool _isDropTarget;
     /// <summary>True while a file drag hovers this node — its row paints an accent highlight.</summary>

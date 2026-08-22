@@ -46,6 +46,14 @@ public sealed class AppSettings : INotifyPropertyChanged
     private RenameMode _renameMode = RenameMode.Dialog;
     public RenameMode RenameMode { get => _renameMode; set => Set(ref _renameMode, value); }
 
+    private bool _selectFileNameWithoutExtensionOnRename = true;
+    /// <summary>Select only the filename portion when renaming a file with an extension.</summary>
+    public bool SelectFileNameWithoutExtensionOnRename
+    {
+        get => _selectFileNameWithoutExtensionOnRename;
+        set => Set(ref _selectFileNameWithoutExtensionOnRename, value);
+    }
+
     private bool _showHiddenFiles;
     public bool ShowHiddenFiles { get => _showHiddenFiles; set => Set(ref _showHiddenFiles, value); }
 

@@ -3,7 +3,7 @@
 ; The .NET 10 runtime is bundled with the app, so no separate runtime is required.
 
 #define MyAppName "Rain Explorer"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Aseoriy"
 #define MyAppExeName "RainExplorer.exe"
 #define SourceDir "E:\Downloads\Rain\Code stuff\File Explorer\dist\app-sc"

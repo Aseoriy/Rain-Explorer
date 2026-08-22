@@ -89,11 +89,21 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         set
         {
             if (ReferenceEquals(_selectedTab, value)) return;
-            if (_selectedTab is not null) _selectedTab.ContentsChanged -= OnActiveContentsChanged;
+            var previousTab = _selectedTab;
+            string? previousGroupId = previousTab?.GroupId;
+            if (previousTab is not null)
+            {
+                previousTab.ContentsChanged -= OnActiveContentsChanged;
+                previousTab.IsActive = false;
+            }
             if (value is not null) RememberSelection(value);
             if (!Set(ref _selectedTab, value)) return;
-            if (_selectedTab is not null) _selectedTab.ContentsChanged += OnActiveContentsChanged;
-            NotifyTabRows();
+            if (_selectedTab is not null)
+            {
+                _selectedTab.IsActive = true;
+                _selectedTab.ContentsChanged += OnActiveContentsChanged;
+            }
+            NotifyTabSelection(previousGroupId);
             NotifyProjectStateChanged();
         }
     }
@@ -728,6 +738,17 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(TopLevelTabs));
         OnPropertyChanged(nameof(ActiveGroupTabs));
         OnPropertyChanged(nameof(HasActiveGroup));
+        OnPropertyChanged(nameof(SelectedTopTab));
+    }
+
+    private void NotifyTabSelection(string? previousGroupId)
+    {
+        if (_batchingTabStructure) return;
+        if (!string.Equals(previousGroupId, SelectedTab?.GroupId, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(ActiveGroupTabs));
+            OnPropertyChanged(nameof(HasActiveGroup));
+        }
         OnPropertyChanged(nameof(SelectedTopTab));
     }
 

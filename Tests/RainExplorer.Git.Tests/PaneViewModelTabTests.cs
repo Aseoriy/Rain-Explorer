@@ -7,6 +7,26 @@ namespace RainExplorer.Git.Tests;
 public sealed class PaneViewModelTabTests
 {
     [Fact]
+    public void SelectingUngroupedTabDoesNotRebuildTabRows()
+    {
+        using var pane = NewPaneWithTabs(out var first, out var second, out _);
+        pane.SelectedTab = first;
+        var changes = new List<string?>();
+        pane.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+
+        pane.SelectedTab = second;
+
+        Assert.Same(second, pane.SelectedTab);
+        Assert.Same(second, pane.SelectedTopTab);
+        Assert.False(first.IsActive);
+        Assert.True(second.IsActive);
+        Assert.Contains(nameof(PaneViewModel.SelectedTab), changes);
+        Assert.Contains(nameof(PaneViewModel.SelectedTopTab), changes);
+        Assert.DoesNotContain(nameof(PaneViewModel.TopLevelTabs), changes);
+        Assert.DoesNotContain(nameof(PaneViewModel.ActiveGroupTabs), changes);
+    }
+
+    [Fact]
     public void CloseInactiveRightTabPreservesSelectedInstance()
     {
         using var pane = NewPaneWithTabs(out var first, out var second, out var third);
@@ -47,10 +67,14 @@ public sealed class PaneViewModelTabTests
         pane.CloseTab(third);
 
         Assert.Same(second, pane.SelectedTab);
+        Assert.False(third.IsActive);
+        Assert.True(second.IsActive);
 
         pane.CloseTab(second);
 
         Assert.Same(first, pane.SelectedTab);
+        Assert.False(second.IsActive);
+        Assert.True(first.IsActive);
     }
 
     [Fact]
@@ -139,6 +163,28 @@ public sealed class PaneViewModelTabTests
         Assert.Equal("group", first.GroupId);
         Assert.Equal("group", second.GroupId);
         Assert.True(second.IsGroupLeader);
+    }
+
+    [Fact]
+    public void MovingTabOutOfGroupKeepsTheRemainingGroupAndExtractsTheTab()
+    {
+        var fileSystem = new FileSystemService();
+        using var pane = new PaneViewModel(fileSystem);
+        var first = AddTab(pane, fileSystem);
+        var extracted = AddTab(pane, fileSystem);
+        var third = AddTab(pane, fileSystem);
+        var outside = AddTab(pane, fileSystem);
+        first.GroupId = "group";
+        extracted.GroupId = "group";
+        third.GroupId = "group";
+        pane.RefreshGroupLeaders();
+
+        Assert.True(pane.MoveTabOutOfGroup(extracted, outside, after: false));
+
+        Assert.Null(extracted.GroupId);
+        Assert.Equal("group", first.GroupId);
+        Assert.Equal("group", third.GroupId);
+        Assert.Equal([first, third, extracted, outside], pane.Tabs);
     }
 
     [Fact]

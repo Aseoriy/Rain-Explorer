@@ -7,6 +7,17 @@ namespace RainExplorer.Git.Tests;
 public sealed class GitSettingsTests
 {
     [Fact]
+    public void RenameSelectionWithoutExtensionDefaultsToEnabledAndRoundTrips()
+    {
+        var defaults = new AppSettings();
+        Assert.True(defaults.SelectFileNameWithoutExtensionOnRename);
+
+        AppSettings disabled = Assert.IsType<AppSettings>(
+            JsonSerializer.Deserialize<AppSettings>("{\"SelectFileNameWithoutExtensionOnRename\":false}"));
+        Assert.False(disabled.SelectFileNameWithoutExtensionOnRename);
+    }
+
+    [Fact]
     public void AutomaticFolderRefreshesDefaultToEnabledAndRoundTrip()
     {
         var defaults = new AppSettings();

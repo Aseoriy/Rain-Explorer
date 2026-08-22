@@ -173,15 +173,6 @@ public sealed class MainViewModel : ObservableObject
         foreach (var node in SidebarNodes) ApplyNodeSelection(node, target);
     }
 
-    /// <summary>Programmatic selection changes already point at the active tab and must
-    /// not navigate it again. Comparing targets avoids a delayed global suppression flag
-    /// that could accidentally swallow a real click.</summary>
-    public bool IsActiveSidebarTarget(SidebarNode node)
-    {
-        string? target = ActiveSidebarTarget();
-        return target is not null && node.IsSelectable && PathMatches(node.Path, target);
-    }
-
     private string? ActiveSidebarTarget()
     {
         var tab = ActivePane?.SelectedTab;
@@ -196,7 +187,7 @@ public sealed class MainViewModel : ObservableObject
 
     private static void ApplyNodeSelection(SidebarNode node, string? target)
     {
-        node.IsSelected = target is not null && node.IsSelectable && PathMatches(node.Path, target);
+        node.IsActive = target is not null && node.IsSelectable && PathMatches(node.Path, target);
         foreach (var c in node.Children) ApplyNodeSelection(c, target);
     }
 

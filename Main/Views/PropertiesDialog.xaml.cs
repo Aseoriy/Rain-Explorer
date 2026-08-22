@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
 
@@ -89,7 +90,15 @@ public partial class PropertiesDialog : Window
             _cts.Cancel();
             _cts.Dispose();
         };
-        Loaded += (_, _) => { NameBox.Focus(); NameBox.SelectAll(); };
+        Loaded += (_, _) =>
+        {
+            NameBox.Focus();
+            int selectionLength = RenameSelection.GetSelectionLength(
+                _originalName,
+                _isDir,
+                SettingsStore.Instance.Settings.SelectFileNameWithoutExtensionOnRename);
+            NameBox.Select(0, selectionLength);
+        };
     }
 
     // ---- Tab switching ------------------------------------------------------

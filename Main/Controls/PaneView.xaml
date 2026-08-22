@@ -168,13 +168,13 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                             </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                                 <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource Line2}" />
                                 <Setter TargetName="ico" Property="Stroke" Value="{StaticResource AccentBright}" />
                                 <Setter TargetName="ul" Property="Visibility" Value="Visible" />
                                 <Setter Property="Foreground" Value="{StaticResource Text}" />
-                            </Trigger>
+                            </DataTrigger>
                             <!-- File drag hovering this tab: accent drop highlight -->
                             <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash}" />
@@ -329,12 +329,12 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
                             </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash}" />
                                 <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                                 <Setter TargetName="ico" Property="Stroke" Value="{StaticResource AccentBright}" />
                                 <Setter Property="Foreground" Value="{StaticResource Text}" />
-                            </Trigger>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding IsGroupDropTarget}" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{StaticResource AccentWash2}" />
                                 <Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource AccentBright}" />

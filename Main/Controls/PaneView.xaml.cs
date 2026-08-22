@@ -88,6 +88,7 @@ public partial class PaneView : UserControl
     private TabViewModel? _tabGroupSource;
     private TabViewModel? _tabGroupHoverCandidate;
     private TabViewModel? _tabGroupHoverSource;
+    private TabDragPayload? _tabGroupHoverPayload;
     private ListBox? _tabGroupHoverBar;
     private DispatcherTimer? _tabGroupHoverTimer;
     private TabViewModel? _tabPreviewSource;
@@ -119,8 +120,10 @@ public partial class PaneView : UserControl
     private bool _newTabButtonPositionReady;
     private double _newTabButtonTargetX = double.NaN;
     private static readonly TimeSpan TabGroupHoverDelay = TimeSpan.FromMilliseconds(420);
-    private const double TabGroupHoverStartRatio = 0.28;
-    private const double TabGroupHoverEndRatio = 0.72;
+    // Reserve the overlap immediately before the 50% insertion midpoint for grouping;
+    // deeper overlap belongs to normal tab reordering.
+    private const double TabGroupEdgeMinimumOverlapRatio = 0.30;
+    private const double TabGroupEdgeMaximumOverlapRatio = 0.48;
     private const double TabStripDetachMagnetism = 50;
     private const double TabStripHorizontalMagnetism = 12;
     private const double TabReorderHysteresis = 10;
@@ -183,6 +186,8 @@ public partial class PaneView : UserControl
         if (_ownerWindow is null) return;
         _ownerWindow.AddHandler(UIElement.PreviewMouseDownEvent,
             (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick, true);
+        _ownerWindow.AddHandler(UIElement.PreviewMouseDownEvent,
+            (MouseButtonEventHandler)FileSelection_PreviewMouseDown, true);
     }
 
     private void PaneView_Unloaded(object sender, RoutedEventArgs e)
@@ -209,6 +214,8 @@ public partial class PaneView : UserControl
         if (_ownerWindow is null) return;
         _ownerWindow.RemoveHandler(UIElement.PreviewMouseDownEvent,
             (MouseButtonEventHandler)DismissToolbarPopupsOnOutsideClick);
+        _ownerWindow.RemoveHandler(UIElement.PreviewMouseDownEvent,
+            (MouseButtonEventHandler)FileSelection_PreviewMouseDown);
         _ownerWindow = null;
     }
 
@@ -1506,6 +1513,30 @@ public partial class PaneView : UserControl
         return (d as ListBoxItem)?.DataContext as FileItem;
     }
 
+    private FileItem? FileItemFromOwnList(object? source)
+    {
+        if (source is not DependencyObject element) return null;
+        return ItemsControl.ContainerFromElement(FileList, element) is ListViewItem row
+            ? row.DataContext as FileItem
+            : null;
+    }
+
+    private void FileSelection_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        FileItem? clickedItem = FileItemFromOwnList(e.OriginalSource);
+        FileItem? editingItem = _tab?.Items.FirstOrDefault(item => item.IsEditing);
+
+        // A background or chrome click may not move keyboard focus in WPF, so relying
+        // on LostKeyboardFocus can leave the inline editor visible indefinitely.
+        if (editingItem is not null && !ReferenceEquals(editingItem, clickedItem))
+            CommitInline(editingItem);
+
+        // A row click is left to the ListView so normal Ctrl/Shift selection still works.
+        // Everything else in the window dismisses this pane's file selection.
+        if (clickedItem is null)
+            FileList.UnselectAll();
+    }
+
     // ===================== Drag and drop =====================
 
     // Arm a potential drag when the press lands on a file row (not empty space,
@@ -1777,15 +1808,38 @@ public partial class PaneView : UserControl
         && (!ReferenceEquals(bar, GroupTabBar)
             || (!payload.IsGroupDrag && !payload.Tab.IsPinned));
 
+    internal static bool TabsShareGroup(string? firstGroupId, string? secondGroupId) =>
+        firstGroupId is { Length: > 0 }
+        && string.Equals(firstGroupId, secondGroupId, StringComparison.Ordinal);
+
+    internal static bool IsInsideFacingTabEdgeBand(
+        double draggedLeft, double draggedWidth, double targetLeft, double targetWidth)
+    {
+        if (draggedWidth <= 0 || targetWidth <= 0) return false;
+        double draggedCenter = draggedLeft + draggedWidth / 2;
+        double targetCenter = targetLeft + targetWidth / 2;
+        if (Math.Abs(draggedCenter - targetCenter) < 0.01) return false;
+        double overlap = draggedCenter < targetCenter
+            ? draggedLeft + draggedWidth - targetLeft
+            : targetLeft + targetWidth - draggedLeft;
+        double overlapRatio = overlap / Math.Min(draggedWidth, targetWidth);
+        return overlapRatio is >= TabGroupEdgeMinimumOverlapRatio
+            and <= TabGroupEdgeMaximumOverlapRatio;
+    }
+
+    private bool HasArmedTabGroupTarget(TabDragPayload payload) =>
+        ReferenceEquals(_tabGroupSource, payload.Tab) && _tabGroupTarget is not null;
+
     private void UpdateTabGroupHoverIntent(
         TabDragPayload payload, ListBox bar, Point pointer)
     {
         var dragged = payload.Tab;
-        var stableSlot = TabDragSlotAt(pointer.X);
-        var target = stableSlot?.Tab;
         bool groupRow = ReferenceEquals(bar, GroupTabBar);
-        bool alreadyInSameGroup = dragged.GroupId is { Length: > 0 } draggedGroupId
-            && draggedGroupId == target?.GroupId;
+        var hoverSlot = groupRow
+            ? TabDragVisualSlotAt(pointer.X, dragged, out _)
+            : TabGroupEdgeTarget(payload, pointer.X);
+        var target = hoverSlot?.Tab;
+        bool alreadyInSameGroup = TabsShareGroup(dragged.GroupId, target?.GroupId);
         if (target is null || dragged.IsPinned || payload.IsGroupDrag
             || ReferenceEquals(dragged, target) || alreadyInSameGroup)
         {
@@ -1801,10 +1855,9 @@ public partial class PaneView : UserControl
             return;
         }
 
-        double ratio = (pointer.X - stableSlot!.X) / stableSlot.Width;
-        if (ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio)
+        if (!groupRow)
         {
-            BeginTabGroupHover(dragged, target, bar);
+            BeginTabGroupHover(payload, target, bar);
             return;
         }
 
@@ -1895,7 +1948,13 @@ public partial class PaneView : UserControl
         var stableSlot = TabDragSlotAt(pointer.X);
         var target = stableSlot?.Tab;
         UpdateTabGroupHoverIntent(payload, dropBar, pointer);
-        UpdateTabDragPreview(payload, dropBar, pointer);
+        var armedGroupTarget = ReferenceEquals(_tabGroupSource, dragged)
+            ? _tabGroupTarget
+            : null;
+        if (armedGroupTarget is null)
+            UpdateTabDragPreview(payload, dropBar, pointer);
+        else
+            ClearTabDragPreview();
         var previewTarget = ReferenceEquals(_tabPreviewSource, dragged) ? _tabPreviewTarget : null;
         bool previewAfter = _tabPreviewAfter;
         double? stableRatio = stableSlot is null
@@ -1905,14 +1964,13 @@ public partial class PaneView : UserControl
             PrepareTabLayoutAnimation(includeRenderTransforms: true);
         ClearTabDragPreview();
 
-        bool centeredOnTarget = stableRatio is >= TabGroupHoverStartRatio
-            and <= TabGroupHoverEndRatio;
+        bool droppedOnTarget = stableRatio is >= 0 and <= 1;
+        if (armedGroupTarget is not null) target = armedGroupTarget;
         bool groupDrop = !payload.IsGroupDrag && !dragged.IsPinned
             && target is not null && !ReferenceEquals(dragged, target)
-            && dragged.GroupId != target.GroupId
+            && !TabsShareGroup(dragged.GroupId, target.GroupId)
             && ((groupRow && target.IsGrouped)
-                || (ReferenceEquals(_tabGroupSource, dragged)
-                    && ReferenceEquals(_tabGroupTarget, target)));
+                || ReferenceEquals(armedGroupTarget, target));
         var moveTarget = previewTarget ?? target;
         bool dropsAfter = previewTarget is not null
             ? previewAfter
@@ -1955,7 +2013,7 @@ public partial class PaneView : UserControl
                 _vm.GroupTabs(dragged, target, activate: false);
             }
             else if (dragged.IsGrouped && target?.GroupId == dragged.GroupId
-                && centeredOnTarget)
+                && droppedOnTarget)
             {
                 // Dropping a child back on its own group header keeps it in the group.
             }
@@ -1995,13 +2053,16 @@ public partial class PaneView : UserControl
         _tabGroupHoverTimer?.Stop();
         _tabGroupHoverCandidate = null;
         _tabGroupHoverSource = null;
+        _tabGroupHoverPayload = null;
         _tabGroupHoverBar = null;
     }
 
-    private void BeginTabGroupHover(TabViewModel source, TabViewModel target, ListBox bar)
+    private void BeginTabGroupHover(TabDragPayload payload, TabViewModel target, ListBox bar)
     {
+        var source = payload.Tab;
         if (ReferenceEquals(_tabGroupHoverSource, source)
             && ReferenceEquals(_tabGroupHoverCandidate, target)
+            && ReferenceEquals(_tabGroupHoverPayload, payload)
             && ReferenceEquals(_tabGroupHoverBar, bar))
             return;
 
@@ -2009,6 +2070,7 @@ public partial class PaneView : UserControl
         SetTabGroupTarget(null, null);
         _tabGroupHoverSource = source;
         _tabGroupHoverCandidate = target;
+        _tabGroupHoverPayload = payload;
         _tabGroupHoverBar = bar;
         _tabGroupHoverTimer ??= CreateTabGroupHoverTimer();
         _tabGroupHoverTimer.Interval = TabGroupHoverDelay;
@@ -2027,11 +2089,12 @@ public partial class PaneView : UserControl
         _tabGroupHoverTimer?.Stop();
         var source = _tabGroupHoverSource;
         var target = _tabGroupHoverCandidate;
+        var payload = _tabGroupHoverPayload;
         var bar = _tabGroupHoverBar;
         var slot = target is null
             ? null
             : _tabDragSlots.FirstOrDefault(candidate => ReferenceEquals(candidate.Tab, target));
-        if (source is null || target is null || bar is null || slot is null
+        if (source is null || target is null || payload is null || bar is null || slot is null
             || !GetCursorPos(out var cursor))
         {
             ResetTabGroupHover();
@@ -2042,10 +2105,9 @@ public partial class PaneView : UserControl
         try
         {
             Point pointer = bar.PointFromScreen(new Point(cursor.X, cursor.Y));
-            double ratio = (pointer.X - slot.X) / slot.Width;
-            bool stillCentered = pointer.Y >= 0 && pointer.Y <= bar.ActualHeight
-                && ratio is >= TabGroupHoverStartRatio and <= TabGroupHoverEndRatio;
-            if (stillCentered)
+            bool stillDockedAtEdge = pointer.Y >= 0 && pointer.Y <= bar.ActualHeight
+                && ReferenceEquals(TabGroupEdgeTarget(payload, pointer.X)?.Tab, target);
+            if (stillDockedAtEdge)
             {
                 SetTabGroupTarget(source, target);
                 return;
@@ -2263,6 +2325,54 @@ public partial class PaneView : UserControl
             if (x >= slot.X && x < slot.X + slot.Width) return slot;
         if (x < _tabDragSlots[0].X) return _tabDragSlots[0];
         return _tabDragSlots[^1];
+    }
+
+    private TabDragSlot? TabDragVisualSlotAt(
+        double x, TabViewModel excludedTab, out double visualLeft)
+    {
+        TabDragSlot? closest = null;
+        visualLeft = 0;
+        double closestCenterDistance = double.MaxValue;
+        foreach (var slot in _tabDragSlots)
+        {
+            if (ReferenceEquals(slot.Tab, excludedTab)) continue;
+            double left = slot.X + HorizontalTransformOffset(slot.Container.RenderTransform);
+            if (x < left || x > left + slot.Width) continue;
+            double centerDistance = Math.Abs(x - (left + slot.Width / 2));
+            if (centerDistance >= closestCenterDistance) continue;
+            closest = slot;
+            visualLeft = left;
+            closestCenterDistance = centerDistance;
+        }
+        return closest;
+    }
+
+    private TabDragSlot? TabGroupEdgeTarget(TabDragPayload payload, double pointerX)
+    {
+        double draggedWidth = Math.Max(1, payload.DraggedWidth);
+        double draggedLeft = pointerX - Math.Clamp(payload.GrabRatio, 0, 1) * draggedWidth;
+        TabDragSlot? closest = null;
+        double closestCenterDistance = double.MaxValue;
+        foreach (var slot in _tabDragSlots)
+        {
+            if (ReferenceEquals(slot.Tab, payload.Tab)
+                || !IsInsideFacingTabEdgeBand(
+                    draggedLeft, draggedWidth, slot.X, slot.Width))
+                continue;
+            double centerDistance = Math.Abs(
+                draggedLeft + draggedWidth / 2 - (slot.X + slot.Width / 2));
+            if (centerDistance >= closestCenterDistance) continue;
+            closest = slot;
+            closestCenterDistance = centerDistance;
+        }
+        return closest;
+    }
+
+    private void HoldTabDragPreviewForGrouping()
+    {
+        foreach (var motion in _tabPreviewMotions.Values)
+            motion.Target = 0;
+        _tabPreviewReturning = false;
     }
 
     private void SetTabPreviewOffset(ListBoxItem container, double target)
@@ -2528,7 +2638,10 @@ public partial class PaneView : UserControl
         if (pane.IsValidTabDrop(payload, bar))
         {
             pane.UpdateTabGroupHoverIntent(payload, bar, pointer);
-            pane.UpdateTabDragPreview(payload, bar, pointer);
+            if (pane.HasArmedTabGroupTarget(payload))
+                pane.HoldTabDragPreviewForGrouping();
+            else
+                pane.UpdateTabDragPreview(payload, bar, pointer);
         }
         else
         {
@@ -3074,7 +3187,15 @@ public partial class PaneView : UserControl
         }
         else
         {
-            var dlg = new InputDialog("Rename", "New name:", item.Name) { Owner = Window.GetWindow(this) };
+            var settings = SettingsStore.Instance.Settings;
+            int selectionLength = RenameSelection.GetSelectionLength(
+                item.Name,
+                item.IsDirectory,
+                settings.SelectFileNameWithoutExtensionOnRename);
+            var dlg = new InputDialog("Rename", "New name:", item.Name, selectionLength)
+            {
+                Owner = Window.GetWindow(this)
+            };
             if (dlg.ShowDialog() == true)
             {
                 if (!AllowRename(item.Name, dlg.Value, item.IsDirectory)) return;
@@ -3791,7 +3912,22 @@ public partial class PaneView : UserControl
     private void RenameBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.NewValue is true && sender is TextBox tb)
-            tb.Dispatcher.BeginInvoke(new Action(() => { tb.Focus(); tb.SelectAll(); }),
+            tb.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                tb.Focus();
+                if (tb.DataContext is FileItem item)
+                {
+                    int selectionLength = RenameSelection.GetSelectionLength(
+                        item.Name,
+                        item.IsDirectory,
+                        SettingsStore.Instance.Settings.SelectFileNameWithoutExtensionOnRename);
+                    tb.Select(0, selectionLength);
+                }
+                else
+                {
+                    tb.SelectAll();
+                }
+            }),
                 DispatcherPriority.Input);
     }
 

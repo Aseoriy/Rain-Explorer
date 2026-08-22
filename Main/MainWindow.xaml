@@ -348,7 +348,6 @@
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                                         <Setter Property="Foreground" Value="{StaticResource TextDim}" />
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                         <Setter Property="Template">
@@ -457,11 +456,11 @@
                                                             <Setter TargetName="row" Property="Background" Value="{StaticResource Glass3}" />
                                                             <Setter Property="Foreground" Value="{StaticResource Text}" />
                                                         </Trigger>
-                                                        <Trigger Property="IsSelected" Value="True">
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                             <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />
                                                             <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource AccentLine}" />
                                                             <Setter Property="Foreground" Value="{StaticResource Text}" />
-                                                        </Trigger>
+                                                        </DataTrigger>
                                                         <!-- File drag hovering this node: accent drop highlight -->
                                                         <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                                             <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />

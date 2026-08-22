@@ -337,6 +337,17 @@
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Keep file extensions unselected when renaming" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Select only the name before .ext so typing keeps the existing extension."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding SelectFileNameWithoutExtensionOnRename, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
                                     <StackPanel>
                                         <TextBlock Text="Open folders in a new tab" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Double-clicking a folder opens it in a new tab."

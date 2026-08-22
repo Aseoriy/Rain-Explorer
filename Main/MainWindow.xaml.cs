@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -554,16 +555,19 @@ public partial class MainWindow : Window
     private static SidebarNode? NodeFrom(object sender) =>
         (sender as FrameworkElement)?.DataContext as SidebarNode;
 
-    // Navigate when a selectable node is chosen.
+    // Keyboard selection changes carry explicit navigation intent. Mouse navigation is
+    // handled in preview so it still works when WPF already has that container selected.
     private void Sidebar_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (e.NewValue is not SidebarNode n || !n.IsSelectable || string.IsNullOrEmpty(n.Path)) return;
         bool userInitiated = _sidebarInputSelectionPending;
         _sidebarInputSelectionPending = false;
-        // A selection update that already matches the active tab is highlight sync,
-        // not a user request to navigate the tab a second time.
-        if (userInitiated || !_vm.IsActiveSidebarTarget(n)) _vm.NavigateTo(n.Path);
+
+        if (!ShouldNavigateSidebarSelection(userInitiated, e.NewValue as SidebarNode)) return;
+        _vm.NavigateTo(((SidebarNode)e.NewValue).Path);
     }
+
+    internal static bool ShouldNavigateSidebarSelection(bool userInitiated, SidebarNode? node) =>
+        userInitiated && node is { IsSelectable: true } && !string.IsNullOrEmpty(node.Path);
 
     // The (+) on a list header: browse for a folder and pin it to THAT list.
     private void AddPin_Click(object sender, RoutedEventArgs e)
@@ -738,11 +742,35 @@ public partial class MainWindow : Window
 
     private void SidebarTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        MarkSidebarInputSelection();
+        if (IsSidebarExpanderInteraction(e.OriginalSource)
+            && TreeViewItemUnder(e.OriginalSource) is { } item)
+        {
+            ToggleSidebarExpansion(item);
+            e.Handled = true;
+            _pinDragNode = null;
+            _sectionDragNode = null;
+            return;
+        }
+
         _pinDragStart = e.GetPosition(null);
         var n = NodeUnder(e.OriginalSource);
+        if (ShouldNavigateSidebarSelection(userInitiated: true, n)) _vm.NavigateTo(n!.Path);
         _pinDragNode = n is { Kind: NodeKind.Pinned } ? n : null;
         _sectionDragNode = n is { IsHeader: true } ? n : null;
+    }
+
+    internal static void ToggleSidebarExpansion(TreeViewItem item) =>
+        item.IsExpanded = !item.IsExpanded;
+
+    private static bool IsSidebarExpanderInteraction(object? source)
+    {
+        DependencyObject? d = source as DependencyObject;
+        while (d is not null)
+        {
+            if (d is ToggleButton { Name: "Expander" }) return true;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return false;
     }
 
     private void SidebarTree_PreviewKeyDown(object sender, KeyEventArgs e)
