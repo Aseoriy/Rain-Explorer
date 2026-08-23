@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using Microsoft.VisualBasic.FileIO;
 
@@ -33,6 +34,86 @@ public enum TransferConflictChoice
     ReplaceAll,
     SkipAll,
     Cancel
+}
+
+/// <summary>Live progress for a managed copy or move. Scanning is indeterminate.</summary>
+public readonly record struct TransferProgress(
+    int CompletedFiles,
+    int TotalFiles,
+    long CompletedBytes,
+    long TotalBytes,
+    string CurrentFile,
+    bool IsScanning,
+    TimeSpan Elapsed)
+{
+    public const long LargeTransferBytes = 32L * 1024 * 1024;
+    public const int LargeTransferFiles = 100;
+
+    public double? Fraction
+    {
+        get
+        {
+            if (IsScanning) return null;
+            if (TotalBytes > 0)
+                return Math.Clamp((double)CompletedBytes / TotalBytes, 0, 1);
+            return TotalFiles > 0
+                ? Math.Clamp((double)CompletedFiles / TotalFiles, 0, 1)
+                : 1;
+        }
+    }
+
+    public bool IsLarge => TotalBytes >= LargeTransferBytes || TotalFiles >= LargeTransferFiles;
+}
+
+/// <summary>Cancellation and pause control shared by the transfer worker and Activity Center.</summary>
+public sealed class TransferControl : IDisposable
+{
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly ManualResetEventSlim _pause = new(initialState: true);
+    private readonly object _gate = new();
+    private bool _disposed;
+
+    public CancellationToken Token => _cancellation.Token;
+
+    public void Cancel()
+    {
+        try { _cancellation.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    public bool TogglePause()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _cancellation.IsCancellationRequested) return false;
+            if (_pause.IsSet)
+            {
+                _pause.Reset();
+                return true;
+            }
+
+            _pause.Set();
+            return false;
+        }
+    }
+
+    internal void WaitIfPaused()
+    {
+        _pause.Wait(_cancellation.Token);
+        _cancellation.Token.ThrowIfCancellationRequested();
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            try { _cancellation.Cancel(); } catch (ObjectDisposedException) { }
+            _pause.Set();
+            _pause.Dispose();
+            _cancellation.Dispose();
+        }
+    }
 }
 
 /// <summary>
@@ -106,13 +187,17 @@ public sealed class FileOperationsService
 
     /// <summary>Copy with an explicit outcome and the source paths that actually landed.</summary>
     public OpResult CopyIntoResult(IEnumerable<string> sources, string destDir,
-        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null) =>
-        Transfer(sources, destDir, move: false, resolveConflicts);
+        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null,
+        TransferControl? control = null,
+        IProgress<TransferProgress>? progress = null) =>
+        Transfer(sources, destDir, move: false, resolveConflicts, control, progress);
 
     /// <summary>Move with an explicit outcome and the source paths that actually landed.</summary>
     public OpResult MoveIntoResult(IEnumerable<string> sources, string destDir,
-        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null) =>
-        Transfer(sources, destDir, move: true, resolveConflicts);
+        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null,
+        TransferControl? control = null,
+        IProgress<TransferProgress>? progress = null) =>
+        Transfer(sources, destDir, move: true, resolveConflicts, control, progress);
 
     private static string? LegacyTransfer(IEnumerable<string> sources, string destDir, bool move)
     {
@@ -121,7 +206,9 @@ public sealed class FileOperationsService
     }
 
     private static OpResult Transfer(IEnumerable<string> sources, string destDir, bool move,
-        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null)
+        Func<IReadOnlyList<TransferConflict>, TransferConflictChoice>? resolveConflicts = null,
+        TransferControl? control = null,
+        IProgress<TransferProgress>? progress = null)
     {
         var completed = new List<string>();
         var created = new List<string>();
@@ -170,7 +257,8 @@ public sealed class FileOperationsService
         // dialog for the whole operation. Keep the shell-backed path below for the
         // older non-UI helpers (notably undo) that do not supply one.
         if (resolveConflicts is not null)
-            return TransferWithoutShell(items, move, resolveConflicts, completed, created);
+            return TransferWithoutShell(items, move, resolveConflicts, completed, created,
+                control ?? new TransferControl(), progress, ownsControl: control is null);
 
         foreach (TransferItem item in items)
         {
@@ -243,42 +331,67 @@ public sealed class FileOperationsService
     /// </summary>
     private static OpResult TransferWithoutShell(IReadOnlyList<TransferItem> items, bool move,
         Func<IReadOnlyList<TransferConflict>, TransferConflictChoice> resolveConflicts,
-        List<string> completed, List<string> created)
+        List<string> completed, List<string> created, TransferControl control,
+        IProgress<TransferProgress>? progress, bool ownsControl)
     {
-        var conflicts = items
+        var destinationsThatExisted = items
             .Where(item => PathExists(item.Destination))
-            .Select(item => new TransferConflict(item.Source, item.Destination, item.IsDirectory))
-            .ToList();
-
-        TransferConflictChoice choice;
+            .Select(item => item.Destination)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool transferStarted = false;
         try
         {
+            var conflicts = items
+                .Where(item => PathExists(item.Destination))
+                .Select(item => new TransferConflict(item.Source, item.Destination, item.IsDirectory))
+                .ToList();
+
             // No prompt is needed for the common case. Skip a destination that appears
             // during the copy rather than overwriting a file without user approval.
-            choice = conflicts.Count == 0
+            TransferConflictChoice choice = conflicts.Count == 0
                 ? TransferConflictChoice.SkipAll
                 : resolveConflicts(conflicts);
-        }
-        catch (Exception ex)
-        {
-            return new OpResult(OpOutcome.Failed, ex.Message, completed, created);
-        }
+            if (choice == TransferConflictChoice.Cancel)
+                return new OpResult(OpOutcome.Canceled, null, completed, created);
 
-        if (choice == TransferConflictChoice.Cancel)
-            return new OpResult(OpOutcome.Canceled, null, completed, created);
-
-        foreach (TransferItem item in items)
-        {
-            if (!PathExists(item.Source))
-                return new OpResult(OpOutcome.Failed,
-                    $"Source item no longer exists: {Path.GetFileName(item.Source)}", completed, created);
-
-            bool destinationExisted = PathExists(item.Destination);
-            try
+            // A same-volume move into unused names is an atomic filesystem rename.
+            // Keep that common path instant instead of walking a large folder merely
+            // to calculate progress for work Windows completes in one operation.
+            if (move && items.All(item => !PathExists(item.Destination)
+                                         && SameRoot(item.Source, item.Destination)))
             {
+                transferStarted = true;
+                var watch = Stopwatch.StartNew();
+                for (int index = 0; index < items.Count; index++)
+                {
+                    control.WaitIfPaused();
+                    TransferItem item = items[index];
+                    if (!PathExists(item.Source))
+                        return new OpResult(OpOutcome.Failed,
+                            $"Source item no longer exists: {Path.GetFileName(item.Source)}", completed, created);
+                    if (item.IsDirectory) Directory.Move(item.Source, item.Destination);
+                    else File.Move(item.Source, item.Destination);
+                    completed.Add(item.Source);
+                    created.Add(item.Destination);
+                    progress?.Report(new TransferProgress(index + 1, items.Count, 0, 0,
+                        Path.GetFileName(item.Source), false, watch.Elapsed));
+                }
+                return new OpResult(OpOutcome.Ok, null, completed, created);
+            }
+
+            var tracker = TransferProgressTracker.Scan(items, control, progress);
+            transferStarted = true;
+            foreach (TransferItem item in items)
+            {
+                control.WaitIfPaused();
+                if (!PathExists(item.Source))
+                    return new OpResult(OpOutcome.Failed,
+                        $"Source item no longer exists: {Path.GetFileName(item.Source)}", completed, created);
+
+                bool destinationExisted = PathExists(item.Destination);
                 ManagedTransferResult transfer = move
-                    ? MoveManaged(item.Source, item.Destination, item.IsDirectory, choice)
-                    : CopyManaged(item.Source, item.Destination, item.IsDirectory, choice);
+                    ? MoveManaged(item.Source, item.Destination, item.IsDirectory, choice, control, tracker)
+                    : CopyManaged(item.Source, item.Destination, item.IsDirectory, choice, control, tracker);
 
                 bool destinationExists = PathExists(item.Destination);
                 if (!destinationExisted && destinationExists && !created.Contains(
@@ -297,115 +410,154 @@ public sealed class FileOperationsService
 
                 completed.Add(item.Source);
             }
-            catch (Exception ex)
-            {
-                bool leftOutput = CaptureInterruptedOutput(
-                    item, destinationExisted, move, completed, created);
-                string error = leftOutput
-                    ? $"{ex.Message} The destination may contain partial changes."
-                    : ex.Message;
-                return new OpResult(OpOutcome.Failed, error, completed, created);
-            }
-        }
 
-        return new OpResult(OpOutcome.Ok, null, completed, created);
+            tracker.Finish();
+            return new OpResult(OpOutcome.Ok, null, completed, created);
+        }
+        catch (OperationCanceledException ex)
+        {
+            bool leftOutput = transferStarted && CaptureManagedInterruptedOutputs(
+                items, destinationsThatExisted, move, completed, created);
+            string? cleanupWarning = ex.Data[TransferCleanupWarningKey] as string;
+            string? warning = leftOutput
+                ? $"{(move ? "Move" : "Copy")} was cancelled. The destination may contain partial changes; review both locations."
+                : cleanupWarning;
+            if (leftOutput && cleanupWarning is not null) warning += $" {cleanupWarning}";
+            return new OpResult(OpOutcome.Canceled, warning, completed, created);
+        }
+        catch (Exception ex)
+        {
+            bool leftOutput = CaptureManagedInterruptedOutputs(
+                items, destinationsThatExisted, move, completed, created);
+            string error = leftOutput
+                ? $"{ex.Message} The destination may contain partial changes."
+                : ex.Message;
+            if (ex.Data[TransferCleanupWarningKey] is string cleanupWarning)
+                error += $" {cleanupWarning}";
+            return new OpResult(OpOutcome.Failed, error, completed, created);
+        }
+        finally
+        {
+            if (ownsControl) control.Dispose();
+        }
     }
 
     private static ManagedTransferResult CopyManaged(string source, string destination,
-        bool isDirectory, TransferConflictChoice choice)
+        bool isDirectory, TransferConflictChoice choice, TransferControl control,
+        TransferProgressTracker tracker)
     {
+        control.WaitIfPaused();
         if (!isDirectory)
         {
             if (Directory.Exists(destination))
             {
                 if (choice == TransferConflictChoice.SkipAll)
+                {
+                    tracker.CompleteFile(source);
                     return new ManagedTransferResult(false, true);
-                Directory.Delete(destination, recursive: true);
+                }
             }
             else if (File.Exists(destination) && choice == TransferConflictChoice.SkipAll)
             {
+                tracker.CompleteFile(source);
                 return new ManagedTransferResult(false, true);
             }
 
-            File.Copy(source, destination, overwrite: choice == TransferConflictChoice.ReplaceAll);
+            CopyFileChunked(source, destination,
+                overwrite: choice == TransferConflictChoice.ReplaceAll, control, tracker);
             return new ManagedTransferResult(true, false);
         }
 
         if (File.Exists(destination))
         {
             if (choice == TransferConflictChoice.SkipAll)
+            {
+                tracker.CompleteTree(source);
                 return new ManagedTransferResult(false, true);
+            }
             File.Delete(destination);
         }
 
         Directory.CreateDirectory(destination);
-        CopyDirectoryContents(source, destination, choice, out bool skipped);
+        CopyDirectoryContents(source, destination, choice, control, tracker, out bool skipped);
         return new ManagedTransferResult(true, skipped);
     }
 
     private static void CopyDirectoryContents(string source, string destination,
-        TransferConflictChoice choice, out bool skipped)
+        TransferConflictChoice choice, TransferControl control,
+        TransferProgressTracker tracker, out bool skipped)
     {
         skipped = false;
         foreach (string childDirectory in Directory.EnumerateDirectories(source).ToArray())
         {
+            control.WaitIfPaused();
             string childDestination = Path.Combine(destination, Path.GetFileName(childDirectory));
             if (File.Exists(childDestination))
             {
                 if (choice == TransferConflictChoice.SkipAll)
                 {
                     skipped = true;
+                    tracker.CompleteTree(childDirectory);
                     continue;
                 }
                 File.Delete(childDestination);
             }
 
             ManagedTransferResult result = CopyManaged(
-                childDirectory, childDestination, isDirectory: true, choice);
+                childDirectory, childDestination, isDirectory: true, choice, control, tracker);
             skipped |= result.Skipped || !result.Completed;
         }
 
         foreach (string childFile in Directory.EnumerateFiles(source).ToArray())
         {
+            control.WaitIfPaused();
             string childDestination = Path.Combine(destination, Path.GetFileName(childFile));
             if (Directory.Exists(childDestination))
             {
                 if (choice == TransferConflictChoice.SkipAll)
                 {
                     skipped = true;
+                    tracker.CompleteFile(childFile);
                     continue;
                 }
-                Directory.Delete(childDestination, recursive: true);
             }
             else if (File.Exists(childDestination) && choice == TransferConflictChoice.SkipAll)
             {
                 skipped = true;
+                tracker.CompleteFile(childFile);
                 continue;
             }
 
-            File.Copy(childFile, childDestination,
-                overwrite: choice == TransferConflictChoice.ReplaceAll);
+            CopyFileChunked(childFile, childDestination,
+                overwrite: choice == TransferConflictChoice.ReplaceAll, control, tracker);
         }
     }
 
     private static ManagedTransferResult MoveManaged(string source, string destination,
-        bool isDirectory, TransferConflictChoice choice)
+        bool isDirectory, TransferConflictChoice choice, TransferControl control,
+        TransferProgressTracker tracker)
     {
+        control.WaitIfPaused();
         if (!PathExists(destination))
-            return MoveToNewDestination(source, destination, isDirectory, choice);
+            return MoveToNewDestination(source, destination, isDirectory, choice, control, tracker);
 
         if (!isDirectory)
         {
             if (choice == TransferConflictChoice.SkipAll)
+            {
+                tracker.CompleteFile(source);
                 return new ManagedTransferResult(false, true);
+            }
 
-            if (Directory.Exists(destination))
-                Directory.Delete(destination, recursive: true);
             if (SameRoot(source, destination))
+            {
+                if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
                 File.Move(source, destination, overwrite: true);
+                tracker.CompleteFile(source);
+            }
             else
             {
-                File.Copy(source, destination, overwrite: true);
+                CopyFileChunked(source, destination, overwrite: true, control, tracker);
                 File.Delete(source);
             }
             return new ManagedTransferResult(true, false);
@@ -414,12 +566,15 @@ public sealed class FileOperationsService
         if (File.Exists(destination))
         {
             if (choice == TransferConflictChoice.SkipAll)
+            {
+                tracker.CompleteTree(source);
                 return new ManagedTransferResult(false, true);
+            }
             File.Delete(destination);
-            return MoveToNewDestination(source, destination, isDirectory: true, choice);
+            return MoveToNewDestination(source, destination, isDirectory: true, choice, control, tracker);
         }
 
-        MoveDirectoryContents(source, destination, choice, out bool skipped);
+        MoveDirectoryContents(source, destination, choice, control, tracker, out bool skipped);
         if (!skipped && !Directory.EnumerateFileSystemEntries(source).Any())
             Directory.Delete(source);
 
@@ -427,16 +582,19 @@ public sealed class FileOperationsService
     }
 
     private static ManagedTransferResult MoveToNewDestination(string source, string destination,
-        bool isDirectory, TransferConflictChoice choice)
+        bool isDirectory, TransferConflictChoice choice, TransferControl control,
+        TransferProgressTracker tracker)
     {
         if (SameRoot(source, destination))
         {
             if (isDirectory) Directory.Move(source, destination);
             else File.Move(source, destination);
+            if (isDirectory) tracker.CompleteTree(source);
+            else tracker.CompleteFile(source);
             return new ManagedTransferResult(true, false);
         }
 
-        ManagedTransferResult copied = CopyManaged(source, destination, isDirectory, choice);
+        ManagedTransferResult copied = CopyManaged(source, destination, isDirectory, choice, control, tracker);
         if (!copied.Completed) return copied;
         if (copied.Skipped)
             return new ManagedTransferResult(false, true);
@@ -447,31 +605,216 @@ public sealed class FileOperationsService
     }
 
     private static void MoveDirectoryContents(string source, string destination,
-        TransferConflictChoice choice, out bool skipped)
+        TransferConflictChoice choice, TransferControl control,
+        TransferProgressTracker tracker, out bool skipped)
     {
         skipped = false;
         Directory.CreateDirectory(destination);
 
         foreach (string childDirectory in Directory.EnumerateDirectories(source).ToArray())
         {
+            control.WaitIfPaused();
             string childDestination = Path.Combine(destination, Path.GetFileName(childDirectory));
             if (File.Exists(childDestination) && choice == TransferConflictChoice.SkipAll)
             {
                 skipped = true;
+                tracker.CompleteTree(childDirectory);
                 continue;
             }
 
             ManagedTransferResult result = MoveManaged(
-                childDirectory, childDestination, isDirectory: true, choice);
+                childDirectory, childDestination, isDirectory: true, choice, control, tracker);
             skipped |= result.Skipped || !result.Completed;
         }
 
         foreach (string childFile in Directory.EnumerateFiles(source).ToArray())
         {
+            control.WaitIfPaused();
             string childDestination = Path.Combine(destination, Path.GetFileName(childFile));
             ManagedTransferResult result = MoveManaged(
-                childFile, childDestination, isDirectory: false, choice);
+                childFile, childDestination, isDirectory: false, choice, control, tracker);
             skipped |= result.Skipped || !result.Completed;
+        }
+    }
+
+    private static void CopyFileChunked(string source, string destination, bool overwrite,
+        TransferControl control, TransferProgressTracker tracker)
+    {
+        string? parent = Path.GetDirectoryName(destination);
+        if (string.IsNullOrWhiteSpace(parent)) throw new IOException("Destination folder not found.");
+        Directory.CreateDirectory(parent);
+        string temp = Path.Combine(parent, $".{Path.GetFileName(destination)}.{Guid.NewGuid():N}.raincopy");
+        try
+        {
+            using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read,
+                       256 * 1024, FileOptions.SequentialScan))
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                       256 * 1024, FileOptions.SequentialScan))
+            {
+                byte[] buffer = new byte[256 * 1024];
+                while (true)
+                {
+                    control.WaitIfPaused();
+                    int read = input.Read(buffer, 0, buffer.Length);
+                    if (read == 0) break;
+                    output.Write(buffer, 0, read);
+                    tracker.AddBytes(source, read);
+                }
+            }
+
+            TryCopyFileMetadata(source, temp);
+            control.WaitIfPaused();
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            File.Move(temp, destination, overwrite);
+            tracker.CompleteFile(source);
+        }
+        catch (Exception ex)
+        {
+            if (!TryDeleteTemporaryFile(temp, out string? cleanupError))
+                ex.Data[TransferCleanupWarningKey] =
+                    $"Temporary copy could not be removed: {temp}. {cleanupError}";
+            throw;
+        }
+    }
+
+    private const string TransferCleanupWarningKey = "TransferCleanupWarning";
+
+    private static bool TryDeleteTemporaryFile(string path, out string? error)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                try { File.SetAttributes(path, FileAttributes.Normal); } catch { }
+                File.Delete(path);
+            }
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static void TryCopyFileMetadata(string source, string destination)
+    {
+        try { File.SetCreationTimeUtc(destination, File.GetCreationTimeUtc(source)); } catch { }
+        try { File.SetLastWriteTimeUtc(destination, File.GetLastWriteTimeUtc(source)); } catch { }
+        try { File.SetLastAccessTimeUtc(destination, File.GetLastAccessTimeUtc(source)); } catch { }
+        try { File.SetAttributes(destination, File.GetAttributes(source)); } catch { }
+    }
+
+    private static bool CaptureManagedInterruptedOutputs(IReadOnlyList<TransferItem> items,
+        IReadOnlySet<string> destinationsThatExisted, bool move,
+        List<string> completed, List<string> created)
+    {
+        bool leftOutput = false;
+        foreach (TransferItem item in items)
+        {
+            bool destinationExists = PathExists(item.Destination);
+            if (!destinationExists) continue;
+            leftOutput = true;
+            if (!destinationsThatExisted.Contains(item.Destination)
+                && !created.Contains(item.Destination, StringComparer.OrdinalIgnoreCase))
+                created.Add(item.Destination);
+            if (move && !PathExists(item.Source)
+                && !completed.Contains(item.Source, StringComparer.OrdinalIgnoreCase))
+                completed.Add(item.Source);
+        }
+        return leftOutput;
+    }
+
+    private sealed class TransferProgressTracker
+    {
+        private readonly Dictionary<string, long> _lengths = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, long> _copied = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _completed = new(StringComparer.OrdinalIgnoreCase);
+        private readonly IProgress<TransferProgress>? _progress;
+        private readonly Stopwatch _watch = new();
+        private long _completedBytes;
+        private int _completedFiles;
+        private long _lastReport;
+
+        private TransferProgressTracker(IProgress<TransferProgress>? progress) => _progress = progress;
+
+        public static TransferProgressTracker Scan(IReadOnlyList<TransferItem> items,
+            TransferControl control, IProgress<TransferProgress>? progress)
+        {
+            var tracker = new TransferProgressTracker(progress);
+            foreach (TransferItem item in items) tracker.ScanPath(item.Source, item.IsDirectory, control);
+            tracker._watch.Start();
+            tracker.Report("Starting…", scanning: false, force: true);
+            return tracker;
+        }
+
+        private void ScanPath(string path, bool isDirectory, TransferControl control)
+        {
+            control.WaitIfPaused();
+            if (!isDirectory)
+            {
+                long length = Math.Max(0, new FileInfo(path).Length);
+                _lengths[path] = length;
+                Report(Path.GetFileName(path), scanning: true, force: false);
+                return;
+            }
+
+            foreach (string directory in Directory.EnumerateDirectories(path))
+                ScanPath(directory, isDirectory: true, control);
+            foreach (string file in Directory.EnumerateFiles(path))
+                ScanPath(file, isDirectory: false, control);
+        }
+
+        public void AddBytes(string source, int bytes)
+        {
+            if (bytes <= 0) return;
+            bool firstCopiedBytes = _completedBytes == 0;
+            _completedBytes = AddLength(_completedBytes, bytes);
+            _copied[source] = AddLength(_copied.GetValueOrDefault(source), bytes);
+            Report(Path.GetFileName(source), scanning: false, force: firstCopiedBytes);
+        }
+
+        public void CompleteFile(string source)
+        {
+            if (!_completed.Add(source)) return;
+            long length = _lengths.GetValueOrDefault(source);
+            long copied = _copied.GetValueOrDefault(source);
+            if (length > copied) _completedBytes = AddLength(_completedBytes, length - copied);
+            _completedFiles++;
+            Report(Path.GetFileName(source), scanning: false, force: true);
+        }
+
+        public void CompleteTree(string source)
+        {
+            string prefix = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar)
+                            + Path.DirectorySeparatorChar;
+            foreach (string file in _lengths.Keys.Where(path =>
+                         string.Equals(path, source, StringComparison.OrdinalIgnoreCase)
+                         || Path.GetFullPath(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+                CompleteFile(file);
+        }
+
+        public void Finish()
+        {
+            foreach (string file in _lengths.Keys.ToArray()) CompleteFile(file);
+            Report("Finished", scanning: false, force: true);
+        }
+
+        private void Report(string currentFile, bool scanning, bool force)
+        {
+            if (_progress is null) return;
+            long now = Stopwatch.GetTimestamp();
+            if (!force && _lastReport != 0 && now - _lastReport < Stopwatch.Frequency / 12) return;
+            _lastReport = now;
+            _progress.Report(new TransferProgress(
+                _completedFiles,
+                _lengths.Count,
+                _completedBytes,
+                _lengths.Values.Aggregate(0L, AddLength),
+                currentFile,
+                scanning,
+                _watch.Elapsed));
         }
     }
 
@@ -596,6 +939,11 @@ public sealed class FileOperationsService
         string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar),
             Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar),
             StringComparison.OrdinalIgnoreCase);
+
+    private static long AddLength(long left, long right) =>
+        right <= 0 || left == long.MaxValue || right > long.MaxValue - left
+            ? left
+            : left + right;
 
     private static bool SameRoot(string left, string right)
     {

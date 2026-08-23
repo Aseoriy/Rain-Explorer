@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     private readonly bool _persistWindowPlacement;
     private NativeRect? _lastNormalPixelBounds;
     private bool _sidebarInputSelectionPending;
+    private bool _waitingForTransfers;
+    private bool _closingAfterTransfers;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -136,6 +138,7 @@ public partial class MainWindow : Window
 
         // Live-toggle the ambient orb when the setting changes.
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingChanged;
+        ActivityService.Instance.ShowRequested += OnActivityShowRequested;
 
         // The activity popup owns its own dismiss logic (see ActivityButton_Click) — any
         // click elsewhere in the window closes it.
@@ -506,14 +509,36 @@ public partial class MainWindow : Window
         _windowPlacementTimer.Stop();
         bool isLastWindow = Application.Current.Windows.OfType<MainWindow>()
             .All(window => ReferenceEquals(window, this) || !window.IsVisible);
+        if (isLastWindow && !_closingAfterTransfers && FileDropService.HasActiveTransfers)
+        {
+            e.Cancel = true;
+            if (!_waitingForTransfers)
+            {
+                _waitingForTransfers = true;
+                _ = CancelTransfersAndCloseAsync();
+            }
+            base.OnClosing(e);
+            return;
+        }
         if (_persistWindowPlacement || isLastWindow) SaveWindowPlacement();
         if (isLastWindow) _vm.SaveSession();
+        else _vm.FlushActiveProjects();
         base.OnClosing(e);
+    }
+
+    private async Task CancelTransfersAndCloseAsync()
+    {
+        FileDropService.CancelActiveTransfers();
+        await FileDropService.WaitForActiveTransfersAsync();
+        _waitingForTransfers = false;
+        _closingAfterTransfers = true;
+        Close();
     }
 
     protected override void OnClosed(EventArgs e)
     {
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
+        ActivityService.Instance.ShowRequested -= OnActivityShowRequested;
         _vm.Dispose();
         base.OnClosed(e);
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
@@ -539,10 +564,21 @@ public partial class MainWindow : Window
     private void ClearActivity_Click(object sender, RoutedEventArgs e) =>
         ActivityService.Instance.Clear();
 
+    private void HideActivity_Click(object sender, RoutedEventArgs e) =>
+        ActivityPopup.IsOpen = false;
+
     private void ActivityPause_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)
             ActivityService.Instance.RequestPauseToggle(activity);
+    }
+
+    private void OnActivityShowRequested(Window? owner)
+    {
+        if (owner is not null && !ReferenceEquals(owner, this)) return;
+        if (owner is null && !IsActive) return;
+        ActivityPopup.IsOpen = true;
+        ActivityService.Instance.MarkSeen();
     }
 
     private void ActivityCancel_Click(object sender, RoutedEventArgs e)

@@ -126,6 +126,157 @@ public sealed class FileOperationsServiceTests
         Assert.Equal("keep", File.ReadAllText(Path.Combine(destinationFolder, "keep.txt")));
     }
 
+    [Fact]
+    public void ManagedCopyReportsDeterminateByteProgress()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Path.Combine(temp.Path, "source.bin");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        File.WriteAllBytes(source, Enumerable.Range(0, 4096).Select(i => (byte)i).ToArray());
+        using var control = new TransferControl();
+        var updates = new List<TransferProgress>();
+
+        OpResult result = new FileOperationsService().CopyIntoResult([source], destination,
+            _ => TransferConflictChoice.SkipAll, control, new InlineProgress<TransferProgress>(updates.Add));
+
+        Assert.Equal(OpOutcome.Ok, result.Outcome);
+        TransferProgress final = Assert.Single(updates, update => update.CurrentFile == "Finished");
+        Assert.False(final.IsScanning);
+        Assert.Equal(1, final.CompletedFiles);
+        Assert.Equal(1, final.TotalFiles);
+        Assert.Equal(4096, final.CompletedBytes);
+        Assert.Equal(4096, final.TotalBytes);
+        Assert.Equal(1, final.Fraction);
+    }
+
+    [Fact]
+    public async Task ManagedCopyPauseBlocksUntilResumed()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Path.Combine(temp.Path, "source.bin");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        File.WriteAllBytes(source, new byte[1024]);
+        using var control = new TransferControl();
+        Assert.True(control.TogglePause());
+
+        Task<OpResult> transfer = Task.Run(() => new FileOperationsService().CopyIntoResult(
+            [source], destination, _ => TransferConflictChoice.SkipAll, control));
+        await Task.Delay(100);
+
+        Assert.False(transfer.IsCompleted);
+        Assert.False(File.Exists(Path.Combine(destination, "source.bin")));
+        Assert.False(control.TogglePause());
+        OpResult result = await transfer.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(OpOutcome.Ok, result.Outcome);
+    }
+
+    [Fact]
+    public void ManagedCopyHonorsCancellationBeforeWritingOutput()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Path.Combine(temp.Path, "source.bin");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        File.WriteAllBytes(source, new byte[1024]);
+        using var control = new TransferControl();
+        control.Cancel();
+
+        OpResult result = new FileOperationsService().CopyIntoResult([source], destination,
+            _ => TransferConflictChoice.SkipAll, control);
+
+        Assert.Equal(OpOutcome.Canceled, result.Outcome);
+        Assert.False(File.Exists(Path.Combine(destination, "source.bin")));
+        Assert.Empty(Directory.EnumerateFiles(destination, "*.raincopy", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public void ManagedCopyCancellationMidFileRemovesTemporaryOutput()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Path.Combine(temp.Path, "source.bin");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        File.WriteAllBytes(source, new byte[1024 * 1024]);
+        using var control = new TransferControl();
+        var progress = new InlineProgress<TransferProgress>(update =>
+        {
+            if (update.CompletedBytes > 0) control.Cancel();
+        });
+
+        OpResult result = new FileOperationsService().CopyIntoResult([source], destination,
+            _ => TransferConflictChoice.SkipAll, control, progress);
+
+        Assert.Equal(OpOutcome.Canceled, result.Outcome);
+        Assert.True(File.Exists(source));
+        Assert.False(File.Exists(Path.Combine(destination, "source.bin")));
+        Assert.Empty(Directory.EnumerateFiles(destination, "*.raincopy", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public void ManagedCopyCancellationPreservesExistingDestination()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Path.Combine(temp.Path, "source.bin");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        string output = Path.Combine(destination, "source.bin");
+        File.WriteAllBytes(source, new byte[1024 * 1024]);
+        File.WriteAllText(output, "keep this version");
+        using var control = new TransferControl();
+        var progress = new InlineProgress<TransferProgress>(update =>
+        {
+            if (update.CompletedBytes > 0) control.Cancel();
+        });
+
+        OpResult result = new FileOperationsService().CopyIntoResult([source], destination,
+            _ => TransferConflictChoice.ReplaceAll, control, progress);
+
+        Assert.Equal(OpOutcome.Canceled, result.Outcome);
+        Assert.True(File.Exists(source));
+        Assert.Equal("keep this version", File.ReadAllText(output));
+        Assert.Empty(Directory.EnumerateFiles(destination, "*.raincopy", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public void TransferProgressClassifiesLargeFilesAndFolders()
+    {
+        var largeFile = new TransferProgress(0, 1, 0, TransferProgress.LargeTransferBytes,
+            "large.bin", true, TimeSpan.Zero);
+        var largeFolder = new TransferProgress(0, TransferProgress.LargeTransferFiles, 0, 1,
+            "folder", true, TimeSpan.Zero);
+        var small = new TransferProgress(0, 2, 0, 1024, "small", true, TimeSpan.Zero);
+
+        Assert.True(largeFile.IsLarge);
+        Assert.True(largeFolder.IsLarge);
+        Assert.False(small.IsLarge);
+    }
+
+    [Fact]
+    public void SameVolumeMoveToUnusedDestinationUsesImmediateProgressPath()
+    {
+        using var temp = new TemporaryDirectory();
+        string sourceRoot = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        string sourceFolder = Directory.CreateDirectory(Path.Combine(sourceRoot, "folder")).FullName;
+        File.WriteAllText(Path.Combine(sourceFolder, "file.txt"), "rain");
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        using var control = new TransferControl();
+        var updates = new List<TransferProgress>();
+
+        OpResult result = new FileOperationsService().MoveIntoResult([sourceFolder], destination,
+            _ => TransferConflictChoice.SkipAll, control, new InlineProgress<TransferProgress>(updates.Add));
+
+        Assert.Equal(OpOutcome.Ok, result.Outcome);
+        Assert.False(Directory.Exists(sourceFolder));
+        Assert.True(File.Exists(Path.Combine(destination, "folder", "file.txt")));
+        TransferProgress update = Assert.Single(updates);
+        Assert.False(update.IsScanning);
+        Assert.Equal(1, update.CompletedFiles);
+        Assert.Equal(1, update.TotalFiles);
+        Assert.Equal(1, update.Fraction);
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory()

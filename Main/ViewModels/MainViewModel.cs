@@ -19,6 +19,7 @@ public sealed class MainViewModel : ObservableObject
 {
     private readonly FileSystemService _fs = new();
     private readonly DispatcherTimer _sessionSaveTimer;
+    private readonly DispatcherTimer _projectSaveTimer;
     private bool _restoringSession;
     private bool _disposed;
 
@@ -56,6 +57,11 @@ public sealed class MainViewModel : ObservableObject
             Interval = TimeSpan.FromMilliseconds(650),
         };
         _sessionSaveTimer.Tick += OnSessionSaveTimerTick;
+        _projectSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(650),
+        };
+        _projectSaveTimer.Tick += OnProjectSaveTimerTick;
         LeftPane = CreatePane();
         _activePane = LeftPane;
         LeftPane.IsActive = true;
@@ -108,6 +114,19 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private void OnWorkspaceStateChanged(PaneViewModel pane) => ScheduleSessionSave();
+
+    private void OnProjectStateChanged(PaneViewModel pane)
+    {
+        if (!CaptureActiveProject(pane)) return;
+        _projectSaveTimer.Stop();
+        _projectSaveTimer.Start();
+    }
+
+    private void OnProjectSaveTimerTick(object? sender, EventArgs e)
+    {
+        _projectSaveTimer.Stop();
+        if (!_disposed) SettingsStore.Instance.Settings.NotifyTabProjectsChanged();
+    }
 
     private void ScheduleSessionSave()
     {
@@ -528,6 +547,8 @@ public sealed class MainViewModel : ObservableObject
         _disposed = true;
         _sessionSaveTimer.Stop();
         _sessionSaveTimer.Tick -= OnSessionSaveTimerTick;
+        _projectSaveTimer.Stop();
+        _projectSaveTimer.Tick -= OnProjectSaveTimerTick;
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
         if (_syncedTab is not null) _syncedTab.PropertyChanged -= OnActiveTabPropChanged;
         foreach (SidebarNode node in SidebarNodes)
@@ -575,7 +596,7 @@ public sealed class MainViewModel : ObservableObject
         var pane = new PaneViewModel(_fs);
         pane.RequestActivate += p => ActivePane = p;
         pane.EmptyRequested += OnPaneEmpty;
-        pane.ProjectStateChanged += SaveActiveProject;
+        pane.ProjectStateChanged += OnProjectStateChanged;
         pane.WorkspaceStateChanged += OnWorkspaceStateChanged;
         // When the active pane switches tabs, re-sync the sidebar to the new tab's location.
         pane.PropertyChanged += (_, e) =>
@@ -662,10 +683,11 @@ public sealed class MainViewModel : ObservableObject
     public void SaveSession()
     {
         _sessionSaveTimer.Stop();
+        _projectSaveTimer.Stop();
         var settings = SettingsStore.Instance.Settings;
 
-        SaveActiveProject(LeftPane);
-        SaveActiveProject(RightPane);
+        CaptureActiveProject(LeftPane);
+        CaptureActiveProject(RightPane);
         if (!settings.PreserveOpenTabsOnClose)
         {
             SettingsStore.Instance.Flush();
@@ -694,16 +716,24 @@ public sealed class MainViewModel : ObservableObject
         SettingsStore.Instance.Flush();
     }
 
-    private static void SaveActiveProject(PaneViewModel? pane)
+    /// <summary>Flush a window's active Tab Project before that window is disposed.</summary>
+    public void FlushActiveProjects()
     {
-        if (pane?.ActiveProjectId is not { Length: > 0 } id) return;
+        _projectSaveTimer.Stop();
+        bool changed = CaptureActiveProject(LeftPane) | CaptureActiveProject(RightPane);
+        if (changed) SettingsStore.Instance.Flush();
+    }
+
+    private static bool CaptureActiveProject(PaneViewModel? pane)
+    {
+        if (pane?.ActiveProjectId is not { Length: > 0 } id) return false;
         var settings = SettingsStore.Instance.Settings;
         var project = settings.TabProjects.FirstOrDefault(p => p.Id == id);
-        if (project is null) return;
+        if (project is null) return false;
         var snapshot = pane.CaptureProject();
         project.Tabs = snapshot.Tabs;
         project.SelectedIndex = snapshot.SelectedIndex;
-        settings.NotifyTabProjectsChanged();
+        return true;
     }
 
     private static (List<string> Paths, List<bool> Pinned, List<string?> Groups,

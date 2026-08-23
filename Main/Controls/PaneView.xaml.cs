@@ -663,13 +663,19 @@ public partial class PaneView : UserControl
         else if (e.PropertyName == nameof(PaneViewModel.ActiveProjectId)) RefreshProjectsButton();
     }
 
-    // Re-target sort-indicator + animation when the active tab changes.
+    // Re-target the active-tab bindings without replaying the navigation animation.
+    // Each tab already owns a populated Items collection, so a switch should reveal it
+    // immediately instead of fading from zero and feeling like the folder reloaded.
     private void OnSelectedTabChanged()
     {
         if (_tab is not null) _tab.PropertyChanged -= OnTabPropertyChanged;
         _tab = _vm?.SelectedTab;
         if (_tab is not null) _tab.PropertyChanged += OnTabPropertyChanged;
-        PlayListAnimation();
+        FileList.BeginAnimation(OpacityProperty, null);
+        FileList.Opacity = 1;
+        ListTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ListTransform.Y = 0;
+        TrySelectPendingItem();
         RefreshSortIndicators();
     }
 
@@ -839,10 +845,14 @@ public partial class PaneView : UserControl
             }
             if (_tabDragCandidate is not null)
             {
+                if (_vm is not null)
+                {
+                    if (ReferenceEquals(sourceBar, GroupTabBar)) _vm.SelectedTab = _tabDragCandidate;
+                    else _vm.SelectedTopTab = _tabDragCandidate;
+                }
                 Mouse.Capture(sourceBar, CaptureMode.SubTree);
-                // ListBox normally activates a tab on mouse-down. Hold that selection
-                // until mouse-up (click) or drop (drag), so a background tab's complete
-                // content tree is never swapped in while the drag loop is starting.
+                // Keep handling the press ourselves so tab dragging can capture the mouse,
+                // but activate the tab before capture so normal clicks feel immediate.
                 e.Handled = true;
             }
         }
@@ -1513,17 +1523,33 @@ public partial class PaneView : UserControl
         return (d as ListBoxItem)?.DataContext as FileItem;
     }
 
-    private FileItem? FileItemFromOwnList(object? source)
+    private FileItem? FileItemFromOwnList(MouseButtonEventArgs e)
     {
-        if (source is not DependencyObject element) return null;
-        return ItemsControl.ContainerFromElement(FileList, element) is ListViewItem row
-            ? row.DataContext as FileItem
-            : null;
+        if (e.OriginalSource is not DependencyObject element
+            || ItemsControl.ContainerFromElement(FileList, element) is not ListViewItem row)
+            return null;
+
+        // The row container stretches across the whole viewport. Compare the click to
+        // the real GridView columns so the blank tail after Size behaves as background.
+        if (FileList.View is GridView grid)
+        {
+            if (!IsWithinFileColumns(e.GetPosition(row).X,
+                    grid.Columns.Select(column => column.ActualWidth)))
+                return null;
+        }
+
+        return row.DataContext as FileItem;
+    }
+
+    internal static bool IsWithinFileColumns(double clickX, IEnumerable<double> columnWidths)
+    {
+        double width = columnWidths.Where(double.IsFinite).Sum(value => Math.Max(0, value));
+        return clickX <= width + 16;
     }
 
     private void FileSelection_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        FileItem? clickedItem = FileItemFromOwnList(e.OriginalSource);
+        FileItem? clickedItem = FileItemFromOwnList(e);
         FileItem? editingItem = _tab?.Items.FirstOrDefault(item => item.IsEditing);
 
         // A background or chrome click may not move keyboard focus in WPF, so relying

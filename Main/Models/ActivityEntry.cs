@@ -51,6 +51,21 @@ public sealed class ActivityEntry : ObservableObject
         }
     }
 
+    private string _progressText = string.Empty;
+    [JsonIgnore]
+    public string ProgressText
+    {
+        get => _progressText;
+        set
+        {
+            if (!Set(ref _progressText, value)) return;
+            OnPropertyChanged(nameof(HasProgressText));
+        }
+    }
+
+    [JsonIgnore]
+    public bool HasProgressText => !string.IsNullOrWhiteSpace(_progressText);
+
     private bool _isPaused;
     [JsonIgnore]
     public bool IsPaused

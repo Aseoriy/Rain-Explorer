@@ -12,6 +12,30 @@ namespace RainExplorer.Services;
 /// </summary>
 public static class FileDropService
 {
+    private static readonly object TransferGate = new();
+    private static readonly HashSet<TransferControl> ActiveTransfers = [];
+    private static TaskCompletionSource<bool>? _transfersIdle;
+
+    public static bool HasActiveTransfers
+    {
+        get { lock (TransferGate) return ActiveTransfers.Count > 0; }
+    }
+
+    public static void CancelActiveTransfers()
+    {
+        TransferControl[] controls;
+        lock (TransferGate) controls = ActiveTransfers.ToArray();
+        foreach (TransferControl control in controls) control.Cancel();
+    }
+
+    public static Task WaitForActiveTransfersAsync()
+    {
+        lock (TransferGate)
+            return ActiveTransfers.Count == 0
+                ? Task.CompletedTask
+                : _transfersIdle?.Task ?? Task.CompletedTask;
+    }
+
     /// <summary>Ctrl = copy, Shift = move; otherwise move within a drive, copy across drives.
     /// Returns None when the drop would be a no-op or the destination isn't a real folder.</summary>
     public static DragDropEffects EffectFor(string[]? files, string? destDir, DragDropKeyStates keys)
@@ -58,30 +82,97 @@ public static class FileDropService
         var ops = new FileOperationsService();
         var act = ActivityService.Instance.Begin(move ? "Move" : "Copy",
             $"{Summarize(incoming)} → {FolderName(destDir)}", move ? "arrow-right" : "clipboard");
+        using var control = new TransferControl();
+        ActivityService.Instance.AttachControls(act, control.Cancel, control.TogglePause);
+        bool popupRequested = false;
+        var progress = new Progress<TransferProgress>(update =>
+        {
+            if (!act.IsActive) return;
+            if (update.IsLarge && !popupRequested)
+            {
+                popupRequested = true;
+                ActivityService.Instance.RequestShow(owner);
+            }
+
+            if (update.IsScanning)
+            {
+                string found = update.TotalFiles == 0
+                    ? "Scanning files…"
+                    : $"{update.TotalFiles:N0} file{(update.TotalFiles == 1 ? "" : "s")} • {FormatBytes(update.TotalBytes)} found";
+                ActivityService.Instance.ReportProgress(act, null, "Scanning files…", found);
+                return;
+            }
+
+            double fraction = update.Fraction ?? 0;
+            string progressText = $"{fraction:P0}";
+            if (EstimateRemaining(update) is { } remaining)
+                progressText += $" • {FormatRemaining(remaining)} left";
+            if (update.TotalBytes > 0)
+                progressText += $" • {FormatBytes(update.CompletedBytes)} of {FormatBytes(update.TotalBytes)}";
+
+            string detail = string.IsNullOrWhiteSpace(update.CurrentFile)
+                ? $"{Summarize(incoming)} → {FolderName(destDir)}"
+                : update.CurrentFile;
+            ActivityService.Instance.ReportProgress(act, fraction, detail, progressText);
+        });
         Func<IReadOnlyList<TransferConflict>, TransferConflictChoice> resolveConflicts =
             _ => conflictChoice;
-        OpResult result;
+        RegisterTransfer(control);
         try
         {
-            // Direct file APIs are materially faster for ordinary local drops than
-            // the shell's dialog-oriented copy engine, and the UI stays responsive
-            // while the activity center records the operation.
-            result = await Task.Run(() => move
-                ? ops.MoveIntoResult(incoming, destDir, resolveConflicts)
-                : ops.CopyIntoResult(incoming, destDir, resolveConflicts));
+            OpResult result;
+            try
+            {
+                // Direct file APIs are materially faster for ordinary local drops than
+                // the shell's dialog-oriented copy engine, and the UI stays responsive
+                // while the activity center records the operation.
+                result = await Task.Run(() => move
+                    ? ops.MoveIntoResult(incoming, destDir, resolveConflicts, control, progress)
+                    : ops.CopyIntoResult(incoming, destDir, resolveConflicts, control, progress));
+            }
+            catch (Exception ex)
+            {
+                result = OpResult.Fail(ex.Message);
+            }
+
+            RecordUndo(result, destDir, move, sourceIdentities);
+
+            if (result.Canceled)
+                ActivityService.Instance.Cancel(act, result.Error);
+            else
+                ActivityService.Instance.Complete(act, result.Ok, result.Error);
+            return result.Error;
         }
-        catch (Exception ex)
+        finally
         {
-            result = OpResult.Fail(ex.Message);
+            UnregisterTransfer(control);
         }
+    }
 
-        RecordUndo(result, destDir, move, sourceIdentities);
+    private static void RegisterTransfer(TransferControl control)
+    {
+        lock (TransferGate)
+        {
+            if (ActiveTransfers.Count == 0)
+                _transfersIdle = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            ActiveTransfers.Add(control);
+        }
+    }
 
-        if (result.Canceled && string.IsNullOrWhiteSpace(result.Error))
-            ActivityService.Instance.Cancel(act);
-        else
-            ActivityService.Instance.Complete(act, result.Ok, result.Error);
-        return result.Error;
+    private static void UnregisterTransfer(TransferControl control)
+    {
+        TaskCompletionSource<bool>? completed = null;
+        lock (TransferGate)
+        {
+            ActiveTransfers.Remove(control);
+            if (ActiveTransfers.Count == 0)
+            {
+                completed = _transfersIdle;
+                _transfersIdle = null;
+            }
+        }
+        completed?.TrySetResult(true);
     }
 
     // Record the inverse so the transfer can be undone (only outputs that actually landed).
@@ -173,5 +264,36 @@ public static class FileDropService
     {
         string n = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar));
         return string.IsNullOrEmpty(n) ? dir : n;
+    }
+
+    private static TimeSpan? EstimateRemaining(TransferProgress progress)
+    {
+        if (progress.CompletedBytes <= 0 || progress.TotalBytes <= progress.CompletedBytes
+            || progress.Elapsed.TotalSeconds < 0.5)
+            return null;
+        double bytesPerSecond = progress.CompletedBytes / progress.Elapsed.TotalSeconds;
+        if (bytesPerSecond <= 0) return null;
+        double seconds = (progress.TotalBytes - progress.CompletedBytes) / bytesPerSecond;
+        if (!double.IsFinite(seconds) || seconds < 1 || seconds > TimeSpan.MaxValue.TotalSeconds)
+            return null;
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static string FormatRemaining(TimeSpan remaining) =>
+        remaining.TotalHours >= 1 ? $"{(int)remaining.TotalHours}h {remaining.Minutes}m"
+        : remaining.TotalMinutes >= 1 ? $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s"
+        : $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalSeconds))}s";
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        double value = Math.Max(0, bytes);
+        int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.#} {units[unit]}";
     }
 }

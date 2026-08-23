@@ -34,6 +34,9 @@ public sealed class ActivityService : ObservableObject
 
     public ObservableCollection<ActivityEntry> Items { get; } = new();
 
+    /// <summary>Requests that the owning window show the Activity flyout for a large operation.</summary>
+    public event Action<Window?>? ShowRequested;
+
     private ActivityService()
     {
         string dir = Path.Combine(
@@ -195,12 +198,16 @@ public sealed class ActivityService : ObservableObject
     public void RequestPauseToggle(ActivityEntry e) => OnUi(e.TogglePause);
 
     /// <summary>Update an active operation without writing progress to disk.</summary>
-    public void ReportProgress(ActivityEntry e, double? progress, string? detail = null) => OnUi(() =>
+    public void ReportProgress(ActivityEntry e, double? progress, string? detail = null,
+        string? progressText = null) => OnUi(() =>
     {
         if (!e.IsActive) return;
         e.Progress = progress is double value ? Math.Clamp(value, 0, 1) : -1;
         if (!string.IsNullOrWhiteSpace(detail)) e.Detail = Shorten(detail!);
+        if (progressText is not null) e.ProgressText = progressText;
     });
+
+    public void RequestShow(Window? owner) => OnUi(() => ShowRequested?.Invoke(owner));
 
     public void Complete(ActivityEntry e, bool ok, string? error = null)
     {
@@ -210,6 +217,7 @@ public sealed class ActivityService : ObservableObject
             e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
             if (!ok && !string.IsNullOrWhiteSpace(error)) e.Detail = Shorten(error!);
             if (ok) e.Progress = 1;
+            e.ProgressText = string.Empty;
             e.IsPaused = false;
             e.Status = ok ? ActivityStatus.Success : ActivityStatus.Failed;
             e.DetachControls();
@@ -220,10 +228,12 @@ public sealed class ActivityService : ObservableObject
 
     /// <summary>Mark a running activity as cancelled (the user backed out of a confirm dialog,
     /// so nothing actually happened). Keeps it in the log so the outcome is visible.</summary>
-    public void Cancel(ActivityEntry e) => OnUi(() =>
+    public void Cancel(ActivityEntry e, string? detail = null) => OnUi(() =>
     {
         e.Watch?.Stop();
         e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
+        if (!string.IsNullOrWhiteSpace(detail)) e.Detail = Shorten(detail!);
+        e.ProgressText = string.Empty;
         e.IsPaused = false;
         e.Status = ActivityStatus.Canceled;
         e.DetachControls();

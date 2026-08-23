@@ -207,8 +207,14 @@
                                         <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
                                                    Foreground="{StaticResource Text}" VerticalAlignment="Center" />
                                     </StackPanel>
-                                    <Button HorizontalAlignment="Right" Content="Clear" Style="{StaticResource GhostButton}"
-                                            MinWidth="0" Padding="12,5" FontSize="12" Click="ClearActivity_Click" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Hide" Style="{StaticResource GhostButton}"
+                                                MinWidth="0" Padding="12,5" FontSize="12"
+                                                Click="HideActivity_Click" />
+                                        <Button Content="Clear" Style="{StaticResource GhostButton}"
+                                                MinWidth="0" Padding="12,5" FontSize="12" Margin="5,0,0,0"
+                                                Click="ClearActivity_Click" />
+                                    </StackPanel>
                                 </Grid>
 
                                 <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
@@ -239,6 +245,11 @@
                                                             <TextBlock Text="{Binding Detail}" FontSize="11"
                                                                        Foreground="{StaticResource TextFaint}"
                                                                        TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                                            <TextBlock Text="{Binding ProgressText}" FontSize="11"
+                                                                       Foreground="{StaticResource TextMuted}"
+                                                                       Margin="0,4,0,0"
+                                                                       Visibility="{Binding HasProgressText,
+                                                                           Converter={StaticResource BoolToVis}}" />
                                                             <ProgressBar x:Name="activityProgress" Height="5" Margin="0,7,0,0"
                                                                          Minimum="0" Maximum="1"
                                                                          Value="{Binding Progress, Mode=OneWay}"
