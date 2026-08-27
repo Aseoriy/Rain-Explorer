@@ -716,7 +716,7 @@ public partial class BreadcrumbBar : UserControl
         // A file path opens the file; a folder navigates; anything else shows a status warning.
         if (File.Exists(p))
         {
-            try { Process.Start(new ProcessStartInfo { FileName = p, UseShellExecute = true }); }
+            try { ProcessLauncher.StartShell(Path.GetFullPath(p)); }
             catch (Exception ex) { tab.Status = $"⚠️ {ex.Message}"; }
             ExitEdit();
             return;

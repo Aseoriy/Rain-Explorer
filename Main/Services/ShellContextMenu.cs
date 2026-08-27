@@ -31,6 +31,7 @@ public sealed class ShellContextMenu : IDisposable
     private IContextMenu? _ctx;
     private IContextMenu2? _ctx2;
     private IContextMenu3? _ctx3;
+    private string? _selectedPath;
     private readonly HashSet<MenuItem> _loadedSubmenus = new();
     private bool _disposed;
 
@@ -97,7 +98,11 @@ public sealed class ShellContextMenu : IDisposable
         try
         {
             GetCursorPos(out POINT pt);
-            InvokeVerb(_ctx, cmdId - IdFirst, _hwnd, pt);
+            string? verb = CanonicalVerb(cmdId);
+            string? workingDirectory = _selectedPath is { } path
+                ? ProcessLauncher.GetShellVerbWorkingDirectory(path, verb)
+                : null;
+            InvokeVerb(_ctx, cmdId - IdFirst, _hwnd, pt, workingDirectory);
         }
         catch (Exception ex) { Log($"Invoke EXCEPTION: {ex.Message}"); }
     }
@@ -106,6 +111,7 @@ public sealed class ShellContextMenu : IDisposable
     private bool Setup(IReadOnlyList<string> paths, Window owner)
     {
         _hwnd = new WindowInteropHelper(owner).Handle;
+        _selectedPath = paths.Count == 1 ? paths[0] : null;
 
         foreach (var p in paths)
             if (SHParseDisplayName(p, IntPtr.Zero, out IntPtr full, 0, out _) == 0 && full != IntPtr.Zero)
@@ -281,15 +287,21 @@ public sealed class ShellContextMenu : IDisposable
 
     private bool IsStandardVerb(uint id)
     {
-        if (_ctx is null || id < IdFirst) return false;
+        string? verb = CanonicalVerb(id);
+        return verb is not null && StdVerbs.Contains(verb);
+    }
+
+    private string? CanonicalVerb(uint id)
+    {
+        if (_ctx is null || id < IdFirst) return null;
         var sb = new StringBuilder(128);
         try
         {
             if (_ctx.GetCommandString((UIntPtr)(id - IdFirst), GCS_VERBW, IntPtr.Zero, sb, (uint)sb.Capacity) != 0)
-                return false;   // no canonical verb -> a custom/extra item, keep it
-            return StdVerbs.Contains(sb.ToString());
+                return null;
+            return sb.ToString();
         }
-        catch { return false; }
+        catch { return null; }
     }
 
     private static string Clean(string s)
@@ -390,7 +402,8 @@ public sealed class ShellContextMenu : IDisposable
         return IntPtr.Zero;
     }
 
-    private static void InvokeVerb(IContextMenu ctx, uint offset, IntPtr hwnd, POINT pt)
+    private static void InvokeVerb(IContextMenu ctx, uint offset, IntPtr hwnd, POINT pt,
+        string? workingDirectory)
     {
         var info = new CMINVOKECOMMANDINFOEX
         {
@@ -398,7 +411,9 @@ public sealed class ShellContextMenu : IDisposable
             fMask = CMIC_MASK_UNICODE | CMIC_MASK_PTINVOKE,
             hwnd = hwnd,
             lpVerb = (IntPtr)offset,
+            lpDirectory = workingDirectory,
             lpVerbW = (IntPtr)offset,
+            lpDirectoryW = workingDirectory,
             nShow = SW_SHOWNORMAL,
             ptInvoke = pt,
         };

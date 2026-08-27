@@ -14,8 +14,8 @@ namespace RainExplorer.Services;
 /// items only pays once per distinct icon.
 ///
 /// Caching strategy:
-///   • Folders share one cached generic folder icon (resolved by attributes, no disk
-///     hit) — keeps big trees cheap.
+///   • Folders share one cached stock icon, extracted from Windows' configured icon
+///     resource instead of the potentially stale per-user shell image list.
 ///   • Files that embed their own icon (exe/lnk/ico/…) are cached per full path.
 ///   • All other files are cached per extension (resolved by attributes, no disk hit).
 /// </summary>
@@ -112,6 +112,12 @@ public static class ShellIconService
 
     private static BitmapSource? Resolve(string path, bool isDirectory)
     {
+        // Windows icon packs commonly replace the stock folder resource while the
+        // per-user shell image list can keep serving an older default icon. Extracting
+        // the stock location directly preserves the configured Windows icon.
+        if (isDirectory && ResolveStockFolderIcon() is { } stockFolder)
+            return stockFolder;
+
         var info = new SHFILEINFO();
         uint flags = SHGFI_ICON | SHGFI_LARGEICON;
 
@@ -134,7 +140,32 @@ public static class ShellIconService
         finally { DestroyIcon(info.hIcon); }
     }
 
+    internal static BitmapSource? ResolveStockFolderIcon()
+    {
+        var info = new SHSTOCKICONINFO
+        {
+            cbSize = (uint)Marshal.SizeOf<SHSTOCKICONINFO>(),
+        };
+        if (SHGetStockIconInfo(SIID_FOLDER, SHGSI_ICONLOCATION, ref info) < 0
+            || string.IsNullOrWhiteSpace(info.szPath))
+            return null;
+
+        var largeIcons = new IntPtr[1];
+        if (ExtractIconEx(info.szPath, info.iIcon, largeIcons, null, 1) == 0
+            || largeIcons[0] == IntPtr.Zero)
+            return null;
+
+        try
+        {
+            return Imaging.CreateBitmapSourceFromHIcon(
+                largeIcons[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+        }
+        finally { DestroyIcon(largeIcons[0]); }
+    }
+
     // ---- Win32 -------------------------------------------------------------
+    private const uint SIID_FOLDER = 3;
+    private const uint SHGSI_ICONLOCATION = 0;
     private const uint SHGFI_ICON = 0x000000100;
     private const uint SHGFI_LARGEICON = 0x000000000;
     private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
@@ -151,9 +182,28 @@ public static class ShellIconService
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SHSTOCKICONINFO
+    {
+        public uint cbSize;
+        public IntPtr hIcon;
+        public int iSysImageIndex;
+        public int iIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szPath;
+    }
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SHGetFileInfo(
         string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHGetStockIconInfo(
+        uint siid, uint uFlags, ref SHSTOCKICONINFO psii);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint ExtractIconEx(
+        string szFileName, int nIconIndex,
+        [Out] IntPtr[]? phiconLarge, [Out] IntPtr[]? phiconSmall, uint nIcons);
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr hIcon);

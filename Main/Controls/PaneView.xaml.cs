@@ -3720,8 +3720,7 @@ public partial class PaneView : UserControl
         if (FileList.SelectedItem is not FileItem item || item.IsDirectory) return;
         try
         {
-            Process.Start(new ProcessStartInfo("rundll32.exe",
-                $"shell32.dll,OpenAs_RunDLL {item.FullPath}") { UseShellExecute = true });
+            Process.Start(ProcessLauncher.CreateOpenWithStartInfo(item.FullPath));
         }
         catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
     }

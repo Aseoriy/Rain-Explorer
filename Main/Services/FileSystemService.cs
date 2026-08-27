@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using RainExplorer.Models;
 
@@ -239,6 +238,6 @@ public sealed class FileSystemService
     /// <summary>Open a file with its default app, or a folder in this explorer's caller.</summary>
     public void OpenWithShell(string path)
     {
-        Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+        ProcessLauncher.StartShell(path);
     }
 }

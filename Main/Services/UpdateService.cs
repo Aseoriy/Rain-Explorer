@@ -53,7 +53,7 @@ public static class UpdateService
                 return plus >= 0 ? info[..plus] : info;
             }
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            return v is null ? "1.2.2" : $"{v.Major}.{v.Minor}.{v.Build}";
+            return v is null ? "1.2.3" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }
 
@@ -181,7 +181,7 @@ public static class UpdateService
     /// <summary>Launch the downloaded installer and close this instance so it can replace files.</summary>
     public static void RunInstallerAndExit(string installerPath)
     {
-        try { Process.Start(new ProcessStartInfo(installerPath) { UseShellExecute = true }); }
+        try { ProcessLauncher.StartShell(installerPath); }
         catch { return; }
         Application.Current?.Shutdown();
     }
