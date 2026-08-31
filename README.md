@@ -1,6 +1,6 @@
 # Rain Explorer
 
-Rain Explorer is a modern Windows file manager built with WPF and .NET 10. It provides a fast, polished workspace for browsing folders, managing files, and organizing frequently used locations.
+Rain Explorer is a windows file manager built with WPF and .NET 10. It is super fast and a pretty polished workspace for browsing folders, managing files, and organizing frequently used locations. *(imo)*
 
 ![Rain Explorer preview](Preview.png)
 
@@ -14,7 +14,7 @@ Rain Explorer is a modern Windows file manager built with WPF and .NET 10. It pr
 - Quick Access pins with custom icons, custom names, reordering, and multiple user-created sidebar lists.
 - Drag folders onto sidebar sections to pin them, or move pins between sections.
 - File operations including copy, cut, paste, rename, recycle/permanent delete, undo/redo, shortcuts, compression, and archive extraction.
-- Git and GitHub tools for repository setup, cloning, change review, staging, commits, local branches, pushing, and opening remotes.
+- Git and GitHub tools for repository setup, cloning, change review, staging, commits, local branches, pushing, and opening remotes. **(This still needs some work)**
 - Native Windows context-menu integration and “Show more options”.
 - Built-in preview pane, activity center, terminal shortcuts, hidden-file support, and configurable themes, density, fonts, and layouts.
 - Automatic update checks with optional pre-release update support.
