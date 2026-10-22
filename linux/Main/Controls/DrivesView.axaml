@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RainExplorer.ViewModels"
+             xmlns:c="using:RainExplorer.Controls"
+             x:Class="RainExplorer.Controls.DrivesView"
+             x:DataType="vm:TabViewModel"
+             Background="Transparent">
+    <UserControl.Resources>
+        <!-- A clickable glass drive card -->
+        <ControlTheme x:Key="DriveCard" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource Glass2}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="b" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Line2}"
+                            BorderThickness="1" CornerRadius="12" Padding="18,16">
+                        <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                                          HorizontalContentAlignment="Stretch" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#b">
+                <Setter Property="Background" Value="{DynamicResource Glass3}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            </Style>
+            <Style Selector="^:focus-visible /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBright}" />
+            </Style>
+        </ControlTheme>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Border Padding="28,22,28,28">
+            <StackPanel MaxWidth="720" HorizontalAlignment="Stretch">
+                <TextBlock Text="Drives" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource Text}" />
+                <TextBlock Text="Storage usage across your drives." Foreground="{DynamicResource TextMuted}" Margin="0,4,0,18" />
+
+                <ItemsControl ItemsSource="{Binding Drives}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DriveVM">
+                            <Grid>
+                                <Button Theme="{StaticResource DriveCard}" Click="Drive_Click" ContextRequested="Drive_ContextRequested" ToolTip.Tip="{Binding Tooltip}"
+                                        AutomationProperties.Name="{Binding Label}">
+                                    <Grid RowDefinitions="Auto,Auto,Auto">
+                                        <!-- Header -->
+                                        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+                                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="10"
+                                                    Background="{DynamicResource Glass3}" BorderBrush="{DynamicResource Line2}"
+                                                    BorderThickness="1" VerticalAlignment="Center">
+                                                <c:Icon Kind="{Binding IconKey}" Width="20" Height="20"
+                                                        Foreground="{DynamicResource AccentBright}" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Label}" FontSize="15" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding TypeText}" FontSize="11"
+                                                           Foreground="{DynamicResource TextFaint}" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding CountText}" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextMuted}" FontSize="12"
+                                                       FontFamily="{DynamicResource MonoFont}" />
+                                            <Border Grid.Column="3" Width="140" IsVisible="{Binding HasAction}" />
+                                        </Grid>
+
+                                        <!-- Usage bar -->
+                                        <ProgressBar Grid.Row="1" IsVisible="{Binding IsMounted}" Theme="{StaticResource UsageBar}" Value="{Binding UsedPercent}"
+                                                     Margin="0,16,0,0" />
+
+                                        <!-- Usage text (two columns so they can't overlap) -->
+                                        <Grid Grid.Row="2" Margin="0,10,0,0" ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="{Binding UsageText}" Foreground="{DynamicResource TextMuted}"
+                                                       FontSize="12" FontFamily="{DynamicResource MonoFont}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+                                            <TextBlock Grid.Column="1" Text="{Binding FreeText}" Foreground="{DynamicResource AccentBright}"
+                                                       FontSize="12" FontFamily="{DynamicResource MonoFont}" />
+                                        </Grid>
+                                    </Grid>
+                                </Button>
+                                <Button Theme="{StaticResource GhostButton}" IsVisible="{Binding HasAction}" Click="DriveAction_Click"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,21,18,0" Padding="10,8" ToolTip.Tip="{Binding ActionText}"
+                                        AutomationProperties.Name="{Binding ActionText}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <c:Icon Kind="{Binding ActionIcon}" Width="16" Height="16" />
+                                        <TextBlock Text="{Binding ActionText}" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

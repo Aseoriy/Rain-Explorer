@@ -1,0 +1,105 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ============================================================
+         Rain Explorer — Purple-glass dark theme (palette tokens).
+         Near-black base lit by a subtle violet orb, frosted translucent
+         panels, one violet brand accent. Part of the Sail Solutions family.
+         These are the Violet defaults; Services/ThemeService.cs replaces
+         them at startup and whenever the theme changes, so every consumer
+         uses DynamicResource.
+         ============================================================ -->
+
+    <!-- File-row padding; swapped at runtime by the view-density setting. -->
+    <Thickness x:Key="RowPadding">10,5,10,5</Thickness>
+
+    <!-- Glows (replaced per theme by ThemeService) -->
+    <BoxShadows x:Key="PrimaryGlow">0 0 14 0 #73A855F7</BoxShadows>
+    <BoxShadows x:Key="PrimaryGlowHover">0 0 24 0 #B3A855F7</BoxShadows>
+    <BoxShadows x:Key="TabGlow">0 0 8 0 #B3A855F7</BoxShadows>
+
+    <SolidColorBrush x:Key="OnAccent" Color="White" />
+    <SolidColorBrush x:Key="PrimaryBorder" Color="#29FFFFFF" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="SettingsScrim" Color="#CC000000" />
+    <SolidColorBrush x:Key="SettingsHeader" Color="#26000000" />
+    <BoxShadows x:Key="MenuShadow">0 4 24 0 #8C000000</BoxShadows>
+    <BoxShadows x:Key="CrumbShadow">0 5 24 0 #80000000</BoxShadows>
+    <BoxShadows x:Key="ActivityShadow">0 6 30 0 #8C000000</BoxShadows>
+
+    <!-- Mono face for paths, sizes, dates, tabular numerics -->
+    <FontFamily x:Key="MonoFont">Cascadia Mono, JetBrains Mono, DejaVu Sans Mono, Ubuntu Mono, monospace</FontFamily>
+
+    <!-- App-wide UI font (swapped at runtime by the font setting) -->
+    <FontFamily x:Key="AppFont">Noto Sans, DejaVu Sans, sans-serif</FontFamily>
+
+    <Color x:Key="AccentColor">#A855F7</Color>
+
+    <SolidColorBrush x:Key="Bg" Color="#0A0A0F" />
+    <SolidColorBrush x:Key="BgRaised" Color="#0D0D14" />
+    <SolidColorBrush x:Key="BgChrome" Color="#12121B" />
+    <SolidColorBrush x:Key="BgAlt" Color="#12121B" />
+    <SolidColorBrush x:Key="BgSide" Color="#12121B" />
+
+    <!-- Glass surfaces: translucent white over the base -->
+    <SolidColorBrush x:Key="Glass1" Color="#06FFFFFF" />
+    <SolidColorBrush x:Key="Glass2" Color="#0BFFFFFF" />
+    <SolidColorBrush x:Key="Glass3" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="Glass4" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="BgHover" Color="#14FFFFFF" />
+
+    <!-- Hairline borders -->
+    <SolidColorBrush x:Key="Line1" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="Line2" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="Line3" Color="#2EFFFFFF" />
+    <SolidColorBrush x:Key="Border" Color="#1FFFFFFF" />
+
+    <!-- Opaque surface for flyouts: context menus, submenus, popups. -->
+    <SolidColorBrush x:Key="MenuBg" Color="#FF161622" />
+
+    <!-- Ink ramp -->
+    <SolidColorBrush x:Key="Text" Color="#F5F4FB" />
+    <SolidColorBrush x:Key="TextDim" Color="#9B9AAC" />
+    <SolidColorBrush x:Key="TextMuted" Color="#9B9AAC" />
+    <SolidColorBrush x:Key="TextFaint" Color="#6C6B7E" />
+
+    <!-- Accent + washes -->
+    <SolidColorBrush x:Key="Accent" Color="#A855F7" />
+    <SolidColorBrush x:Key="AccentBright" Color="#C084FC" />
+    <SolidColorBrush x:Key="AccentStrong" Color="#9333EA" />
+    <SolidColorBrush x:Key="AccentWash" Color="#1FA855F7" />
+    <SolidColorBrush x:Key="AccentWash2" Color="#33A855F7" />
+    <SolidColorBrush x:Key="AccentLine" Color="#73A855F7" />
+    <SolidColorBrush x:Key="BgSel" Color="#33A855F7" />
+    <SolidColorBrush x:Key="BgSelSoft" Color="#1FA855F7" />
+
+    <!-- Semantic status -->
+    <SolidColorBrush x:Key="Ok" Color="#4ADE80" />
+    <SolidColorBrush x:Key="Warn" Color="#FBBF24" />
+    <SolidColorBrush x:Key="Danger" Color="#FB5D6A" />
+    <SolidColorBrush x:Key="DangerStrong" Color="#E81123" />
+
+    <LinearGradientBrush x:Key="AppBackgroundBrush" StartPoint="0%,0%" EndPoint="35%,100%">
+        <GradientStop Color="#0A0A0F" Offset="0" />
+        <GradientStop Color="#0E0B18" Offset="1" />
+    </LinearGradientBrush>
+
+    <RadialGradientBrush x:Key="OrbBrush1" Center="80%,-5%" GradientOrigin="80%,-5%" RadiusX="62%" RadiusY="62%">
+        <GradientStop Color="#409333EA" Offset="0" />
+        <GradientStop Color="#009333EA" Offset="1" />
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="OrbBrush2" Center="-5%,105%" GradientOrigin="-5%,105%" RadiusX="55%" RadiusY="55%">
+        <GradientStop Color="#267E22CE" Offset="0" />
+        <GradientStop Color="#007E22CE" Offset="1" />
+    </RadialGradientBrush>
+
+    <LinearGradientBrush x:Key="GradientAccent" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Color="#A855F7" Offset="0" />
+        <GradientStop Color="#9333EA" Offset="0.55" />
+        <GradientStop Color="#7E22CE" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="GradientAccentHover" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Color="#C084FC" Offset="0" />
+        <GradientStop Color="#A855F7" Offset="0.55" />
+        <GradientStop Color="#9333EA" Offset="1" />
+    </LinearGradientBrush>
+</ResourceDictionary>

@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:RainExplorer.Controls"
+             x:Class="RainExplorer.Controls.PreviewPane"
+             MinWidth="240">
+    <Border Background="{DynamicResource Glass2}" BorderBrush="{DynamicResource Line1}" BorderThickness="1,0,0,0">
+        <DockPanel>
+            <!-- Header: file name + close -->
+            <Border DockPanel.Dock="Top" Padding="14,10" BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Theme="{StaticResource IconButton}" Click="Close_Click"
+                            ToolTip.Tip="Hide preview (Space)" AutomationProperties.Name="Hide preview pane">
+                        <c:Icon Kind="x" Width="15" Height="15" />
+                    </Button>
+                    <TextBlock x:Name="NameText" VerticalAlignment="Center" Foreground="{DynamicResource Text}"
+                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+            </Border>
+
+            <!-- Footer: metadata line -->
+            <Border DockPanel.Dock="Bottom" Padding="14,8" BorderBrush="{DynamicResource Line1}" BorderThickness="0,1,0,0">
+                <TextBlock x:Name="MetaText" Foreground="{DynamicResource TextMuted}" FontSize="11"
+                           TextTrimming="CharacterEllipsis" />
+            </Border>
+
+            <!-- Content: image / text / empty (visibility-switched) -->
+            <Panel Margin="10">
+                <Image x:Name="ImageView" Stretch="Uniform" IsVisible="False"
+                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+                <ScrollViewer x:Name="TextScroll" IsVisible="False"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <SelectableTextBlock x:Name="TextView" Foreground="{DynamicResource TextDim}"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="12" TextWrapping="NoWrap" />
+                </ScrollViewer>
+
+                <StackPanel x:Name="EmptyView" IsVisible="False" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <c:Icon x:Name="EmptyIcon" Width="60" Height="60" Kind="file" StrokeThickness="1.3"
+                            HorizontalAlignment="Center" Foreground="{DynamicResource TextFaint}" />
+                    <TextBlock x:Name="EmptyText" Foreground="{DynamicResource TextFaint}" Margin="0,14,0,0"
+                               HorizontalAlignment="Center" FontSize="13" TextAlignment="Center" MaxWidth="220"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Panel>
+        </DockPanel>
+    </Border>
+</UserControl>

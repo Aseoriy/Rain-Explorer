@@ -1,0 +1,166 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RainExplorer.ViewModels"
+             xmlns:m="using:RainExplorer.Models"
+             xmlns:c="using:RainExplorer.Controls"
+             x:Class="RainExplorer.Controls.HomeView"
+             x:DataType="vm:TabViewModel"
+             Background="Transparent">
+    <UserControl.Resources>
+        <!-- Pinned tile: square-ish glass card -->
+        <ControlTheme x:Key="PinTile" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Template">
+                <ControlTemplate x:DataType="m:FileItem">
+                    <Border Name="b" Background="{DynamicResource Glass2}" CornerRadius="12"
+                            BorderBrush="{DynamicResource Line2}" BorderThickness="1" Width="148" Padding="14,13">
+                        <StackPanel>
+                            <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource Glass3}"
+                                    BorderBrush="{DynamicResource Line2}" BorderThickness="1" HorizontalAlignment="Left">
+                                <c:Icon Kind="{Binding IconKey}" Width="20" Height="20" Foreground="{Binding IconBrush}" />
+                            </Border>
+                            <TextBlock Text="{Binding Name}" Margin="0,11,0,0" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#b">
+                <Setter Property="Background" Value="{DynamicResource Glass3}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            </Style>
+            <Style Selector="^:focus-visible /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBright}" />
+            </Style>
+        </ControlTheme>
+
+        <!-- Recent row: full-width glass row -->
+        <ControlTheme x:Key="RecentRow" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <ControlTemplate x:DataType="m:FileItem">
+                    <Border Name="b" Background="{DynamicResource Glass2}" CornerRadius="9"
+                            BorderBrush="Transparent" BorderThickness="1" Padding="12,9">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <c:Icon Grid.Column="0" Kind="{Binding IconKey}" Width="18" Height="18" Margin="0,0,12,0"
+                                    VerticalAlignment="Center" Foreground="{Binding IconBrush}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFaint}" FontSize="11"
+                                       FontFamily="{DynamicResource MonoFont}" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#b">
+                <Setter Property="Background" Value="{DynamicResource Glass3}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Line2}" />
+            </Style>
+            <Style Selector="^:focus-visible /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBright}" />
+            </Style>
+        </ControlTheme>
+
+        <!-- Compact drive card -->
+        <ControlTheme x:Key="MiniDrive" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Template">
+                <ControlTemplate x:DataType="vm:DriveVM">
+                    <Border Name="b" Background="{DynamicResource Glass2}" CornerRadius="11"
+                            BorderBrush="{DynamicResource Line2}" BorderThickness="1" Width="240" Padding="15,13">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <c:Icon Kind="hard-drive" Width="16" Height="16" Foreground="{DynamicResource AccentBright}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Label}" Margin="9,0,0,0" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                            </StackPanel>
+                            <ProgressBar IsVisible="{Binding IsMounted}" Theme="{StaticResource UsageBar}" Value="{Binding UsedPercent}"
+                                         Margin="0,12,0,0" Height="7" />
+                            <TextBlock Text="{Binding FreeText}" Margin="0,8,0,0" FontSize="11"
+                                       Foreground="{DynamicResource TextMuted}" FontFamily="{DynamicResource MonoFont}" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#b">
+                <Setter Property="Background" Value="{DynamicResource Glass3}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            </Style>
+            <Style Selector="^:focus-visible /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBright}" />
+            </Style>
+        </ControlTheme>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.dashLabel">
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="2,22,0,10" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Border Padding="28,22,28,28">
+            <StackPanel MaxWidth="1000" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="avares://RainExplorer/Assets/rain-cloud.png" Width="30" Height="30" VerticalAlignment="Center"
+                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                    <TextBlock Text="Welcome back" FontSize="26" FontWeight="Bold" Margin="12,0,0,0"
+                               VerticalAlignment="Center" Foreground="{DynamicResource Text}" />
+                </StackPanel>
+                <TextBlock Text="Jump back in, or pick a place to go." Foreground="{DynamicResource TextMuted}" Margin="0,4,0,0" />
+
+                <!-- Pinned -->
+                <TextBlock Text="PINNED" Classes="dashLabel" IsVisible="{Binding PinnedTiles.Count, Converter={x:Static c:CountToBoolConverter.Instance}}" />
+                <ItemsControl ItemsSource="{Binding PinnedTiles}" IsVisible="{Binding PinnedTiles.Count, Converter={x:Static c:CountToBoolConverter.Instance}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="m:FileItem">
+                            <Button Theme="{StaticResource PinTile}" Click="Entry_Click" ToolTip.Tip="{Binding FullPath}"
+                                    AutomationProperties.Name="{Binding Name}" ContextRequested="Entry_ContextRequested" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Recent -->
+                <TextBlock Text="RECENT" Classes="dashLabel" />
+                <TextBlock Text="Nothing yet — open a file or folder and it'll show up here."
+                           Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="2,0,0,4"
+                           IsVisible="{Binding HasNoRecents}" />
+                <ItemsControl ItemsSource="{Binding Recents}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="m:FileItem">
+                            <Button Theme="{StaticResource RecentRow}" Click="Entry_Click" ToolTip.Tip="{Binding FullPath}"
+                                    AutomationProperties.Name="{Binding Name}" ContextRequested="Entry_ContextRequested" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Drives -->
+                <TextBlock Text="DRIVES" Classes="dashLabel" />
+                <ItemsControl ItemsSource="{Binding Drives}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DriveVM">
+                            <Button Theme="{StaticResource MiniDrive}" Click="Entry_Click" ContextRequested="Entry_ContextRequested" ToolTip.Tip="{Binding Tooltip}"
+                                    AutomationProperties.Name="{Binding Label}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,273 @@
+<v:DialogWindow xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:v="using:RainExplorer.Views"
+                xmlns:c="using:RainExplorer.Controls"
+                x:Class="RainExplorer.Views.PropertiesDialog"
+                Title="Properties" Width="600" Height="640">
+    <v:DialogWindow.Styles>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Setter Property="Margin" Value="0,6" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style Selector="SelectableTextBlock.fieldValue">
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="Margin" Value="0,6" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="SelectableTextBlock.mono">
+            <Setter Property="FontFamily" Value="{DynamicResource MonoFont}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TextBlock.sectionLabel">
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+        <Style Selector="Border.rule">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="{DynamicResource Line1}" />
+            <Setter Property="Margin" Value="0,16" />
+        </Style>
+        <Style Selector="CheckBox.cell">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+    </v:DialogWindow.Styles>
+
+    <Border x:Name="CardBorder" Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}"
+            BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <!-- Title bar -->
+            <Panel x:Name="TitleBar" Grid.Row="0" Height="44" Background="{DynamicResource Glass2}">
+                <Border BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1" />
+                <TextBlock Text="Properties" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"
+                           Margin="18,0" Foreground="{DynamicResource Text}" />
+                <Button Theme="{StaticResource CloseButton}" HorizontalAlignment="Right" Margin="0,0,7,0"
+                        Width="34" Height="30" Click="Cancel_Click" ToolTip.Tip="Close"
+                        AutomationProperties.Name="Close properties">
+                    <c:Icon Kind="x" Width="15" Height="15" />
+                </Button>
+            </Panel>
+
+            <!-- Body: nav + content -->
+            <Grid Grid.Row="1" Margin="14,14,16,4" ColumnDefinitions="150,*">
+                <ListBox x:Name="NavList" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
+                         SelectedIndex="0" ItemContainerTheme="{StaticResource PropNav}">
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="info" Width="16" Height="16" Margin="0,0,11,0" />
+                            <TextBlock Text="General" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="shield" Width="16" Height="16" Margin="0,0,11,0" />
+                            <TextBlock Text="Permissions" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="list" Width="16" Height="16" Margin="0,0,11,0" />
+                            <TextBlock Text="Details" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="hash" Width="16" Height="16" Margin="0,0,11,0" />
+                            <TextBlock Text="Hashes" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+
+                <Panel Grid.Column="1" Margin="8,0,0,0">
+                    <!-- ===== GENERAL ===== -->
+                    <ScrollViewer x:Name="PaneGeneral" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Border Grid.Column="0" Width="48" Height="48" CornerRadius="11"
+                                        Background="{DynamicResource Glass3}" BorderBrush="{DynamicResource Line2}"
+                                        BorderThickness="1" VerticalAlignment="Center">
+                                    <Panel>
+                                        <c:Icon x:Name="GlyphIcon" Width="26" Height="26" StrokeThickness="1.7" />
+                                        <Image x:Name="GlyphImage" Width="32" Height="32" IsVisible="False"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Panel>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Name" Foreground="{DynamicResource TextFaint}" FontSize="11"
+                                               FontWeight="Bold" Margin="2,0,0,5" />
+                                    <TextBox x:Name="NameBox" Classes="field" Height="32" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Border Classes="rule" />
+
+                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Text="Type" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="0" Grid.Column="1" x:Name="TypeText" Classes="fieldValue" />
+
+                                <TextBlock Grid.Row="1" Text="Location" Classes="fieldLabel" />
+                                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto">
+                                    <SelectableTextBlock x:Name="LocationText" Classes="fieldValue mono" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,3,0,0">
+                                        <Button Theme="{StaticResource IconButton}" Width="26" Height="26" Click="CopyPath_Click"
+                                                ToolTip.Tip="Copy full path" AutomationProperties.Name="Copy full path">
+                                            <c:Icon Kind="copy" Width="14" Height="14" />
+                                        </Button>
+                                        <Button Theme="{StaticResource IconButton}" Width="26" Height="26" Click="OpenLocation_Click"
+                                                ToolTip.Tip="Open containing folder" AutomationProperties.Name="Open containing folder">
+                                            <c:Icon Kind="external-link" Width="14" Height="14" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Grid.Row="2" x:Name="LinkLabel" Text="Links to" Classes="fieldLabel" IsVisible="False" />
+                                <SelectableTextBlock Grid.Row="2" Grid.Column="1" x:Name="LinkText" Classes="fieldValue mono"
+                                                     IsVisible="False" />
+
+                                <TextBlock Grid.Row="3" Text="Size" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="3" Grid.Column="1" x:Name="SizeText" Classes="fieldValue mono" />
+
+                                <TextBlock Grid.Row="4" Text="Size on disk" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="4" Grid.Column="1" x:Name="SizeOnDiskText" Classes="fieldValue mono" />
+
+                                <TextBlock Grid.Row="5" x:Name="ContainsLabel" Text="Contains" Classes="fieldLabel" IsVisible="False" />
+                                <SelectableTextBlock Grid.Row="5" Grid.Column="1" x:Name="ContainsText" Classes="fieldValue"
+                                                     IsVisible="False" />
+
+                                <TextBlock Grid.Row="6" Text="Created" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="6" Grid.Column="1" x:Name="CreatedText" Classes="fieldValue mono" />
+
+                                <TextBlock Grid.Row="7" Text="Modified" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="7" Grid.Column="1" x:Name="ModifiedText" Classes="fieldValue mono" />
+
+                                <TextBlock Grid.Row="8" Text="Accessed" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Row="8" Grid.Column="1" x:Name="AccessedText" Classes="fieldValue mono" />
+                            </Grid>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Text="ATTRIBUTES" Classes="sectionLabel" />
+                            <WrapPanel>
+                                <CheckBox x:Name="ReadOnlyCheck" Content="Read-only" Margin="0,0,20,8" />
+                                <CheckBox x:Name="ExecutableCheck" Content="Allow running as a program" Margin="0,0,20,8" />
+                                <TextBlock x:Name="HiddenNote" Text="· Hidden (name starts with a dot)"
+                                           Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                                           Margin="0,0,0,8" IsVisible="False" />
+                            </WrapPanel>
+
+                            <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Danger}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,8,0,0" IsVisible="False" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ===== PERMISSIONS ===== -->
+                    <ScrollViewer x:Name="PaneSecurity" IsVisible="False" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel>
+                            <TextBlock Text="OWNERSHIP" Classes="sectionLabel" Margin="0,2,0,8" />
+                            <Border BorderBrush="{DynamicResource Line1}" BorderThickness="1" CornerRadius="8" Padding="12,6">
+                                <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto">
+                                    <TextBlock Text="Owner" Classes="fieldLabel" />
+                                    <SelectableTextBlock Grid.Column="1" x:Name="OwnerText" Classes="fieldValue" />
+                                    <TextBlock Grid.Row="1" Text="Group" Classes="fieldLabel" />
+                                    <SelectableTextBlock Grid.Row="1" Grid.Column="1" x:Name="GroupText" Classes="fieldValue" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="PERMISSIONS" Classes="sectionLabel" Margin="0,16,0,8" />
+                            <Grid x:Name="PermGrid" ColumnDefinitions="*,70,70,70" RowDefinitions="Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Column="1" Text="Read" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextMuted}" FontSize="11" />
+                                <TextBlock Grid.Column="2" Text="Write" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextMuted}" FontSize="11" />
+                                <TextBlock Grid.Column="3" x:Name="ExecuteHeader" Text="Execute" HorizontalAlignment="Center"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}" FontSize="11" />
+
+                                <SelectableTextBlock Grid.Row="1" Text="Owner" Classes="fieldValue" />
+                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="OwnerRead" Classes="cell" />
+                                <CheckBox Grid.Row="1" Grid.Column="2" x:Name="OwnerWrite" Classes="cell" />
+                                <CheckBox Grid.Row="1" Grid.Column="3" x:Name="OwnerExec" Classes="cell" />
+
+                                <SelectableTextBlock Grid.Row="2" Text="Group" Classes="fieldValue" />
+                                <CheckBox Grid.Row="2" Grid.Column="1" x:Name="GroupRead" Classes="cell" />
+                                <CheckBox Grid.Row="2" Grid.Column="2" x:Name="GroupWrite" Classes="cell" />
+                                <CheckBox Grid.Row="2" Grid.Column="3" x:Name="GroupExec" Classes="cell" />
+
+                                <SelectableTextBlock Grid.Row="3" Text="Others" Classes="fieldValue" />
+                                <CheckBox Grid.Row="3" Grid.Column="1" x:Name="OtherRead" Classes="cell" />
+                                <CheckBox Grid.Row="3" Grid.Column="2" x:Name="OtherWrite" Classes="cell" />
+                                <CheckBox Grid.Row="3" Grid.Column="3" x:Name="OtherExec" Classes="cell" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="110,*" Margin="0,10,0,0">
+                                <TextBlock Text="Octal" Classes="fieldLabel" />
+                                <SelectableTextBlock Grid.Column="1" x:Name="OctalText" Classes="fieldValue mono" />
+                            </Grid>
+
+                            <TextBlock x:Name="SecurityStatus" Foreground="{DynamicResource TextMuted}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,10,0,0" IsVisible="False" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ===== DETAILS ===== -->
+                    <ScrollViewer x:Name="PaneDetails" IsVisible="False" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel x:Name="DetailsPanel" />
+                    </ScrollViewer>
+
+                    <!-- ===== HASHES ===== -->
+                    <ScrollViewer x:Name="PaneHashes" IsVisible="False" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel>
+                            <TextBlock Text="CHECKSUMS" Classes="sectionLabel" Margin="0,2,0,12" />
+                            <Grid x:Name="HashGrid" ColumnDefinitions="72,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Text="MD5" Classes="fieldLabel" />
+                                <TextBox Grid.Row="0" Grid.Column="1" x:Name="Md5Text" IsReadOnly="True" Classes="field"
+                                         Margin="0,4" Height="30" FontFamily="{DynamicResource MonoFont}" FontSize="11" />
+                                <Button Grid.Row="0" Grid.Column="2" Theme="{StaticResource IconButton}" Width="28" Height="28"
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="md5" ToolTip.Tip="Copy MD5"
+                                        AutomationProperties.Name="Copy MD5 hash">
+                                    <c:Icon Kind="copy" Width="14" Height="14" />
+                                </Button>
+
+                                <TextBlock Grid.Row="1" Text="SHA-1" Classes="fieldLabel" />
+                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="Sha1Text" IsReadOnly="True" Classes="field"
+                                         Margin="0,4" Height="30" FontFamily="{DynamicResource MonoFont}" FontSize="11" />
+                                <Button Grid.Row="1" Grid.Column="2" Theme="{StaticResource IconButton}" Width="28" Height="28"
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha1" ToolTip.Tip="Copy SHA-1"
+                                        AutomationProperties.Name="Copy SHA-1 hash">
+                                    <c:Icon Kind="copy" Width="14" Height="14" />
+                                </Button>
+
+                                <TextBlock Grid.Row="2" Text="SHA-256" Classes="fieldLabel" />
+                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="Sha256Text" IsReadOnly="True" Classes="field"
+                                         Margin="0,4" Height="30" FontFamily="{DynamicResource MonoFont}" FontSize="11" />
+                                <Button Grid.Row="2" Grid.Column="2" Theme="{StaticResource IconButton}" Width="28" Height="28"
+                                        Margin="6,4,0,4" Click="CopyHash_Click" Tag="sha256" ToolTip.Tip="Copy SHA-256"
+                                        AutomationProperties.Name="Copy SHA-256 hash">
+                                    <c:Icon Kind="copy" Width="14" Height="14" />
+                                </Button>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button x:Name="HashButton" Content="Compute hashes" Theme="{StaticResource DialogButton}"
+                                        Click="ComputeHashes_Click" />
+                                <TextBlock x:Name="HashStatus" VerticalAlignment="Center" Margin="14,0,0,0"
+                                           Foreground="{DynamicResource TextMuted}" FontSize="12" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Panel>
+            </Grid>
+
+            <!-- Footer -->
+            <Border Grid.Row="2" Background="{DynamicResource Glass2}" BorderBrush="{DynamicResource Line1}"
+                    BorderThickness="0,1,0,0" Padding="16,12">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel" Theme="{StaticResource GhostButton}" Click="Cancel_Click" Margin="0,0,8,0" />
+                    <Button Content="Save changes" Theme="{StaticResource PrimaryButton}" Click="Save_Click" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</v:DialogWindow>

@@ -1,0 +1,442 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RainExplorer.ViewModels"
+        xmlns:m="using:RainExplorer.Models"
+        xmlns:c="using:RainExplorer.Controls"
+        xmlns:svc="using:RainExplorer.Services"
+        xmlns:h="using:RainExplorer.Helpers"
+        x:Class="RainExplorer.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Rain Explorer"
+        Icon="avares://RainExplorer/Assets/rain-256.png"
+        Width="1140" Height="720" MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Bg}">
+    <Window.Resources>
+        <!-- Sidebar tree row: rounded glass hover, accent wash for the current location,
+             lazily-expanding folders with a chevron — the Windows TreeViewItem template. -->
+        <ControlTheme x:Key="SidebarItem" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" x:DataType="m:SidebarNode" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+            <Setter Property="ItemContainerTheme" Value="{DynamicResource SidebarItem}" />
+            <Setter Property="Template">
+                <ControlTemplate x:DataType="m:SidebarNode">
+                    <StackPanel>
+                        <Border Name="PART_Header" Background="Transparent" CornerRadius="8"
+                                BorderBrush="Transparent" BorderThickness="1" Margin="0,1" Padding="2,1"
+                                Classes.active="{Binding IsActive}" Classes.drop="{Binding IsDropTarget}"
+                                Classes.header="{Binding IsHeader}">
+                            <Grid ColumnDefinitions="16,*">
+                                <ToggleButton Name="Expander" Grid.Column="0" Focusable="False" ClickMode="Press"
+                                              IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}"
+                                              Background="Transparent" Cursor="Hand">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate>
+                                            <Border Background="Transparent" Width="16" Height="22">
+                                                <Panel>
+                                                    <c:Icon Name="right" Kind="chevron-right" Width="9" Height="9" StrokeThickness="2"
+                                                            Foreground="{DynamicResource TextFaint}" />
+                                                    <c:Icon Name="down" Kind="chevron-down" Width="9" Height="9" StrokeThickness="2"
+                                                            Foreground="{DynamicResource TextFaint}" IsVisible="False" />
+                                                </Panel>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <ContentPresenter Name="PART_HeaderPresenter" Grid.Column="1"
+                                                  Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  VerticalAlignment="Center" HorizontalContentAlignment="Stretch" />
+                            </Grid>
+                        </Border>
+                        <ItemsPresenter Name="PART_ItemsPresenter" Margin="12,0,0,0"
+                                        h:ExpandCollapseBehavior.IsExpanded="{TemplateBinding IsExpanded}"
+                                        ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^ /template/ ToggleButton#Expander:checked c|Icon#right">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+            <Style Selector="^ /template/ ToggleButton#Expander:checked c|Icon#down">
+                <Setter Property="IsVisible" Value="True" />
+            </Style>
+            <Style Selector="^:empty /template/ ToggleButton#Expander">
+                <Setter Property="Opacity" Value="0" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Header:pointerover">
+                <Setter Property="Background" Value="{DynamicResource Glass3}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Header.active">
+                <Setter Property="Background" Value="{DynamicResource AccentWash}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}" />
+            </Style>
+            <!-- File drag hovering this node: accent drop highlight -->
+            <Style Selector="^ /template/ Border#PART_Header.drop">
+                <Setter Property="Background" Value="{DynamicResource AccentWash}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            </Style>
+            <!-- Headers: section labels, never highlighted -->
+            <Style Selector="^ /template/ Border#PART_Header.header">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Header.header ToggleButton#Expander">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+        </ControlTheme>
+
+        <!-- The tiny inline "+" on a pinned-list header -->
+        <ControlTheme x:Key="AddPinButton" TargetType="Button">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="pb" Background="{TemplateBinding Background}" CornerRadius="5">
+                        <c:Icon Kind="plus" Width="13" Height="13" Foreground="{DynamicResource TextMuted}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#pb">
+                <Setter Property="Background" Value="{DynamicResource Glass4}" />
+            </Style>
+        </ControlTheme>
+    </Window.Resources>
+
+    <Panel>
+        <Border x:Name="RootBorder" Background="{DynamicResource AppBackgroundBrush}"
+                BorderBrush="{DynamicResource Line2}" BorderThickness="1">
+            <Panel>
+                <!-- Ambient orb: two soft radial glows bleeding from the corners.
+                     Themed via OrbBrush1/2, pulses very slowly. Toggleable via settings. -->
+                <Panel x:Name="Orb" IsHitTestVisible="False" Opacity="0.82">
+                    <Rectangle Fill="{DynamicResource OrbBrush1}" />
+                    <Rectangle Fill="{DynamicResource OrbBrush2}" />
+                </Panel>
+
+                <Grid RowDefinitions="40,*">
+                    <!-- ===== Title bar ===== -->
+                    <Grid x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource Glass2}"
+                          PointerPressed="TitleBar_PointerPressed" DoubleTapped="TitleBar_DoubleTapped">
+                        <Border BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1" IsHitTestVisible="False" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
+                            <Button x:Name="SidebarToggle" Theme="{StaticResource CaptionButton}" Width="34"
+                                    Click="SidebarToggle_Click" ToolTip.Tip="Show/hide sidebar"
+                                    AutomationProperties.Name="Show or hide sidebar">
+                                <c:Icon Kind="panel-left" Width="17" Height="17" />
+                            </Button>
+                            <Image Source="avares://RainExplorer/Assets/rain-cloud.png" Width="19" Height="19"
+                                   Margin="6,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="Rain Explorer" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource Text}"
+                                       Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="UndoButton" Theme="{StaticResource CaptionButton}" Click="UndoButton_Click"
+                                    IsEnabled="{Binding CanUndo, Source={x:Static svc:UndoService.Instance}}"
+                                    ToolTip.Tip="{Binding UndoText, Source={x:Static svc:UndoService.Instance}}"
+                                    AutomationProperties.Name="Undo">
+                                <c:Icon Kind="undo" Width="16" Height="16" />
+                            </Button>
+                            <Button x:Name="RedoButton" Theme="{StaticResource CaptionButton}" Click="RedoButton_Click"
+                                    IsEnabled="{Binding CanRedo, Source={x:Static svc:UndoService.Instance}}"
+                                    IsVisible="{Binding CanRedo, Source={x:Static svc:UndoService.Instance}}"
+                                    ToolTip.Tip="{Binding RedoText, Source={x:Static svc:UndoService.Instance}}"
+                                    AutomationProperties.Name="Redo">
+                                <c:Icon Kind="undo" Flip="True" Width="16" Height="16" />
+                            </Button>
+                            <Button x:Name="ActivityButton" Theme="{StaticResource CaptionButton}" Click="ActivityButton_Click"
+                                    ToolTip.Tip="Activity" AutomationProperties.Name="Activity">
+                                <Panel>
+                                    <c:Icon Kind="clock" Width="16" Height="16" />
+                                    <!-- Unseen badge -->
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Margin="0,-5,-7,0" MinWidth="14" Height="14" CornerRadius="7"
+                                            Background="{DynamicResource GradientAccent}" Padding="3,0"
+                                            IsVisible="{Binding HasUnseen, Source={x:Static svc:ActivityService.Instance}}">
+                                        <TextBlock Text="{Binding UnseenCount, Source={x:Static svc:ActivityService.Instance}}"
+                                                   Foreground="{DynamicResource OnAccent}" FontSize="9" FontWeight="Bold"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </Panel>
+                            </Button>
+                            <Button x:Name="SettingsButton" Theme="{StaticResource CaptionButton}"
+                                    Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings"
+                                    AutomationProperties.Name="Settings">
+                                <c:Icon Kind="settings" Width="16" Height="16" />
+                            </Button>
+                            <StackPanel x:Name="WindowButtons" Orientation="Horizontal">
+                                <Button Theme="{StaticResource CaptionButton}" Click="MinButton_Click" ToolTip.Tip="Minimize"
+                                        AutomationProperties.Name="Minimize window">
+                                    <c:Icon Kind="minus" Width="16" Height="16" />
+                                </Button>
+                                <Button Theme="{StaticResource CaptionButton}" Click="MaxButton_Click" ToolTip.Tip="Maximize"
+                                        AutomationProperties.Name="Maximize or restore window">
+                                    <c:Icon x:Name="MaxIcon" Kind="square" Width="15" Height="15" />
+                                </Button>
+                                <Button Theme="{StaticResource CloseButton}" Click="CloseButton_Click" ToolTip.Tip="Close"
+                                        AutomationProperties.Name="Close window">
+                                    <c:Icon Kind="x" Width="16" Height="16" />
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== Activity center flyout ===== -->
+                        <Popup x:Name="ActivityPopup" PlacementTarget="{Binding #ActivityButton}"
+                               Placement="BottomEdgeAlignedRight" IsLightDismissEnabled="True"
+                               HorizontalOffset="12" VerticalOffset="-8" Closed="ActivityPopup_Closed"
+                               WindowManagerAddShadowHint="False">
+                            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1"
+                                    CornerRadius="12" Width="368" Margin="12" Padding="6"
+                                    BoxShadow="{DynamicResource ActivityShadow}" h:Motion.PopupReveal="True">
+                                <DockPanel MaxHeight="480" x:DataType="svc:ActivityService"
+                                           DataContext="{x:Static svc:ActivityService.Instance}">
+                                    <Grid DockPanel.Dock="Top" Margin="8,8,6,8" ColumnDefinitions="*,Auto">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <c:Icon Kind="clock" Width="15" Height="15" Foreground="{DynamicResource AccentBright}"
+                                                    VerticalAlignment="Center" />
+                                            <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
+                                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Content="Hide" Theme="{StaticResource GhostButton}" MinWidth="0"
+                                                    Padding="12,5" FontSize="12" Click="HideActivity_Click" />
+                                            <Button Content="Clear" Theme="{StaticResource GhostButton}" MinWidth="0"
+                                                    Padding="12,5" FontSize="12" Margin="5,0,0,0" Click="ClearActivity_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
+                                               Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="10,8,0,14"
+                                               IsVisible="{Binding IsEmpty}" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="m:ActivityEntry">
+                                                    <Border Classes="activityCard" Classes.running="{Binding IsActive}"
+                                                            Background="{DynamicResource Glass2}" CornerRadius="8"
+                                                            BorderBrush="Transparent" BorderThickness="1"
+                                                            Padding="11,9" Margin="2,2,2,5">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                                            <c:Icon Grid.Column="0" Width="16" Height="16" Margin="0,1,11,0"
+                                                                    VerticalAlignment="Top" Kind="{Binding IconKey}"
+                                                                    Foreground="{DynamicResource TextMuted}" />
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource Text}" />
+                                                                <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                                           Foreground="{DynamicResource TextMuted}"
+                                                                           ToolTip.Tip="{Binding Detail}"
+                                                                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                                                <TextBlock Text="{Binding ProgressText}" FontSize="11"
+                                                                           Foreground="{DynamicResource TextMuted}"
+                                                                           TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
+                                                                           IsVisible="{Binding HasProgressText}" />
+                                                                <ProgressBar Theme="{StaticResource UsageBar}" Height="5" Margin="0,7,0,0"
+                                                                             Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                                                             IsVisible="{Binding ShowDeterminateProgress}" />
+                                                                <ProgressBar Height="5" MinHeight="5" Margin="0,7,0,0" IsIndeterminate="True"
+                                                                             Foreground="{DynamicResource Accent}"
+                                                                             Background="{DynamicResource Glass3}"
+                                                                             IsVisible="{Binding ShowIndeterminateProgress}" />
+                                                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                                    <Button Content="{Binding PauseButtonText}" Theme="{StaticResource GhostButton}"
+                                                                            MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                                            Click="ActivityPause_Click" IsVisible="{Binding CanPause}" />
+                                                                    <Button Content="Cancel" Theme="{StaticResource GhostButton}"
+                                                                            MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                                            Margin="5,0,0,0" Click="ActivityCancel_Click"
+                                                                            IsVisible="{Binding CanCancel}" />
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
+                                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                                             Classes="statusDot"
+                                                                             Classes.ok="{Binding IsSuccess}"
+                                                                             Classes.failed="{Binding IsFailed}"
+                                                                             Classes.canceled="{Binding IsCanceled}" />
+                                                                    <TextBlock Text="{Binding StatusText}" FontSize="11" Margin="6,0,0,0"
+                                                                               VerticalAlignment="Center" Classes="statusText"
+                                                                               Classes.ok="{Binding IsSuccess}"
+                                                                               Classes.failed="{Binding IsFailed}"
+                                                                               Classes.canceled="{Binding IsCanceled}" />
+                                                                </StackPanel>
+                                                                <TextBlock FontSize="10" Foreground="{DynamicResource TextFaint}"
+                                                                           HorizontalAlignment="Right" Margin="0,3,0,0"
+                                                                           FontFamily="{DynamicResource MonoFont}">
+                                                                    <Run Text="{Binding DurationText, Mode=OneWay}" />
+                                                                    <Run Text="·" />
+                                                                    <Run Text="{Binding TimeText, Mode=OneWay}" />
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <!-- ===== Body ===== -->
+                    <Panel Grid.Row="1">
+                        <!-- BodyGrid: blurred when settings is open -->
+                        <Grid x:Name="BodyGrid" ColumnDefinitions="Auto,*">
+                            <!-- Sidebar (bound to MainViewModel). Width follows the collapse toggle. -->
+                            <Border x:Name="Sidebar" Grid.Column="0" Width="220" ClipToBounds="True"
+                                    Background="{DynamicResource Glass2}"
+                                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,1,0">
+                                <Border.Transitions>
+                                    <Transitions>
+                                        <DoubleTransition Property="Width" Duration="0:0:0.21" Easing="CubicEaseInOut" />
+                                    </Transitions>
+                                </Border.Transitions>
+                                <DockPanel Width="220" HorizontalAlignment="Left">
+                                    <!-- Footer: Rain Explorer brand + publisher -->
+                                    <Border DockPanel.Dock="Bottom" Padding="8,8,10,12">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="Rain Explorer" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextDim}" />
+                                            <TextBlock Text="A Sail Solutions App" FontSize="10"
+                                                       Foreground="{DynamicResource TextFaint}" Margin="0,1,0,0" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Panel>
+                                    <TreeView x:Name="SidebarTree" ItemsSource="{Binding SidebarNodes}"
+                                              ItemContainerTheme="{StaticResource SidebarItem}"
+                                              Background="Transparent" BorderThickness="0" Padding="8,8"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              DragDrop.AllowDrop="True">
+                                        <TreeView.ItemTemplate>
+                                            <TreeDataTemplate DataType="m:SidebarNode" ItemsSource="{Binding Children}">
+                                                <Panel Background="Transparent" Tapped="SidebarRow_Tapped"
+                                                       ContextRequested="SidebarRow_ContextRequested">
+                                                    <!-- Header look: clickable to collapse/expand -->
+                                                    <Grid IsVisible="{Binding IsHeader}" Margin="2,12,0,5" ColumnDefinitions="*,Auto">
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Background="Transparent"
+                                                                    Cursor="Hand">
+                                                            <Panel Width="9" Height="9" Margin="0,0,5,0" VerticalAlignment="Center">
+                                                                <c:Icon Kind="chevron-down" StrokeThickness="2"
+                                                                        Foreground="{DynamicResource TextFaint}"
+                                                                        IsVisible="{Binding !IsCollapsed}" />
+                                                                <c:Icon Kind="chevron-right" StrokeThickness="2"
+                                                                        Foreground="{DynamicResource TextFaint}"
+                                                                        IsVisible="{Binding IsCollapsed}" />
+                                                            </Panel>
+                                                            <TextBlock Text="{Binding Name, Converter={x:Static c:UpperConverter.Instance}}"
+                                                                       Foreground="{DynamicResource TextFaint}" FontSize="11"
+                                                                       FontWeight="Bold" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Theme="{StaticResource AddPinButton}"
+                                                                Click="SidebarAddPin_Click" ToolTip.Tip="Pin a folder to this list"
+                                                                IsVisible="{Binding IsPinnedHeader}" />
+                                                    </Grid>
+                                                    <!-- Item look -->
+                                                    <Grid IsVisible="{Binding IsNotHeader}" ColumnDefinitions="Auto,*,Auto" Margin="2,5">
+                                                        <c:Icon Kind="{Binding IconKey}" Width="17" Height="17" Margin="0,0,10,0"
+                                                                VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center" />
+                                                        <Button Grid.Column="2" Theme="{StaticResource IconButton}" Width="22" Height="18" Padding="2" Margin="4,0,0,0"
+                                                                IsVisible="{Binding HasDriveAction}" Click="SidebarDriveAction_Click"
+                                                                ToolTip.Tip="{Binding DriveActionText}" AutomationProperties.Name="{Binding DriveActionText}">
+                                                            <c:Icon Kind="{Binding DriveActionIcon}" Width="14" Height="14" />
+                                                        </Button>
+                                                    </Grid>
+                                                </Panel>
+                                            </TreeDataTemplate>
+                                        </TreeView.ItemTemplate>
+                                    </TreeView>
+                                    <Canvas x:Name="SidebarDragOverlay" IsHitTestVisible="False">
+                                        <Border x:Name="SidebarInsertionLine" Height="2" CornerRadius="1"
+                                                Background="{DynamicResource GradientAccent}" IsVisible="False" />
+                                    </Canvas>
+                                    </Panel>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Pane host: left pane, optional splitter + right pane -->
+                            <Grid x:Name="PaneHost" Grid.Column="1" ColumnDefinitions="*,0,0">
+                                <c:PaneView x:Name="LeftPaneView" Grid.Column="0" DataContext="{Binding LeftPane}" />
+                                <GridSplitter x:Name="PaneSplitter" Grid.Column="1" Width="6" ResizeDirection="Columns"
+                                              Background="{DynamicResource Line1}" IsVisible="{Binding IsSplit}" />
+                                <c:PaneView x:Name="RightPaneView" Grid.Column="2" DataContext="{Binding RightPane}"
+                                            IsVisible="False" />
+                                <Border x:Name="TabSplitPreview" Grid.ColumnSpan="3" IsVisible="False"
+                                        IsHitTestVisible="False" Margin="8" CornerRadius="12" Padding="16"
+                                        Background="{DynamicResource BgRaised}" BorderBrush="{DynamicResource AccentLine}"
+                                        BorderThickness="2" Opacity="0.96">
+                                    <Grid RowDefinitions="Auto,*" RowSpacing="12">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <c:Icon Kind="split" Width="18" Height="18" Foreground="{DynamicResource AccentBright}" />
+                                            <TextBlock x:Name="TabSplitPreviewLabel" Foreground="{DynamicResource Text}"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <Border Grid.Row="1" Background="{DynamicResource Glass2}" CornerRadius="6" ClipToBounds="True">
+                                            <Image x:Name="TabSplitPreviewImage" Stretch="Uniform" VerticalAlignment="Top" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
+
+                        <!-- ===== Settings (full-page overlay — above blurred body) ===== -->
+                        <c:SettingsView x:Name="SettingsOverlay"
+                                        IsVisible="{ReflectionBinding DataContext.IsSettingsOpen, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    </Panel>
+                </Grid>
+            </Panel>
+        </Border>
+
+        <!-- Resize grips for the custom (frameless) title bar mode -->
+        <Panel x:Name="ResizeGrips">
+            <Border Tag="W" Width="6" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="E" Width="6" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="N" Height="5" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="S" Height="6" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="NW" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="NE" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="SW" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="Grip_PointerPressed" />
+            <Border Tag="SE" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="Grip_PointerPressed" />
+        </Panel>
+    </Panel>
+
+    <Window.Styles>
+        <Style Selector="Border.activityCard.running">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot">
+            <Setter Property="Fill" Value="{DynamicResource Warn}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.ok">
+            <Setter Property="Fill" Value="{DynamicResource Ok}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.failed">
+            <Setter Property="Fill" Value="{DynamicResource Danger}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.canceled">
+            <Setter Property="Fill" Value="{DynamicResource TextMuted}" />
+        </Style>
+        <Style Selector="TextBlock.statusText">
+            <Setter Property="Foreground" Value="{DynamicResource Warn}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.ok">
+            <Setter Property="Foreground" Value="{DynamicResource Ok}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.failed">
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.canceled">
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+        </Style>
+    </Window.Styles>
+</Window>

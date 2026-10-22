@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:RainExplorer.Controls"
+             xmlns:h="using:RainExplorer.Helpers"
+             x:Class="RainExplorer.Controls.BreadcrumbBar"
+             Height="30" Focusable="False">
+    <UserControl.Resources>
+        <!-- Dropdown row: folder icon + name (used by the chevron + autocomplete popups) -->
+        <DataTemplate x:Key="DropItemTemplate" x:DataType="c:Suggestion">
+            <StackPanel Orientation="Horizontal" Margin="2,1">
+                <c:Icon Kind="folder" Width="15" Height="15" StrokeThickness="1.7" Margin="2,0,9,0"
+                        VerticalAlignment="Center" Foreground="{DynamicResource AccentBright}" />
+                <TextBlock Text="{Binding Display}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Panel>
+        <!-- ===== Breadcrumb mode ===== -->
+        <Border x:Name="CrumbHost" Background="{DynamicResource Glass2}"
+                BorderBrush="{DynamicResource Line2}" BorderThickness="1" CornerRadius="8" Height="30"
+                Cursor="IBeam" DragDrop.AllowDrop="True">
+            <ScrollViewer x:Name="CrumbScroll" Padding="6,0" Background="Transparent" Focusable="False"
+                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="CrumbStrip" Orientation="Horizontal" VerticalAlignment="Center" />
+            </ScrollViewer>
+        </Border>
+
+        <!-- ===== Edit mode (raw path text) ===== -->
+        <Border x:Name="EditHost" IsVisible="False" Background="{DynamicResource Glass2}"
+                BorderBrush="{DynamicResource AccentLine}" BorderThickness="1" CornerRadius="8"
+                Height="30" Padding="12,0,10,0">
+            <DockPanel>
+                <c:Icon DockPanel.Dock="Left" Kind="hard-drive" Width="14" Height="14" Margin="0,0,8,0"
+                        VerticalAlignment="Center" Foreground="{DynamicResource AccentBright}" />
+                <TextBox x:Name="EditBox" Classes="bare" FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                         VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Shared dropdown popups ===== -->
+        <Popup x:Name="ChildPopup" Placement="BottomEdgeAlignedLeft" IsLightDismissEnabled="True" VerticalOffset="4"
+               WindowManagerAddShadowHint="False">
+            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1"
+                    CornerRadius="10" Padding="5" MinWidth="220" MaxWidth="440" Margin="0,0,10,12" h:Motion.PopupReveal="True"
+                    BoxShadow="{DynamicResource CrumbShadow}">
+                <ListBox x:Name="ChildList" MaxHeight="360" Background="Transparent" BorderThickness="0" Padding="0"
+                         ItemContainerTheme="{StaticResource DropItem}"
+                         ItemTemplate="{StaticResource DropItemTemplate}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+            </Border>
+        </Popup>
+
+        <Popup x:Name="AcPopup" PlacementTarget="{Binding #EditHost}" Placement="BottomEdgeAlignedLeft"
+               IsLightDismissEnabled="False" VerticalOffset="4" WindowManagerAddShadowHint="False">
+            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1"
+                    CornerRadius="10" Padding="5" MinWidth="300" MaxWidth="640" Margin="0,0,10,12" h:Motion.PopupReveal="True"
+                    BoxShadow="{DynamicResource CrumbShadow}">
+                <ListBox x:Name="AcList" MaxHeight="320" Background="Transparent" BorderThickness="0" Padding="0"
+                         ItemContainerTheme="{StaticResource DropItem}"
+                         ItemTemplate="{StaticResource DropItemTemplate}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+            </Border>
+        </Popup>
+    </Panel>
+</UserControl>

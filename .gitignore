@@ -1,39 +1,73 @@
-# Ignore everything by default.
+# Keep the repository limited to source, required assets and build scripts.
 *
-
-# Keep directories traversable so the source files below can be included.
 !*/
 
-# Application and test source files.
-!*.cs
-!*.xaml
-
-# .NET project files and Windows installer configuration.
-!*.csproj
-!*.sln
-!*.props
-!*.targets
-!*.manifest
-!*.iss
-
-# Required application assets.
-!*.png
-!*.ico
-
-# Keep the repository documentation and this file.
+# Preserve the existing repository presentation.
 !/.gitignore
 !/README.md
 !/Preview.png
 
-# Build and publish output.
+# Windows application, tests and installer.
+!/windows/Main/**/*.cs
+!/windows/Main/**/*.xaml
+!/windows/Main/**/*.csproj
+!/windows/Main/**/*.props
+!/windows/Main/**/*.targets
+!/windows/Main/**/*.manifest
+!/windows/Main/Assets/**/*.png
+!/windows/Main/Assets/**/*.ico
+!/windows/Main/Assets/**/*.svg
+!/windows/Tests/**/*.cs
+!/windows/Tests/**/*.csproj
+!/windows/Tests/**/*.props
+!/windows/Tests/**/*.targets
+!/windows/Installer/*.iss
+!/windows/*.sln
+!/windows/*.slnx
+
+# Linux application, tests, icon tooling and packaging.
+!/linux/Main/**/*.cs
+!/linux/Main/**/*.axaml
+!/linux/Main/**/*.csproj
+!/linux/Main/**/*.props
+!/linux/Main/**/*.targets
+!/linux/Main/**/*.manifest
+!/linux/Main/Assets/**/*.png
+!/linux/Main/Assets/**/*.ico
+!/linux/Main/Assets/**/*.svg
+!/linux/Tests/**/*.cs
+!/linux/Tests/**/*.csproj
+!/linux/Tests/**/*.props
+!/linux/Tests/**/*.targets
+!/linux/tools/*.py
+!/linux/packaging/*.sh
+!/linux/packaging/*.desktop
+!/linux/packaging/icons/*.png
+!/linux/*.sln
+!/linux/*.slnx
+
+# Build output, dependencies and caches on either platform.
 bin/
 obj/
 dist/
+TestResults/
+node_modules/
+packages/
+.avalonia-build-tasks/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
 
-# Legacy prototype and local development files.
-Main/legacy-electron/
+# Local development files and private notes.
+legacy-electron/
 .vs/
 .idea/
+.vscode/
+docs/
+notes/
+Codex Extra Files/
+AGENTS.md
 *.user
 *.suo
 *.log
@@ -41,3 +75,9 @@ Main/legacy-electron/
 # Operating-system files.
 Thumbs.db
 .DS_Store
+.directory
+.Trash-*/
+.nfs*
+*~
+*.swp
+*.swo

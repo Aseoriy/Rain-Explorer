@@ -6,8 +6,8 @@
 #define MyAppVersion "1.2.3"
 #define MyAppPublisher "Aseoriy"
 #define MyAppExeName "RainExplorer.exe"
-#define SourceDir "E:\Downloads\Rain\Code stuff\File Explorer\dist\app-sc"
-#define IconFile "E:\Downloads\Rain\Code stuff\File Explorer\Main\Assets\rain.ico"
+#define SourceDir "..\dist\app-sc"
+#define IconFile "..\Main\Assets\rain.ico"
 
 [Setup]
 AppId={{8A9C2F31-4D6B-4A1E-9E2C-7F3B5D8A1C42}
@@ -25,7 +25,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=E:\Downloads\Rain\Code stuff\File Explorer\dist
+OutputDir=..\dist
 OutputBaseFilename=RainExplorer-Setup-{#MyAppVersion}
 SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\{#MyAppExeName}

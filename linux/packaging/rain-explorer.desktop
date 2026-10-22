@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Rain Explorer
+GenericName=File Manager
+Comment=Browse files with tabs, split panes and Quick Access
+Exec=rain-explorer %U
+Icon=rain-explorer
+Terminal=false
+StartupNotify=true
+StartupWMClass=rain-explorer
+Categories=System;FileTools;FileManager;Utility;Core;
+Keywords=files;folders;explorer;browser;manager;
+MimeType=inode/directory;

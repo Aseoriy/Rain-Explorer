@@ -1,0 +1,585 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:m="using:RainExplorer.Models"
+             xmlns:c="using:RainExplorer.Controls"
+             x:Class="RainExplorer.Controls.SettingsView"
+             x:DataType="m:AppSettings"
+             Background="Transparent">
+    <UserControl.Resources>
+        <!-- Theme swatch card -->
+        <ControlTheme x:Key="SwatchItem" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,10,10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate x:DataType="c:ThemeSwatch">
+                    <Border Name="b" Background="{DynamicResource Glass2}" CornerRadius="10"
+                            BorderBrush="{DynamicResource Line2}" BorderThickness="1" Padding="12,10" Width="118">
+                        <StackPanel>
+                            <Panel>
+                                <Border Height="34" CornerRadius="8" Background="{Binding Swatch}" />
+                                <c:Icon Name="chk" Kind="check" Width="16" Height="16" Foreground="{DynamicResource OnAccent}"
+                                        StrokeThickness="2.4" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="6" IsVisible="False" />
+                            </Panel>
+                            <TextBlock Text="{Binding Name}" Margin="2,8,0,0" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource Line3}" />
+            </Style>
+            <Style Selector="^:selected /template/ Border#b">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+                <Setter Property="Background" Value="{DynamicResource AccentWash}" />
+            </Style>
+            <Style Selector="^:selected /template/ c|Icon#chk">
+                <Setter Property="IsVisible" Value="True" />
+            </Style>
+        </ControlTheme>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.sectionLabel">
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="4,18,0,8" />
+        </Style>
+        <Style Selector="TextBlock.sectionLabel.first">
+            <Setter Property="Margin" Value="4,4,0,8" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Glass2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line1}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16,4" />
+            <Setter Property="Margin" Value="0,10,0,0" />
+        </Style>
+        <Style Selector="Border.card.first">
+            <Setter Property="Margin" Value="0" />
+        </Style>
+        <Style Selector="TextBlock.rowTitle">
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.rowHint">
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Grid.row">
+            <Setter Property="Margin" Value="0,14" />
+        </Style>
+        <Style Selector="Grid.row > StackPanel">
+            <Setter Property="Margin" Value="0,0,90,0" />
+        </Style>
+        <Style Selector="Grid.row > CheckBox, Grid.row > ComboBox, Grid.row > Button">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ScrollViewer.pane">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+        <Style Selector="ScrollViewer.pane > StackPanel">
+            <!-- Content margin is included in Avalonia's scroll extent; viewer padding is not. -->
+            <Setter Property="Margin" Value="6,14,12,40" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel ClipToBounds="True">
+        <!-- Semi-transparent backdrop scrim (blurred body shows through) -->
+        <Rectangle Fill="{DynamicResource SettingsScrim}" IsVisible="{Binding !PerformanceMode}" />
+        <Rectangle Fill="{DynamicResource Bg}" IsVisible="{Binding PerformanceMode}" />
+
+        <Grid x:Name="SettingsSurface" RowDefinitions="Auto,*">
+            <!-- ===== Sticky header (stays pinned while content scrolls) ===== -->
+            <Border Grid.Row="0" Background="{DynamicResource SettingsHeader}" BorderBrush="{DynamicResource Line1}"
+                    BorderThickness="0,0,0,1" Padding="28,18">
+                <Grid MaxWidth="980" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Theme="{StaticResource IconButton}" Width="36" Height="36" Click="Close_Click"
+                                ToolTip.Tip="Back (Esc)" AutomationProperties.Name="Close settings">
+                            <c:Icon Kind="arrow-left" Width="18" Height="18" />
+                        </Button>
+                        <c:Icon Kind="settings" Width="20" Height="20" Foreground="{DynamicResource AccentBright}"
+                                Margin="14,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Settings" FontSize="22" FontWeight="Bold" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource Text}" />
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Theme="{StaticResource PrimaryButton}"
+                            Padding="18,8" Click="Close_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="check" Width="16" Height="16" Foreground="{DynamicResource OnAccent}" StrokeThickness="2"
+                                    Margin="0,0,8,0" />
+                            <TextBlock Text="Done" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ===== Body: left nav + scrolling content ===== -->
+            <Grid Grid.Row="1" MaxWidth="980" Margin="20,8,20,0" ColumnDefinitions="200,*">
+                <!-- Section nav -->
+                <ListBox x:Name="SectionList" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
+                         Margin="0,14,8,0" SelectedIndex="0" ItemContainerTheme="{StaticResource NavItem}">
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="palette" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="Appearance" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="folder-open" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="Browsing" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="file" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="Files" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="sliders" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="Advanced" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="info" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="About" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+
+                <!-- Content panes (one visible at a time) -->
+                <Panel Grid.Column="1">
+                    <!-- APPEARANCE -->
+                    <ScrollViewer x:Name="PaneAppearance" Classes="pane">
+                        <StackPanel>
+                            <TextBlock Text="THEME" Classes="sectionLabel first" />
+                            <Border Classes="card first" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="Color theme" Classes="rowTitle" />
+                                    <TextBlock Text="Drives the accent, surfaces and background for the whole app."
+                                               Classes="rowHint" Margin="0,2,0,12" />
+                                    <ListBox x:Name="ThemeList" Background="Transparent" BorderThickness="0" Padding="0"
+                                             ItemContainerTheme="{StaticResource SwatchItem}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="DISPLAY" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="File list layout" Classes="rowTitle" />
+                                        <TextBlock Text="Details rows, a compact list, tiles, or a large-icon grid." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="LayoutBox" Width="180" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Row density" Classes="rowTitle" />
+                                        <TextBlock Text="Comfortable spacing, or compact to fit more rows." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="DensityBox" Width="180" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Ambient background glow" Classes="rowTitle" />
+                                        <TextBlock Text="The soft themed orb behind the window. Paused in performance mode." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowAmbientBackground, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Performance mode" Classes="rowTitle" />
+                                        <TextBlock Text="Use 60 Hz and remove the ambient glow and settings blur to reduce CPU/GPU work. Off follows your display refresh rate (up to 360 Hz). Tab animations stay on. Applies immediately."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="PerformanceModeToggle" AutomationProperties.Name="Performance mode"
+                                              IsChecked="{Binding PerformanceMode, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Use the system title bar" Classes="rowTitle" />
+                                        <TextBlock Text="Use your desktop's window frame and buttons instead of Rain's custom title bar."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding UseSystemTitleBar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="FONT" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <StackPanel Margin="0,12">
+                                    <TextBlock Text="Interface font" Classes="rowTitle" />
+                                    <TextBlock Text="Applied across the app. Paths and sizes keep a mono font." Classes="rowHint" />
+                                    <ComboBox x:Name="FontBox" Margin="0,7,0,0" Width="280" HorizontalAlignment="Left"
+                                              MaxDropDownHeight="320" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- BROWSING -->
+                    <ScrollViewer x:Name="PaneBrowsing" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="STARTUP" Classes="sectionLabel first" />
+                            <Border Classes="card first">
+                                <StackPanel Margin="0,12">
+                                    <TextBlock Text="Default starting folder" Classes="rowTitle" />
+                                    <TextBlock Text="Where new tabs open. Leave blank for Home." Classes="rowHint" />
+                                    <DockPanel Margin="0,8,0,0">
+                                        <Button DockPanel.Dock="Right" Content="Browse…" Theme="{StaticResource DialogButton}"
+                                                Margin="8,0,0,0" MinWidth="0" Padding="14,6" Click="BrowseDefaultFolder_Click" />
+                                        <TextBox Classes="field" Text="{Binding DefaultFolder, Mode=TwoWay}"
+                                                 Watermark="Home" FontFamily="{DynamicResource MonoFont}" FontSize="12" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Preserve open tabs on close" Classes="rowTitle" />
+                                        <TextBlock Text="Restore all open tabs and split panes after reopening Rain Explorer or restarting your PC."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding PreserveOpenTabsOnClose, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Automatically refresh folders" Classes="rowTitle" />
+                                        <TextBlock Text="Update open folder views when files change outside Rain Explorer."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding AutoRefreshFolders, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="EDITING" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Rename &amp; new folder input" Classes="rowTitle" />
+                                        <TextBlock Text="Use a pop-up dialog, or edit inline in the list." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="RenameBox" Width="180" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Keep file extensions unselected when renaming" Classes="rowTitle" />
+                                        <TextBlock Text="Select only the name before .ext so typing keeps the existing extension."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding SelectFileNameWithoutExtensionOnRename, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Open folders in a new tab" Classes="rowTitle" />
+                                        <TextBlock Text="Double-clicking a folder opens it in a new tab." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding OpenFoldersInNewTab, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Open items with a single click" Classes="rowTitle" />
+                                        <TextBlock Text="A single click opens files and folders instead of a double-click."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="TERMINAL" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Open in Terminal" Classes="rowTitle" />
+                                        <TextBlock Text="Which terminal opens for &quot;Open in Terminal&quot; and address-bar commands."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="TerminalAppBox" Width="160" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- FILES -->
+                    <ScrollViewer x:Name="PaneFiles" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="VISIBILITY" Classes="sectionLabel first" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show hidden files" Classes="rowTitle" />
+                                        <TextBlock Text="Display dotfiles and folders that are normally kept out of view (Ctrl+H)."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show file extensions" Classes="rowTitle" />
+                                        <TextBlock Text="Display the trailing .ext on file names." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show Quick access in sidebar" Classes="rowTitle" />
+                                        <TextBlock Text="Show the built-in Quick access section in the sidebar list." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowQuickAccessInSidebar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show drives in sidebar" Classes="rowTitle" />
+                                        <TextBlock Text="Show the Drives section in the sidebar list." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Custom sidebar lists" Classes="rowTitle" />
+                                        <TextBlock Text="Create another collapsible list. Rename or delete it from its header in the sidebar."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <Button Content="New list…" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                            Padding="14,7" Click="NewList_Click" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="BEHAVIOR" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="When deleting items" Classes="rowTitle" />
+                                        <TextBlock Text="Prompt = choose Trash or permanent. Trash skips confirmation; permanent uses one final Rain confirmation."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="DeleteBehaviorBox" Width="160" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Remember activity" Classes="rowTitle" />
+                                        <TextBlock Text="Keep the activity center log across restarts. When off, it resets each launch."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding RememberActivity, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Warn when changing a file extension" Classes="rowTitle" />
+                                        <TextBlock Text="Show a warning if a rename changes the .ext." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding WarnOnExtensionChange, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Calculate folder sizes" Classes="rowTitle" />
+                                        <TextBlock Text="Show the total size of folders in the list. Computed in the background; can be slow on big folders."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding CalculateFolderSizes, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="ARCHIVES" Classes="sectionLabel" />
+                            <Border Classes="card first" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="Archive app" Classes="rowTitle" />
+                                    <TextBlock Text="Used for Open in archive app, Extract and Compress. Automatic prefers an installed app for your desktop."
+                                               Classes="rowHint" />
+                                    <ComboBox x:Name="ArchiveAppBox" Width="240" HorizontalAlignment="Left" Margin="0,10,0,0"
+                                              AutomationProperties.Name="Archive app" />
+                                    <TextBlock x:Name="ArchiveAppStatus" Classes="rowHint" Margin="0,8,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="SORTING" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show folders first" Classes="rowTitle" />
+                                        <TextBlock Text="Keep folders grouped above files in every sort." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding FoldersFirst, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="UNITS" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="File size units" Classes="rowTitle" />
+                                        <TextBlock Text="Binary = 1024-based (KiB, MiB); Decimal = 1000-based (KB, MB)." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="SizeFormatBox" Width="160" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Count files on the Drives page" Classes="rowTitle" />
+                                        <TextBlock Text="Shows a recursive file count per drive. Resource-intensive on big disks."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowDriveItemCounts, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ADVANCED -->
+                    <ScrollViewer x:Name="PaneAdvanced" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="INTERFACE" Classes="sectionLabel first" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Show status bar" Classes="rowTitle" />
+                                        <TextBlock Text="The item-count strip at the bottom of each pane." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="DESKTOP INTEGRATION" Classes="sectionLabel" />
+                            <Border Classes="card first" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="Default file manager" Classes="rowTitle" />
+                                    <TextBlock x:Name="DefaultFileManagerStatus" Classes="rowHint" Margin="0,6,0,0" />
+                                    <Button x:Name="DefaultFileManagerButton" Content="Make Rain my default file manager"
+                                            Theme="{StaticResource DialogButton}" HorizontalAlignment="Left"
+                                            Padding="14,7" Margin="0,10,0,0" Click="MakeDefaultFileManager_Click" />
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card" Padding="16,14">
+                                <StackPanel>
+                                    <Grid Classes="row">
+                                        <StackPanel>
+                                            <TextBlock Text="Handle Show in folder" Classes="rowTitle" />
+                                            <TextBlock Text="Let other apps reveal local files and folders in Rain, even when Rain is closed. Folder-opening defaults stay as you chose them."
+                                                       Classes="rowHint" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="ShowInFolderBox" IsChecked="{Binding HandleShowInFolder, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Handle Show in folder" />
+                                    </Grid>
+                                    <TextBlock x:Name="ShowInFolderStatus" Classes="rowHint" Margin="0,8,0,0" />
+                                    <Button Content="Retry" Theme="{StaticResource DialogButton}" HorizontalAlignment="Left"
+                                            Padding="14,7" Margin="0,10,0,0" IsVisible="{Binding HandleShowInFolder}"
+                                            Click="RetryShowInFolder_Click" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="CONFIGURATION" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Settings file" Classes="rowTitle" />
+                                        <TextBlock x:Name="ConfigPathText" Classes="rowHint" FontFamily="{DynamicResource MonoFont}" />
+                                    </StackPanel>
+                                    <Button Content="Open folder" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                            Padding="14,7" Click="OpenConfigFolder_Click" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ABOUT -->
+                    <ScrollViewer x:Name="PaneAbout" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="ABOUT" Classes="sectionLabel first" />
+                            <Border Classes="card first">
+                                <StackPanel Orientation="Horizontal" Margin="0,16" VerticalAlignment="Center">
+                                    <Image Source="avares://RainExplorer/Assets/rain-cloud.png" Width="40" Height="40"
+                                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Rain Explorer" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource Text}" />
+                                        <TextBlock Text="&#x201C;All your files, in glass.&#x201D;  ·  A Sail Solutions App"
+                                                   FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Margin="24,0,0,0">
+                                        <c:Icon Kind="cloud" Width="14" Height="14" Foreground="{DynamicResource AccentBright}"
+                                                VerticalAlignment="Center" />
+                                        <TextBlock x:Name="VersionText" Margin="7,0,0,0" FontSize="12"
+                                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="LINKS" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Project page" Classes="rowTitle" />
+                                        <TextBlock Text="Source, releases and changelogs on GitHub." Classes="rowHint" />
+                                    </StackPanel>
+                                    <Button Content="Open GitHub" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                            Tag="https://github.com/Aseoriy/Rain-Explorer" Click="Link_Click" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row">
+                                    <StackPanel>
+                                        <TextBlock Text="Website" Classes="rowTitle" />
+                                        <TextBlock Text="rain-explorer.sailhub.fyi" Classes="rowHint" />
+                                    </StackPanel>
+                                    <Button Content="Visit" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                            Tag="https://rain-explorer.sailhub.fyi/" Click="Link_Click" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Panel>
+            </Grid>
+        </Grid>
+    </Panel>
+</UserControl>
