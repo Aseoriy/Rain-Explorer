@@ -1,74 +1,211 @@
 # Rain Explorer
 
-Rain Explorer is a windows file manager built with WPF and .NET 10. It is super fast and a pretty polished workspace for browsing folders, managing files, and organizing frequently used locations. *(imo)*
+Rain Explorer is a file manager for Windows and Linux, built with C# and .NET 10. It has tabs, split panes, Quick Access, previews, file operations,and more cool stuff with the same glass surfaces and themes across both versions.
 
-![Rain Explorer preview](Preview.png)
+The Windows app uses WPF. The Linux port uses Avalonia and follows Linux desktop conventions for the trash, application launching, icons and removable drives.
+
+![Rain Explorer on Windows](https://raw.githubusercontent.com/Aseoriy/Rain-Explorer/master/Preview.png)
+
+*The screenshot above shows the Windows app.*
+
+## Platform status
+
+| Platform | Status | Downloads |
+|---|---|---|
+| Windows | Stable releases, with a separate 2.0 beta available | `RainExplorer-Setup-*.exe` |
+| Linux | Early alpha: `0.1.0-linux-alpha` | x64 `.deb` and `.tar.gz` packages |
+
+The Linux version does not have every Windows feature yet. See [Linux alpha limits](#linux-alpha-limits) before trying it.
 
 ## Features
 
-- Home, Drives, breadcrumb navigation, search, filtering, sorting, and multiple layouts.
-- Tabs, split-pane browsing, tab drag-and-drop, and keyboard navigation shortcuts.
-- Drag files and folders onto any breadcrumb segment to move them into that folder, using the same copy/move rules as other file drops.
-- Tab projects, grouped tabs, closed-tab history, tab previews, and tear-off tab windows.
-- Persistent tab and split-pane restoration across application and system restarts.
-- Quick Access pins with custom icons, custom names, reordering, and multiple user-created sidebar lists.
-- Drag folders onto sidebar sections to pin them, or move pins between sections.
-- File operations including copy, cut, paste, rename, recycle/permanent delete, undo/redo, shortcuts, compression, and archive extraction.
-- Git and GitHub tools for repository setup, cloning, change review, staging, commits, local branches, pushing, and opening remotes. **(This still needs some work)**
-- Native Windows context-menu integration and “Show more options”.
-- Built-in preview pane, activity center, terminal shortcuts, hidden-file support, and configurable themes, density, fonts, and layouts.
-- Automatic update checks with optional pre-release update support.
+- Home and Drives pages, breadcrumb navigation, search, sorting and multiple file layouts.
+- Tabs, split panes, pinned tabs, groups, tab projects, previews and tear-off windows.
+- Optional restoration of tabs and split panes when the app starts.
+- Quick Access pins with custom names and icons, reorderable sidebar lists, and drag-to-pin support.
+- Copy, cut, paste, rename, new files and folders, trash/recycle bin, permanent deletion and undo/redo.
+- A preview pane, Properties, an Activity center and terminal shortcuts.
+- Ten themes, configurable density and fonts, and keyboard shortcuts.
 
-## Installation
+### Windows
 
-Download the latest `RainExplorer-Setup-*.exe` installer from the repository’s [Releases](https://github.com/Aseoriy/Rain-Explorer/releases) page and run it. The installer is per-user and does not require administrator access by default.
+- Native Windows context menus and shell integration.
+- Git and GitHub tools for repository setup, cloning, reviewing changes, staging, commits, branches and pushing. These tools still need some work.
+- Archive creation and extraction, plus photo, text, media and PDF previews where supported.
+- Automatic update checks with an optional beta channel.
+
+The downloadable Windows 2.0 beta adds Rain Archives integration and other changes described in its release notes. The Windows source currently on the default branch is `1.2.3`; building that checkout does not build the 2.0 beta.
+
+### Linux
+
+- The FreeDesktop trash, shared with file managers such as Dolphin and Nautilus.
+- Clipboard copy/cut/paste that works with other desktop file managers.
+- Desktop icon themes, including SVG icons, with Rain icons as a fallback.
+- Removable-drive discovery, mounting, unmounting and safe removal through UDisks2 when available. Your desktop handles any authorization prompts.
+- An Open with… application chooser and desktop terminal detection.
+- Archive actions through an installed Ark, File Roller, Engrampa or Xarchiver application.
+- Optional Show in folder integration and a setting to choose Rain as your default file manager. Installation alone does not change your defaults.
+- Symbolic links stay links during copy, move and delete operations.
+
+## Downloads and installation
+
+Use the repository's [Releases page](https://github.com/Aseoriy/Rain-Explorer/releases). Check the platform and version in the release title before downloading.
+
+### Windows
+
+Download a `RainExplorer-Setup-*.exe` installer and run it. The installer is per-user and does not require administrator access by default.
+
+### Linux alpha
+
+Look for **Rain Explorer for Linux — 0.1.0 Alpha**. If the Linux packages are not listed yet, use the source-build instructions below.
+
+The first Linux release targets **x64 / amd64**. ARM64 is a build option, but has not been validated for this release. Packages bundle the .NET runtime; normal Linux desktop libraries and fonts are still required. Compatibility across distributions is still being tested.
+
+Choose one installation method:
+
+| Package | Installation |
+|---|---|
+| `.deb` | Install with the package manager on a compatible Debian/Ubuntu system |
+| `.tar.gz` | Extract and install for your user without root, or run directly from the extracted folder |
+
+#### Debian / Ubuntu package
+
+Download `rain-explorer_0.1.0~linux.alpha_amd64.deb`, open a terminal in the download folder, then run:
+
+```bash
+sudo apt install ./rain-explorer_0.1.0~linux.alpha_amd64.deb
+```
+
+Launch **Rain Explorer** from your app menu or run `rain-explorer`. The package installs the application under `/opt/rain-explorer`.
+
+To remove it:
+
+```bash
+sudo apt remove rain-explorer
+```
+
+Your user settings are kept.
+
+#### Per-user / portable package
+
+Download `rain-explorer-0.1.0-linux-alpha-linux-x64.tar.gz`, open a terminal in the download folder, then run:
+
+```bash
+tar -xzf rain-explorer-0.1.0-linux-alpha-linux-x64.tar.gz
+cd rain-explorer-0.1.0-linux-alpha-linux-x64
+./install.sh
+```
+
+This installs the app in `~/.local/share/rain-explorer`, adds a command in `~/.local/bin`, and creates an app-menu entry. `$XDG_DATA_HOME` is honoured for the application data location. If `rain-explorer` is not found in your terminal, add `~/.local/bin` to your `PATH` or use the app menu.
+
+To run without installing, use `./app/RainExplorer` from the extracted folder instead.
+
+To uninstall a per-user installation, run this from the extracted package folder:
+
+```bash
+./install.sh --uninstall
+```
+
+Your user settings are kept. Keep the extracted package if you want to use its uninstaller later.
+
+#### Checksums and updates
+
+Download the matching `.sha256` file alongside your chosen Linux package. From that folder, verify whichever package files you downloaded:
+
+```bash
+sha256sum --ignore-missing -c rain-explorer-0.1.0-linux-alpha-linux-x64.sha256
+```
+
+Each downloaded package should report `OK`.
+
+Linux automatic updates are not available yet. To update, close Rain, download a newer package and install it using the same method. Avoid mixing the `.deb` and per-user installations, since they share settings and create the same app-menu entry.
+
+## Linux alpha limits
+
+- In-app archive browsing and the managed Rain Archives worker are not ported. Linux archive actions use a separately installed desktop archive app.
+- Git and GitHub integration are not ported.
+- Previews support photos and the beginning of text/code files; audio/video playback and PDF page previews are not available.
+- Non-photo thumbnails and folder-content previews are not available.
+- Direct `smb://` browsing and network-share discovery are not available. Shares already mounted at a local path can be browsed.
+- Automatic updates are not available.
+
+External archive operations use the archive app's own options, overwrite prompts and progress. They are not part of Rain's undo/redo or managed Activity queue. Archive integration currently detects native executables, rather than Flatpak-only archive apps.
 
 ## Building from source
 
-### Requirements
+The commands below run from the repository root, alongside `windows/` and `linux/`. Building requires the **.NET 10 SDK**.
 
-- Windows 10 version 1809 or newer
-- .NET 10 SDK
-- Inno Setup 6 (only required to build the installer)
+### Windows
 
-Build the application in Release mode:
+Requires Windows 10 version 1809 or newer. Inno Setup 6 is needed only for the installer.
 
 ```powershell
-dotnet build Main\RainExplorer.csproj -c Release
-```
+dotnet build windows\Main\RainExplorer.csproj -c Release
 
-Create a self-contained Windows payload:
-
-```powershell
-dotnet publish Main\RainExplorer.csproj `
+dotnet publish windows\Main\RainExplorer.csproj `
   -c Release `
   -r win-x64 `
   --self-contained true `
-  -o dist\app-sc
+  -o windows\dist\app-sc
+
+dotnet test windows\Tests\RainExplorer.Git.Tests\RainExplorer.Git.Tests.csproj -c Release
 ```
 
-The installer script is located at [`Installer/RainExplorer.iss`](Installer/RainExplorer.iss). Update its local `SourceDir`, `IconFile`, and `OutputDir` paths for your checkout, then compile it with Inno Setup 6.
+Compile [`windows/Installer/RainExplorer.iss`](windows/Installer/RainExplorer.iss) with Inno Setup 6 after publishing. Its input, icon and output paths are relative to the installer script; setup output goes to `windows/dist/`.
+
+### Linux
+
+Use a Linux desktop with the normal GUI libraries, fonts, `xdg-utils` and shared MIME database installed. UDisks2 enables removable-drive actions; GLib's `gio` utility provides full desktop-entry launching for Open with…. A supported archive app is optional.
+
+```bash
+dotnet build linux/Main/RainExplorer.csproj -c Release
+dotnet run --project linux/Main/RainExplorer.csproj
+dotnet test linux/Tests/RainExplorer.Tests/RainExplorer.Tests.csproj -c Release
+```
+
+Create a self-contained x64 build, tarball and checksum manifest:
+
+```bash
+./linux/packaging/build.sh
+```
+
+When `dpkg-deb` is installed, the same script also creates a Debian package. All output goes to `linux/dist/`.
+
+To build ARM64 artifacts for separate testing:
+
+```bash
+RID=linux-arm64 ./linux/packaging/build.sh
+```
+
+The Linux tests isolate settings and trash under temporary XDG directories. Headless UI tests can save screenshots to a folder selected with `RAIN_SNAPSHOT_DIR`.
 
 ## Configuration
 
-User settings are stored at:
+| Platform | Settings file |
+|---|---|
+| Windows | `%APPDATA%\RainExplorer\settings.json` |
+| Linux | `~/.config/RainExplorer/settings.json` (`$XDG_CONFIG_HOME` is honoured) |
+
+Settings writes are atomic. An unparseable settings file is preserved as `settings.json.corrupt` rather than replaced with defaults. Application removal keeps your settings.
+
+## Repository layout
 
 ```text
-%APPDATA%\RainExplorer\settings.json
+windows/
+  Main/          WPF application source
+  Installer/     Inno Setup script
+  Tests/         Windows test source
+linux/
+  Main/          Avalonia application source
+  Tests/         Linux service and headless UI test source
+  packaging/     Build/install scripts, desktop entry and icons
+  tools/         Icon conversion tool
+README.md        Repository overview
+Preview.png      Windows application preview
 ```
 
-Settings are written atomically so an interrupted write does not replace the previous configuration. The application also keeps a crash log in the same directory when an unhandled error occurs.
-
-## Project layout
-
-```text
-Main/         WPF application source
-Installer/    Inno Setup installer script
-dist/         Local build and installer output (ignored by Git)
-Preview.png   Application preview image
-```
+Each platform keeps its generated output in its own ignored `dist/` folder. Dependency directories, local notes and other generated files are also excluded from Git.
 
 ## License
 
 No license has been added to this repository yet. All rights are reserved by the project author unless a separate license is provided.
-
