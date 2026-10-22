@@ -1,6 +1,6 @@
 # Rain Explorer
 
-Rain Explorer is a file manager for Windows and Linux, built with C# and .NET 10. It has tabs, split panes, Quick Access, previews, file operations,and more cool stuff with the same glass surfaces and themes across both versions.
+Rain Explorer is a file manager for Windows and Linux, built with C# and .NET 10. It brings tabs, split panes, Quick Access, previews and file operations into one workspace, with the same glass surfaces and themes across both versions.
 
 The Windows app uses WPF. The Linux port uses Avalonia and follows Linux desktop conventions for the trash, application launching, icons and removable drives.
 
@@ -13,7 +13,7 @@ The Windows app uses WPF. The Linux port uses Avalonia and follows Linux desktop
 | Platform | Status | Downloads |
 |---|---|---|
 | Windows | Stable releases, with a separate 2.0 beta available | `RainExplorer-Setup-*.exe` |
-| Linux | Early alpha: `0.1.0-linux-alpha` | x64 `.deb` and `.tar.gz` packages |
+| Linux | Early alpha: `0.1.0-linux-alpha` | x64 `.AppImage`, `.deb` and `.tar.gz` packages |
 
 The Linux version does not have every Windows feature yet. See [Linux alpha limits](#linux-alpha-limits) before trying it.
 
@@ -65,8 +65,28 @@ Choose one installation method:
 
 | Package | Installation |
 |---|---|
+| `.AppImage` | Make executable and run; no root or extraction step needed |
 | `.deb` | Install with the package manager on a compatible Debian/Ubuntu system |
 | `.tar.gz` | Extract and install for your user without root, or run directly from the extracted folder |
+
+#### AppImage
+
+Download `rain-explorer-0.1.0-linux-alpha-linux-x64.AppImage`, keep it somewhere permanent, then run:
+
+```bash
+chmod +x rain-explorer-0.1.0-linux-alpha-linux-x64.AppImage
+./rain-explorer-0.1.0-linux-alpha-linux-x64.AppImage
+```
+
+It bundles Rain and the .NET runtime into one file. Your settings still use the normal Linux configuration folder. It does not automatically install an app-menu entry or change your file manager defaults.
+
+If the system cannot mount AppImages through FUSE, use the runtime's extraction fallback:
+
+```bash
+./rain-explorer-0.1.0-linux-alpha-linux-x64.AppImage --appimage-extract-and-run
+```
+
+If you enable Show in folder, keep the AppImage at the same path; launch the new location and use Retry after moving it. AppImage packaging avoids Debian package-manager requirements, but it still needs a compatible Linux system, its standard desktop libraries and fonts. It is not a guarantee that every distribution will work.
 
 #### Debian / Ubuntu package
 
@@ -118,7 +138,7 @@ sha256sum --ignore-missing -c rain-explorer-0.1.0-linux-alpha-linux-x64.sha256
 
 Each downloaded package should report `OK`.
 
-Linux automatic updates are not available yet. To update, close Rain, download a newer package and install it using the same method. Avoid mixing the `.deb` and per-user installations, since they share settings and create the same app-menu entry.
+Linux automatic updates are not available yet. To update, close Rain, download a newer package and use the same method. For AppImages, replace the old file at its existing location and make the new file executable. Avoid mixing the `.deb` and per-user installations, since they share settings and create the same app-menu entry.
 
 ## Linux alpha limits
 
@@ -163,13 +183,15 @@ dotnet run --project linux/Main/RainExplorer.csproj
 dotnet test linux/Tests/RainExplorer.Tests/RainExplorer.Tests.csproj -c Release
 ```
 
-Create a self-contained x64 build, tarball and checksum manifest:
+Create a self-contained x64 build, tarball, AppImage and checksum manifest:
 
 ```bash
 ./linux/packaging/build.sh
 ```
 
-When `dpkg-deb` is installed, the same script also creates a Debian package. All output goes to `linux/dist/`.
+When `dpkg-deb` is installed, the same script also creates a Debian package. All output goes to `linux/dist/`, and the checksum manifest covers every package produced by that run.
+
+The first AppImage build needs `curl` to download pinned, SHA-256-verified versions of the official AppImage tool and runtime. They are cached under `$XDG_CACHE_HOME/RainExplorer/appimage` (normally `~/.cache/RainExplorer/appimage`) for later builds. Set `BUILD_APPIMAGE=0` to build only the other formats, or provide local tool paths with `APPIMAGETOOL` and `APPIMAGE_RUNTIME`.
 
 To build ARM64 artifacts for separate testing:
 
