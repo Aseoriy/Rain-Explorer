@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Genuine retained 1.23 binaries, copied to this new harness output only. -->
+    <Reference Include="RainArchives.Contracts">
+      <HintPath>../../artifacts/RainArchives.M7DRarPackage.1.23.0D84243C/app/RainArchives.Contracts.dll</HintPath>
+    </Reference>
+    <Reference Include="RainArchives.Client">
+      <HintPath>../../artifacts/RainArchives.M7DRarPackage.1.23.0D84243C/app/RainArchives.Client.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

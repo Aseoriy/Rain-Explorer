@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using RainExplorer.Models;
 using RainExplorer.Services;
+using RainExplorer.ViewModels;
 
 namespace RainExplorer.Controls;
 
@@ -19,6 +20,7 @@ namespace RainExplorer.Controls;
 public partial class PreviewPane : UserControl
 {
     private CancellationTokenSource? _cts;
+    private readonly SemaphoreSlim _archivePreviewGate = new(1, 1);
 
     private const long TextPreviewCap = 256 * 1024;   // bytes of a text file we read
     private const long FullDecodeCap = 40L * 1024 * 1024;   // above this, decode images downscaled
@@ -69,6 +71,14 @@ public partial class PreviewPane : UserControl
             return;
         }
 
+        if (!item.HasPhysicalPath)
+        {
+            NameText.Text = item.Name;
+            MetaText.Text = BuildMeta(item);
+            ShowMessage("Archive entry preview isn't available.", item.IconKey);
+            return;
+        }
+
         _current = item;
         NameText.Text = item.Name;
         MetaText.Text = BuildMeta(item);
@@ -89,6 +99,63 @@ public partial class PreviewPane : UserControl
         catch (OperationCanceledException) { return; }
 
         if (!cts.IsCancellationRequested) ShowMessage("No preview available", item.IconKey);
+    }
+
+    /// <summary>Preview a virtual archive file without exposing it to physical-path handlers.</summary>
+    public async void ShowArchiveItem(TabViewModel tab, FileItem item)
+    {
+        _cts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        HideContent();
+
+        NameText.Text = item.Name;
+        MetaText.Text = BuildArchiveMeta(item);
+        ShowMessage(
+            ArchiveEntryPreviewResult.FixedStatus(ArchiveEntryPreviewState.Loading),
+            "file");
+
+        ArchiveEntryPreviewResult result;
+        try
+        {
+            await _archivePreviewGate.WaitAsync(cts.Token);
+            try
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                result = await tab.LoadArchivePreviewAsync(item, cts.Token);
+            }
+            finally
+            {
+                _archivePreviewGate.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result = ArchiveEntryPreviewResult.Fixed(ArchiveEntryPreviewState.Cancelled);
+        }
+        catch
+        {
+            result = ArchiveEntryPreviewResult.Fixed(ArchiveEntryPreviewState.Error);
+        }
+
+        if (!ReferenceEquals(_cts, cts) || cts.IsCancellationRequested) return;
+
+        HideContent();
+        if (result.State == ArchiveEntryPreviewState.Text)
+        {
+            TextView.Text = result.Text;
+            TextScroll.Visibility = Visibility.Visible;
+            string encoding = ArchiveEntryPreviewReader.EncodingLabel(result.Encoding);
+            MetaText.Text = string.Join("  ·  ", new[]
+            {
+                "Archive text",
+                encoding,
+                result.ByteLength is int byteLength ? FormatSize(byteLength) : string.Empty,
+            }.Where(part => part.Length > 0));
+            return;
+        }
+
+        ShowMessage(result.Status, "file");
     }
 
     // ---- Audio / video playback --------------------------------------------
@@ -336,6 +403,21 @@ public partial class PreviewPane : UserControl
         if (!string.IsNullOrEmpty(item.ModifiedText)) parts.Add(item.ModifiedText);
         return string.Join("  ·  ", parts);
     }
+
+    private static string BuildArchiveMeta(FileItem item)
+    {
+        var parts = new List<string> { item.IsDirectory ? "Archive folder" : "Archive file" };
+        if (!string.IsNullOrEmpty(item.SizeText)) parts.Add(item.SizeText);
+        if (!string.IsNullOrEmpty(item.ModifiedText)) parts.Add(item.ModifiedText);
+        return string.Join("  ·  ", parts);
+    }
+
+    private static string FormatSize(int bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / (1024d * 1024d):0.##} MB",
+        >= 1024 => $"{bytes / 1024d:0.##} KB",
+        _ => $"{bytes} B",
+    };
 
     private void ShowMessage(string message, string iconKey)
     {

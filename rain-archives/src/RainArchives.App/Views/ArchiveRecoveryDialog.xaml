@@ -1,0 +1,824 @@
+<Window x:Class="RainArchives.App.Views.ArchiveRecoveryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Recovery center"
+        Width="980"
+        Height="650"
+        MinWidth="760"
+        MinHeight="520"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BackgroundBrush}"
+        Foreground="{DynamicResource BackgroundForegroundBrush}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        AutomationProperties.Name="Archive recovery center">
+    <Window.Resources>
+        <Style TargetType="Button" BasedOn="{StaticResource BrowserButtonStyle}" />
+        <Style TargetType="DataGrid" BasedOn="{StaticResource SecondaryDataGridStyle}" />
+        <Style TargetType="TabItem" BasedOn="{StaticResource SecondaryTabItemStyle}" />
+        <Style x:Key="RecoverySelectedStatusStyle" TargetType="TextBlock">
+            <Setter Property="AutomationProperties.LiveSetting" Value="Off" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TabItem}}" Value="True">
+                    <Setter Property="AutomationProperties.LiveSetting" Value="Assertive" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <TabControl x:Name="RecoveryTabs"
+                Style="{StaticResource SecondaryTabControlStyle}"
+                AutomationProperties.Name="Recovery categories">
+        <TabItem x:Name="CreationRecoveryTab"
+                 Header="_Archive creations"
+                 AutomationProperties.Name="Interrupted archive creations">
+            <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock FontSize="22"
+                       Style="{StaticResource ShellTitleStyle}"
+                       Text="Review interrupted archive creations" />
+            <TextBlock Margin="0,5,0,0"
+                       Foreground="{DynamicResource BackgroundSecondaryForegroundBrush}"
+                       TextWrapping="Wrap"
+                       Text="Rain lists path-free recovery records first. It contacts a destination only after you select a record and choose Inspect, and it never applies an action without a separate confirmation." />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,0,0,12"
+                Padding="10,8"
+                Style="{StaticResource SecondaryMutedCardStyle}">
+            <DockPanel>
+                <Button x:Name="RefreshRecoveriesButton"
+                        DockPanel.Dock="Right"
+                        Margin="12,0,0,0"
+                        TabIndex="0"
+                        AutomationProperties.HelpText="Reload the path-free recovery inventory. This does not inspect any destination."
+                        AutomationProperties.Name="Refresh archive creation recoveries"
+                        Command="{Binding RefreshCommand}"
+                        Content="_Refresh" />
+                <TextBlock VerticalAlignment="Center"
+                           AutomationProperties.Name="Recovery inventory summary"
+                           Text="{Binding InventorySummaryText}" />
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Padding="0"
+                    Style="{StaticResource SecondaryCardStyle}">
+                <Grid>
+                    <DataGrid x:Name="RecoveryGrid"
+                              TabIndex="1"
+                              AutomationProperties.HelpText="Path-free interrupted archive creation records. Select one, then choose Inspect."
+                              AutomationProperties.Name="Interrupted archive creation records"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              GridLinesVisibility="Horizontal"
+                              HeadersVisibility="Column"
+                              IsEnabled="{Binding CanRefresh}"
+                              IsReadOnly="True"
+                              ItemsSource="{Binding Recoveries}"
+                              SelectedItem="{Binding SelectedRecovery}"
+                              SelectionMode="Single"
+                              SelectionUnit="FullRow"
+                              EnableRowVirtualization="True"
+                              EnableColumnVirtualization="True"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              ScrollViewer.CanContentScroll="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Phase" Binding="{Binding PhaseText}" Width="110" />
+                            <DataGridTextColumn Header="Recorded" Binding="{Binding RecordedAtText}" Width="*" />
+                            <DataGridTextColumn Header="Journal" Binding="{Binding JournalStateText}" Width="105" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <TextBlock Margin="24"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               Text="No interrupted archive creations need review."
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasNoRecoveries, Converter={StaticResource BooleanToVisibility}}" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="16"
+                    Style="{StaticResource SecondaryCardStyle}">
+                <Grid>
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                MaxWidth="430"
+                                Visibility="{Binding HasNoInspection, Converter={StaticResource BooleanToVisibility}}">
+                        <TextBlock HorizontalAlignment="Center"
+                                   FontSize="17"
+                                   FontWeight="SemiBold"
+                                   Text="No destination inspected" />
+                        <TextBlock Margin="0,7,0,14"
+                                   Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                   Text="Select a record to inspect its current filesystem evidence."
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                        <Button x:Name="InspectRecoveryButton"
+                                HorizontalAlignment="Center"
+                                TabIndex="2"
+                                AutomationProperties.HelpText="Safely inspect the selected recovery destination without changing it."
+                                AutomationProperties.Name="Inspect selected archive creation recovery"
+                                Command="{Binding InspectCommand}"
+                                Content="_Inspect"
+                                IsDefault="True"
+                                Style="{StaticResource BrowserButtonStyle}" />
+                    </StackPanel>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding HasInspection, Converter={StaticResource BooleanToVisibility}}">
+                        <StackPanel>
+                            <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Margin="12,0,0,0"
+                                                TabIndex="3"
+                                                AutomationProperties.HelpText="Re-inspect the exact selected archive creation evidence without changing it."
+                                                AutomationProperties.Name="Inspect selected recovery again"
+                                                Command="{Binding InspectCommand}"
+                                                Content="Inspect a_gain" />
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Text="Inspected evidence" />
+                            </DockPanel>
+
+                            <TextBlock Margin="0,13,0,4"
+                                       FontWeight="SemiBold"
+                                       Text="Destination" />
+                            <TextBox x:Name="RecoveryDestinationText"
+                                     TabIndex="4"
+                                     AutomationProperties.HelpText="Escaped destination path from the verified recovery journal."
+                                     AutomationProperties.Name="Recovery destination path"
+                                     IsReadOnly="True"
+                                     Text="{Binding DestinationPathText, Mode=OneWay}"
+                                     TextWrapping="Wrap" />
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                       Text="{Binding DestinationKindText}" />
+
+                            <Grid Margin="0,13,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock FontWeight="SemiBold" Text="Journal revision" />
+                                <TextBlock Grid.Column="1" Text="{Binding RecoveryRevisionText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="1" Margin="0,7,0,0" FontWeight="SemiBold" Text="Destination parent" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,7,0,0" Text="{Binding DestinationParentText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Margin="0,7,0,0" FontWeight="SemiBold" Text="Staging artifact" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,7,0,0" Text="{Binding StagingArtifactText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="3" Margin="0,7,0,0" FontWeight="SemiBold" Text="Final archive" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,7,0,0" Text="{Binding FinalArtifactText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="4" Margin="0,7,0,0" FontWeight="SemiBold" Text="Assessment" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,7,0,0" Text="{Binding AssessmentText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Margin="0,7,0,0" Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}" Text="{Binding InspectedAtText}" />
+                            </Grid>
+
+                            <Border Margin="0,14,0,0"
+                                    Padding="10"
+                                    Style="{StaticResource SecondaryMutedCardStyle}">
+                                <TextBlock AutomationProperties.Name="Available recovery actions"
+                                           Text="{Binding ActionGuidance}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <WrapPanel Margin="0,14,0,0">
+                                <Button TabIndex="5"
+                                        AutomationProperties.HelpText="Publish the exact owned staging artifact after another worker-side revalidation and confirmation."
+                                        AutomationProperties.Name="Publish recovered archive"
+                                        Command="{Binding CommitCommand}"
+                                        Content="_Publish staged archive"
+                                        Style="{StaticResource BrowserButtonStyle}" />
+                                <Button TabIndex="6"
+                                        AutomationProperties.HelpText="Permanently delete only the revalidated Rain-owned staging artifact after confirmation."
+                                        AutomationProperties.Name="Discard recovered staging artifact"
+                                        Command="{Binding DiscardCommand}"
+                                        Content="_Discard staging" />
+                                <Button TabIndex="7"
+                                        AutomationProperties.HelpText="Accept the exact published final archive without changing its bytes."
+                                        AutomationProperties.Name="Accept published recovered archive"
+                                        Command="{Binding AcceptCommand}"
+                                        Content="Accept p_ublished archive" />
+                                <Button TabIndex="8"
+                                        AutomationProperties.HelpText="Close the record after revalidating that no owned staging or final artifact exists."
+                                        AutomationProperties.Name="Acknowledge empty archive recovery"
+                                        Command="{Binding AcknowledgeCommand}"
+                                        Content="Acknowledge e_mpty record" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <ProgressBar Grid.Row="3"
+                     Height="4"
+                     Margin="0,12,0,0"
+                     IsIndeterminate="True"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibility}}" />
+
+        <DockPanel Grid.Row="4" Margin="0,12,0,0">
+            <Button x:Name="CloseRecoveryButton"
+                    DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    MinWidth="90"
+                    TabIndex="9"
+                    AutomationProperties.Name="Close archive creation recovery"
+                    AutomationProperties.HelpText="Close the archive creation recovery surface after all in-flight requests drain."
+                    Content="Close"
+                    IsCancel="True" />
+            <TextBlock x:Name="CreationRecoveryStatusText"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource RecoverySelectedStatusStyle}"
+                       AutomationProperties.Name="Archive creation recovery status"
+                       Text="{Binding StatusText}"
+                       TextWrapping="Wrap" />
+        </DockPanel>
+            </Grid>
+        </TabItem>
+
+        <TabItem x:Name="NestedRecoveryTab"
+                 Header="_Nested workspaces"
+                 AutomationProperties.Name="Retained nested workspaces">
+            <Grid Margin="22">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                    <TextBlock FontSize="22"
+                               Style="{StaticResource ShellTitleStyle}"
+                               Text="Review retained nested workspaces" />
+                    <TextBlock Margin="0,5,0,0"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               TextWrapping="Wrap"
+                               Text="Rain never shows temporary paths or deletes these workspaces automatically. Only an inactive workspace with a freshly verified exact shape can be selected for explicit cleanup." />
+                </StackPanel>
+
+                <Border Grid.Row="1"
+                        Margin="0,0,0,12"
+                        Padding="10,8"
+                        Style="{StaticResource SecondaryMutedCardStyle}">
+                    <DockPanel>
+                        <Button x:Name="RefreshNestedRecoveriesButton"
+                                DockPanel.Dock="Right"
+                                Margin="12,0,0,0"
+                                TabIndex="0"
+                                AutomationProperties.HelpText="Reload the path-free nested-workspace recovery inventory. This never deletes a workspace."
+                                AutomationProperties.Name="Refresh nested workspace recoveries"
+                                Command="{Binding RefreshCommand}"
+                                Content="_Refresh" />
+                        <TextBlock VerticalAlignment="Center"
+                                   AutomationProperties.Name="Nested workspace inventory summary"
+                                   Text="{Binding InventorySummaryText}" />
+                    </DockPanel>
+                </Border>
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="360" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Padding="0"
+                            Style="{StaticResource SecondaryCardStyle}">
+                        <Grid>
+                            <DataGrid x:Name="NestedRecoveryGrid"
+                                      TabIndex="1"
+                                      AutomationProperties.HelpText="Path-free verified inactive nested workspaces. Select one, then choose Inspect."
+                                      AutomationProperties.Name="Nested workspace recovery records"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      GridLinesVisibility="Horizontal"
+                                      HeadersVisibility="Column"
+                                      IsEnabled="{Binding CanRefresh}"
+                                      IsReadOnly="True"
+                                      ItemsSource="{Binding Recoveries}"
+                                      SelectedItem="{Binding SelectedRecovery}"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Opaque recovery ID"
+                                                        Binding="{Binding DisplayId}"
+                                                        Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock Margin="24"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                       Text="No verified inactive nested workspaces need review."
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasNoRecoveries, Converter={StaticResource BooleanToVisibility}}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Padding="16"
+                            Style="{StaticResource SecondaryCardStyle}">
+                        <Grid>
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        MaxWidth="430"
+                                        Visibility="{Binding HasNoInspection, Converter={StaticResource BooleanToVisibility}}">
+                                <TextBlock HorizontalAlignment="Center"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Text="No workspace inspected" />
+                                <TextBlock Margin="0,7,0,14"
+                                           Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                           Text="Select a record to revalidate its current identity and exact bounded shape."
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <Button x:Name="InspectNestedRecoveryButton"
+                                        HorizontalAlignment="Center"
+                                        TabIndex="2"
+                                        AutomationProperties.HelpText="Inspect the selected path-free nested workspace without changing it."
+                                        AutomationProperties.Name="Inspect selected nested workspace recovery"
+                                        Command="{Binding InspectCommand}"
+                                        Content="_Inspect"
+                                        IsDefault="True"
+                                        Style="{StaticResource BrowserButtonStyle}" />
+                            </StackPanel>
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          Visibility="{Binding HasInspection, Converter={StaticResource BooleanToVisibility}}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Margin="12,0,0,0"
+                                                TabIndex="3"
+                                                AutomationProperties.HelpText="Re-inspect the selected inactive nested workspace without changing it."
+                                                AutomationProperties.Name="Inspect selected nested workspace again"
+                                                Command="{Binding InspectCommand}"
+                                                Content="Inspect a_gain" />
+                                        <TextBlock VerticalAlignment="Center"
+                                                   FontSize="17"
+                                                   FontWeight="SemiBold"
+                                                   Text="Inspected evidence" />
+                                    </DockPanel>
+
+                                    <TextBlock Margin="0,13,0,4"
+                                               FontWeight="SemiBold"
+                                               Text="Opaque recovery ID" />
+                                    <TextBox x:Name="NestedRecoveryIdText"
+                                             TabIndex="4"
+                                             AutomationProperties.HelpText="Opaque identifier for the inspected temporary workspace. No filesystem path is disclosed."
+                                             AutomationProperties.Name="Nested workspace recovery identifier"
+                                             IsReadOnly="True"
+                                             Text="{Binding RecoveryIdText, Mode=OneWay}"
+                                             TextWrapping="Wrap" />
+
+                                    <Grid Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock FontWeight="SemiBold" Text="Assessment" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding AssessmentText}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="1"
+                                                   Margin="0,7,0,0"
+                                                   FontWeight="SemiBold"
+                                                   Text="Nested sources" />
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="1"
+                                                   Margin="0,7,0,0"
+                                                   Text="{Binding SourceCountText}" />
+                                        <TextBlock Grid.Row="2"
+                                                   Margin="0,7,0,0"
+                                                   FontWeight="SemiBold"
+                                                   Text="Source bytes" />
+                                        <TextBlock Grid.Row="2"
+                                                   Grid.Column="1"
+                                                   Margin="0,7,0,0"
+                                                   Text="{Binding TotalSourceBytesText}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="3"
+                                                   Margin="0,7,0,0"
+                                                   FontWeight="SemiBold"
+                                                   Text="Metadata revision" />
+                                        <TextBox x:Name="NestedRecoveryRevisionText"
+                                                 Grid.Row="3"
+                                                 Grid.Column="1"
+                                                 Margin="0,7,0,0"
+                                                 TabIndex="5"
+                                                 AutomationProperties.Name="Nested workspace metadata revision"
+                                                 IsReadOnly="True"
+                                                 Text="{Binding RevisionText, Mode=OneWay}"
+                                                 TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="4"
+                                                   Grid.ColumnSpan="2"
+                                                   Margin="0,7,0,0"
+                                                   Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                                   Text="{Binding InspectedAtText}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,14,0,4"
+                                               FontWeight="SemiBold"
+                                               Text="Recovered sources" />
+                                    <DataGrid x:Name="NestedRecoverySourceGrid"
+                                              Height="112"
+                                              TabIndex="6"
+                                              AutomationProperties.HelpText="Exact recovered sources available for an independent depth-zero reopen. Temporary paths and archive entry text are never shown."
+                                              AutomationProperties.Name="Recovered nested archive sources"
+                                              AutoGenerateColumns="False"
+                                              CanUserAddRows="False"
+                                              CanUserDeleteRows="False"
+                                              EnableRowVirtualization="True"
+                                              EnableColumnVirtualization="True"
+                                              GridLinesVisibility="Horizontal"
+                                              HeadersVisibility="Column"
+                                              IsReadOnly="True"
+                                              ItemsSource="{Binding Sources}"
+                                              SelectedItem="{Binding SelectedSource}"
+                                              SelectionMode="Single"
+                                              SelectionUnit="FullRow"
+                                              VirtualizingPanel.IsVirtualizing="True"
+                                              VirtualizingPanel.VirtualizationMode="Recycling"
+                                              ScrollViewer.CanContentScroll="True">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Source" Binding="{Binding DisplayName}" Width="150" />
+                                            <DataGridTextColumn Header="Length" Binding="{Binding LengthText}" Width="120" />
+                                            <DataGridTextColumn Header="Content evidence" Binding="{Binding HashText}" Width="*" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                    <Border Margin="0,14,0,0"
+                                            Padding="10"
+                                            Style="{StaticResource SecondaryMutedCardStyle}">
+                                        <TextBlock AutomationProperties.Name="Nested workspace cleanup guidance"
+                                                   Text="{Binding ActionGuidance}"
+                                                   TextWrapping="Wrap" />
+                                    </Border>
+
+                                    <WrapPanel Margin="0,14,0,0">
+                                        <Button x:Name="ReopenNestedRecoveryButton"
+                                                TabIndex="7"
+                                                AutomationProperties.HelpText="Revalidate the selected recovered source and open it as a fresh independent depth-zero archive. The recovery workspace is preserved."
+                                                AutomationProperties.Name="Open recovered archive independently"
+                                                Command="{Binding ReopenCommand}"
+                                                Content="_Open independently"
+                                                Style="{StaticResource BrowserButtonStyle}" />
+                                        <Button x:Name="DiscardNestedRecoveryButton"
+                                                TabIndex="8"
+                                                AutomationProperties.HelpText="Permanently delete only the freshly revalidated exact inactive temporary workspace after a separate confirmation."
+                                                AutomationProperties.Name="Discard verified nested workspace"
+                                                Command="{Binding DiscardCommand}"
+                                                Content="_Discard verified workspace" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <ProgressBar Grid.Row="3"
+                             Height="4"
+                             Margin="0,12,0,0"
+                             IsIndeterminate="True"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibility}}" />
+
+                <DockPanel Grid.Row="4" Margin="0,12,0,0">
+                    <Button x:Name="CloseNestedRecoveryButton"
+                            DockPanel.Dock="Right"
+                            Margin="12,0,0,0"
+                            MinWidth="90"
+                            TabIndex="9"
+                            AutomationProperties.Name="Close nested workspace recovery"
+                            AutomationProperties.HelpText="Close the nested workspace recovery surface after all in-flight requests drain."
+                            Content="Close"
+                            IsCancel="True" />
+                    <TextBlock x:Name="NestedRecoveryStatusText"
+                               VerticalAlignment="Center"
+                               Style="{StaticResource RecoverySelectedStatusStyle}"
+                               AutomationProperties.Name="Nested workspace recovery status"
+                               Text="{Binding StatusText}"
+                               TextWrapping="Wrap" />
+                </DockPanel>
+            </Grid>
+        </TabItem>
+
+        <TabItem x:Name="ExtractionRecoveryTab"
+                 Header="_Extraction staging"
+                 AutomationProperties.Name="Interrupted extraction staging">
+            <Grid Margin="22">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                    <TextBlock FontSize="22" Style="{StaticResource ShellTitleStyle}" Text="Inspect interrupted extraction staging" />
+                    <TextBlock Margin="0,5,0,0"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               TextWrapping="Wrap"
+                               Text="Inventory is local, bounded, path-free, and non-destructive. Explicit inspection may contact and reveal one destination. Cleanup, restore, retry, replacement, and disposition remain unavailable." />
+                </StackPanel>
+
+                <Border Grid.Row="1"
+                        Margin="0,0,0,12"
+                        Padding="10,8"
+                        Style="{StaticResource SecondaryMutedCardStyle}">
+                    <DockPanel>
+                        <Button x:Name="RefreshExtractionRecoveriesButton"
+                                DockPanel.Dock="Right"
+                                Margin="12,0,0,0"
+                                TabIndex="0"
+                                AutomationProperties.HelpText="Reload the path-free extraction recovery inventory without contacting recorded destinations."
+                                AutomationProperties.Name="Refresh extraction recovery inventory"
+                                Command="{Binding RefreshCommand}"
+                                Content="_Refresh" />
+                        <TextBlock VerticalAlignment="Center"
+                                   AutomationProperties.Name="Extraction recovery inventory summary"
+                                   Text="{Binding InventorySummaryText}" />
+                    </DockPanel>
+                </Border>
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="410" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0"
+                            Padding="0"
+                            Style="{StaticResource SecondaryCardStyle}">
+                        <Grid>
+                            <DataGrid x:Name="ExtractionRecoveryGrid"
+                                      TabIndex="1"
+                                      AutomationProperties.HelpText="Path-free extraction staging records. Select one, then choose Inspect for fresh read-only evidence."
+                                      AutomationProperties.Name="Extraction recovery records"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      GridLinesVisibility="Horizontal"
+                                      HeadersVisibility="Column"
+                                      IsReadOnly="True"
+                                      ItemsSource="{Binding Recoveries}"
+                                      SelectedItem="{Binding SelectedRecovery}"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="State" Binding="{Binding StateText}" Width="150" />
+                                    <DataGridTextColumn Header="Phase" Binding="{Binding PhaseText}" Width="95" />
+                                    <DataGridTextColumn Header="Recorded" Binding="{Binding RecordedAtText}" Width="*" />
+                                    <DataGridTextColumn Header="Journal" Binding="{Binding JournalStateText}" Width="105" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock Margin="24"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                       Text="No extraction staging records need read-only review."
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasNoRecoveries, Converter={StaticResource BooleanToVisibility}}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Padding="16"
+                            Style="{StaticResource SecondaryCardStyle}">
+                        <Grid>
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        MaxWidth="430"
+                                        Visibility="{Binding HasNoInspection, Converter={StaticResource BooleanToVisibility}}">
+                                <TextBlock HorizontalAlignment="Center" FontSize="17" FontWeight="SemiBold" Text="No destination inspected" />
+                                <TextBlock Margin="0,7,0,14"
+                                           Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                           Text="Select a record to inspect its current read-only evidence."
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <Button x:Name="InspectExtractionRecoveryButton"
+                                        HorizontalAlignment="Center"
+                                        TabIndex="2"
+                                        AutomationProperties.HelpText="Inspect the selected extraction destination without changing it."
+                                        AutomationProperties.Name="Inspect selected extraction recovery"
+                                        Command="{Binding InspectCommand}"
+                                        Content="_Inspect"
+                                        IsDefault="True"
+                                        Style="{StaticResource BrowserButtonStyle}" />
+                            </StackPanel>
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          Visibility="{Binding HasInspection, Converter={StaticResource BooleanToVisibility}}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Margin="12,0,0,0"
+                                                TabIndex="3"
+                                                AutomationProperties.HelpText="Re-inspect the selected read-only extraction evidence without changing it."
+                                                AutomationProperties.Name="Inspect selected extraction recovery again"
+                                                Command="{Binding InspectCommand}"
+                                                Content="Inspect a_gain" />
+                                        <TextBlock VerticalAlignment="Center" FontSize="17" FontWeight="SemiBold" Text="Read-only evidence" />
+                                    </DockPanel>
+                                    <TextBlock Margin="0,13,0,4" FontWeight="SemiBold" Text="Destination" />
+                                    <TextBox x:Name="ExtractionRecoveryDestinationText"
+                                             TabIndex="4"
+                                             AutomationProperties.HelpText="Escaped destination path disclosed only by explicit inspection."
+                                             AutomationProperties.Name="Extraction recovery destination"
+                                             IsReadOnly="True"
+                                             Text="{Binding DestinationPathText, Mode=OneWay}"
+                                             TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                               Text="{Binding DestinationKindText}" />
+                                    <Grid Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock FontWeight="SemiBold" Text="Journal revision" />
+                                        <TextBlock Grid.Column="1" Text="{Binding RecoveryRevisionText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="1" Margin="0,7,0,0" FontWeight="SemiBold" Text="Destination parent" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,7,0,0" Text="{Binding DestinationParentText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="2" Margin="0,7,0,0" FontWeight="SemiBold" Text="Journal totals" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,7,0,0" Text="{Binding JournalEvidenceText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="3" Margin="0,7,0,0" FontWeight="SemiBold" Text="Staging artifact" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,7,0,0" Text="{Binding StagingArtifactText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="4" Margin="0,7,0,0" FontWeight="SemiBold" Text="Final output" />
+                                        <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,7,0,0" Text="{Binding FinalArtifactText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="5" Margin="0,7,0,0" FontWeight="SemiBold" Text="Assessment" />
+                                        <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,7,0,0" Text="{Binding AssessmentText}" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Margin="0,7,0,0" Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}" Text="{Binding InspectedAtText}" />
+                                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Margin="0,12,0,0"
+                                                   AutomationProperties.Name="Extraction recovery authority"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding ActionGuidance}"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <ProgressBar Grid.Row="3" Height="4" Margin="0,12,0,0" IsIndeterminate="True"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibility}}" />
+                <DockPanel Grid.Row="4" Margin="0,12,0,0">
+                    <Button DockPanel.Dock="Right" Margin="12,0,0,0" MinWidth="90" TabIndex="5"
+                            AutomationProperties.Name="Close extraction recovery"
+                            AutomationProperties.HelpText="Close the extraction recovery surface after all in-flight requests drain."
+                            Content="Close" IsCancel="True" />
+                    <TextBlock x:Name="ExtractionRecoveryStatusText"
+                               VerticalAlignment="Center"
+                               Style="{StaticResource RecoverySelectedStatusStyle}"
+                               AutomationProperties.Name="Extraction recovery status"
+                               Text="{Binding StatusText}"
+                               TextWrapping="Wrap" />
+                </DockPanel>
+            </Grid>
+        </TabItem>
+
+        <TabItem x:Name="SupportRecoveryTab"
+                 Header="_Support evidence"
+                 AutomationProperties.Name="Fixed-field recovery support evidence">
+            <Grid Margin="22">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                    <TextBlock FontSize="22" Style="{StaticResource ShellTitleStyle}" Text="Support evidence" />
+                    <TextBlock Margin="0,5,0,0"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               TextWrapping="Wrap"
+                               Text="Only protocol 1.22 fixed enums, counts, and booleans appear here. Rain does not derive paths, recovery authority, provider messages, exception text, archive text, secrets, or command lines." />
+                </StackPanel>
+                <DockPanel Grid.Row="1" Margin="0,0,0,12">
+                    <Button x:Name="RefreshRecoverySupportButton"
+                            DockPanel.Dock="Right"
+                            TabIndex="0"
+                            AutomationProperties.HelpText="Request a fresh fixed-field support diagnostics snapshot from the connected Worker."
+                            AutomationProperties.Name="Refresh fixed-field support evidence"
+                            Command="{Binding RefreshCommand}"
+                            IsDefault="True"
+                            Content="_Refresh" />
+                    <TextBlock x:Name="SupportRecoveryStatusText"
+                               VerticalAlignment="Center"
+                               Style="{StaticResource RecoverySelectedStatusStyle}"
+                               AutomationProperties.Name="Support evidence status"
+                               Text="{Binding StatusText}"
+                               TextWrapping="Wrap" />
+                </DockPanel>
+                <Border Grid.Row="2"
+                        Padding="18"
+                        Style="{StaticResource SecondaryCardStyle}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Grid DataContext="{Binding Diagnostics}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="210" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock FontWeight="SemiBold" Text="Availability" />
+                            <TextBlock Grid.Column="1" Text="{Binding AvailabilityText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="1" Margin="0,10,0,0" FontWeight="SemiBold" Text="Protocol" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="{Binding ProtocolText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="2" Margin="0,10,0,0" FontWeight="SemiBold" Text="Containment" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="{Binding ContainmentText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="3" Margin="0,10,0,0" FontWeight="SemiBold" Text="Sandbox limit" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="{Binding SandboxText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="4" Margin="0,10,0,0" FontWeight="SemiBold" Text="Admission and retention" />
+                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="{Binding AdmissionText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="5" Margin="0,10,0,0" FontWeight="SemiBold" Text="Current counts" />
+                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,10,0,0" Text="{Binding CurrentCountsText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="6" Margin="0,10,0,0" FontWeight="SemiBold" Text="Operation controls" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" Margin="0,10,0,0" Text="{Binding ControlsText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="7" Margin="0,10,0,0" FontWeight="SemiBold" Text="Recovery authority" />
+                            <TextBlock Grid.Row="7" Grid.Column="1" Margin="0,10,0,0" Text="{Binding RecoveryText}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="8" Margin="0,10,0,0" FontWeight="SemiBold" Text="Activity persistence" />
+                            <TextBlock Grid.Row="8" Grid.Column="1" Margin="0,10,0,0" Text="{Binding PersistenceText}" TextWrapping="Wrap" />
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+                <ProgressBar Grid.Row="3" Height="4" Margin="0,12,0,0" IsIndeterminate="True"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibility}}" />
+                <DockPanel Grid.Row="4" Margin="0,12,0,0">
+                    <Button DockPanel.Dock="Right" MinWidth="90" TabIndex="1"
+                            AutomationProperties.Name="Close recovery support evidence"
+                            AutomationProperties.HelpText="Close the fixed-field recovery support surface after all in-flight requests drain."
+                            Content="Close" IsCancel="True" />
+                </DockPanel>
+            </Grid>
+        </TabItem>
+    </TabControl>
+</Window>

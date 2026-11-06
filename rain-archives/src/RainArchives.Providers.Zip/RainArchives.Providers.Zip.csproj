@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <ProjectReference Include="../RainArchives.Core/RainArchives.Core.csproj" />
+  </ItemGroup>
+</Project>

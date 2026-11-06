@@ -14,16 +14,6 @@ internal static class ProcessLauncher
 
     public static Process? StartShell(string path) => Process.Start(CreateShellStartInfo(path));
 
-    internal static ProcessStartInfo CreateOpenWithStartInfo(string path)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-
-        var start = new ProcessStartInfo("rundll32.exe") { UseShellExecute = true };
-        start.ArgumentList.Add("shell32.dll,OpenAs_RunDLL");
-        start.ArgumentList.Add(path);
-        return start;
-    }
-
     internal static ProcessStartInfo CreateShellStartInfo(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

@@ -27,6 +27,7 @@ public sealed class ActivityEntry : ObservableObject
             OnPropertyChanged(nameof(IsPinned));
             OnPropertyChanged(nameof(CanCancel));
             OnPropertyChanged(nameof(CanPause));
+            OnPropertyChanged(nameof(IsCancellationPending));
             OnPropertyChanged(nameof(ShowProgress));
             OnPropertyChanged(nameof(ShowDeterminateProgress));
             OnPropertyChanged(nameof(ShowIndeterminateProgress));
@@ -105,6 +106,9 @@ public sealed class ActivityEntry : ObservableObject
     public bool CanPause => IsActive && !_cancelRequested && _togglePauseAction is not null;
 
     [JsonIgnore]
+    public bool IsCancellationPending => IsActive && _cancelRequested;
+
+    [JsonIgnore]
     public string PauseButtonText => IsPaused ? "Resume" : "Pause";
 
     [JsonIgnore]
@@ -140,6 +144,17 @@ public sealed class ActivityEntry : ObservableObject
         _cancelRequested = false;
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(IsCancellationPending));
+    }
+
+    internal void AttachCancel(Action cancel)
+    {
+        _cancelAction = cancel;
+        _togglePauseAction = null;
+        _cancelRequested = false;
+        OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(IsCancellationPending));
     }
 
     internal void DetachControls()
@@ -148,16 +163,24 @@ public sealed class ActivityEntry : ObservableObject
         _togglePauseAction = null;
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(IsCancellationPending));
     }
 
     internal void RequestCancel()
     {
         if (!CanCancel) return;
+        MarkCancellationPending();
+        _cancelAction?.Invoke();
+    }
+
+    internal void MarkCancellationPending()
+    {
+        if (!IsActive || _cancelRequested) return;
         _cancelRequested = true;
-        Detail = "Canceling…";
+        Detail = "Cancellation requested; waiting for the final result.";
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanPause));
-        _cancelAction?.Invoke();
+        OnPropertyChanged(nameof(IsCancellationPending));
     }
 
     internal void TogglePause()

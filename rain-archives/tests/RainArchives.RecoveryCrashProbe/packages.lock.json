@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "rainarchives.contracts": {
+        "type": "Project"
+      },
+      "rainarchives.core": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )"
+        }
+      },
+      "rainarchives.providers.sevenzip": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )"
+        }
+      },
+      "rainarchives.providers.sharpcompress": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )",
+          "SharpCompress": "[0.50.4, )"
+        }
+      },
+      "rainarchives.providers.winrar": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )",
+          "SharpCompress": "[0.50.4, )"
+        }
+      },
+      "rainarchives.providers.zip": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )"
+        }
+      },
+      "rainarchives.security": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )"
+        }
+      },
+      "rainarchives.worker": {
+        "type": "Project",
+        "dependencies": {
+          "RainArchives.Contracts": "[1.0.0, )",
+          "RainArchives.Core": "[1.0.0, )",
+          "RainArchives.Providers.SevenZip": "[1.0.0, )",
+          "RainArchives.Providers.SharpCompress": "[1.0.0, )",
+          "RainArchives.Providers.WinRar": "[1.0.0, )",
+          "RainArchives.Providers.Zip": "[1.0.0, )",
+          "RainArchives.Security": "[1.0.0, )"
+        }
+      },
+      "SharpCompress": {
+        "type": "CentralTransitive",
+        "requested": "[0.50.4, )",
+        "resolved": "0.50.4",
+        "contentHash": "/hxjUR7DEX6mky8/LQXyrnrKioOL6D6veAID1EZpro+q4s02x5dHEYBV3qjEN6lDYYilDoQQ76BcmQj+lRx51w=="
+      }
+    },
+    "net10.0-windows7.0/win-x64": {}
+  }
+}

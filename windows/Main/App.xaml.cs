@@ -13,11 +13,11 @@ namespace RainExplorer;
 
 public partial class App : Application
 {
-    /// <summary>A folder passed on the command line (e.g. from the shell verb), if it exists.</summary>
+    /// <summary>An existing folder or supported archive passed on the command line.</summary>
     public static string? LaunchFolder { get; private set; }
 
-    /// <summary>A file to highlight once <see cref="LaunchFolder"/> opens — set when we're
-    /// launched via "Show in folder" / "Reveal in File Explorer" (the /select form).</summary>
+    /// <summary>A non-archive file to highlight once <see cref="LaunchFolder"/> opens — set
+    /// when we're launched via "Show in folder" / "Reveal in File Explorer".</summary>
     public static string? SelectPath { get; set; }
 
     // Single-instance plumbing. Only one process may own settings.json at a time:
@@ -165,17 +165,17 @@ public partial class App : Application
         catch { /* the other instance may be shutting down — nothing we can do */ }
     }
 
-    /// <summary>Bring the existing window forward and, if the forwarded args name a folder
-    /// or file, open it in a new tab. Runs on the UI thread.</summary>
+    /// <summary>Bring the existing window forward and, if the forwarded args name a folder,
+    /// supported archive, or file to reveal, open it in a new tab. Runs on the UI thread.</summary>
     private void OpenForwardedTarget(string[] args)
     {
-        string? folder = null, select = null;
+        string? target = null, select = null;
         foreach (string raw in args)
         {
             string p = StripSelectSwitch(raw).Trim().Trim('"');
             if (p.Length == 0) continue;
-            if (Directory.Exists(p)) { folder = p; break; }
-            if (File.Exists(p)) { folder = Path.GetDirectoryName(p); select = p; break; }
+            if (!TryResolvePhysicalLaunchTarget(p, out target, out select)) continue;
+            break;
         }
 
         var w = Current.Windows.OfType<MainWindow>()
@@ -187,7 +187,7 @@ public partial class App : Application
             // single-instance process alive after its final window disappeared.
             w = new MainWindow();
             Current.MainWindow = w;
-            if (folder is not null) w.OpenPathInNewTab(folder, select);
+            if (target is not null) w.OpenPathInNewTab(target, select);
             w.Show();
             return;
         }
@@ -198,7 +198,7 @@ public partial class App : Application
         w.Topmost = true;   // nudge to the foreground, then release so it isn't pinned
         w.Topmost = false;
 
-        if (folder is not null) w.OpenPathInNewTab(folder, select);
+        if (target is not null) w.OpenPathInNewTab(target, select);
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
@@ -217,9 +217,9 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Work out which folder (and optional file to highlight) the command line points at.
-    /// Handles a plain folder path, a file path (opens its parent and remembers the file),
-    /// and the "/select,&lt;path&gt;" form that "Show in folder" / "Reveal in File Explorer"
+    /// Work out which folder, archive, or optional file to highlight the command line points at.
+    /// Supported archives open directly; other files open their parent and remain selected.
+    /// Handles the "/select,&lt;path&gt;" form that "Show in folder" / "Reveal in File Explorer"
     /// produce via SHOpenFolderAndSelectItems. Returns <c>true</c> to keep launching.
     /// Returns <c>false</c> when the argument is a virtual shell location we can't display —
     /// in that case it relaunches the real Explorer and the caller should shut down.
@@ -231,12 +231,10 @@ public partial class App : Application
             string p = StripSelectSwitch(raw).Trim().Trim('"');
             if (p.Length == 0) continue;
 
-            if (Directory.Exists(p)) { LaunchFolder = p; return true; }
-
-            if (File.Exists(p))
+            if (TryResolvePhysicalLaunchTarget(p, out string? target, out string? select))
             {
-                LaunchFolder = Path.GetDirectoryName(p);
-                SelectPath = p;
+                LaunchFolder = target;
+                SelectPath = select;
                 return true;
             }
 
@@ -247,6 +245,37 @@ public partial class App : Application
         }
 
         return true;   // nothing usable on the command line — fall through to Home
+    }
+
+    internal static bool TryResolvePhysicalLaunchTarget(
+        string path,
+        out string? target,
+        out string? select)
+    {
+        target = null;
+        select = null;
+        string fullPath;
+        try { fullPath = Path.GetFullPath(path); }
+        catch { return false; }
+
+        if (Directory.Exists(fullPath))
+        {
+            target = fullPath;
+            return true;
+        }
+
+        if (!File.Exists(fullPath)) return false;
+        if (ArchiveFileTypes.IsSupportedPath(fullPath))
+        {
+            target = fullPath;
+            return true;
+        }
+
+        string? parent = Path.GetDirectoryName(fullPath);
+        if (parent is null) return false;
+        target = parent;
+        select = fullPath;
+        return true;
     }
 
     // "Show in folder" callers pass e.g. /select,"C:\path\file.ext". Peel the switch

@@ -19,6 +19,7 @@ public sealed class ActivityService : ObservableObject
 {
     public static ActivityService Instance { get; } = new();
     private const int Cap = 60;
+    private static readonly object DispatcherlessUiGate = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -191,9 +192,14 @@ public sealed class ActivityService : ObservableObject
     public void AttachControls(ActivityEntry e, Action cancel, Func<bool> togglePause) =>
         OnUi(() => e.AttachControls(cancel, togglePause));
 
+    public void AttachCancel(ActivityEntry e, Action cancel) =>
+        OnUi(() => e.AttachCancel(cancel));
+
     public void DetachControls(ActivityEntry e) => OnUi(e.DetachControls);
 
     public void RequestCancel(ActivityEntry e) => OnUi(e.RequestCancel);
+
+    public void MarkCancellationPending(ActivityEntry e) => OnUi(e.MarkCancellationPending);
 
     public void RequestPauseToggle(ActivityEntry e) => OnUi(e.TogglePause);
 
@@ -208,6 +214,37 @@ public sealed class ActivityService : ObservableObject
     });
 
     public void RequestShow(Window? owner) => OnUi(() => ShowRequested?.Invoke(owner));
+
+    /// <summary>Apply only fixed, typed operation fields. Current-item text is ephemeral and never persisted.</summary>
+    public void ReportOperation(ActivityEntry entry, ActivityOperationUpdate update) => OnUi(() =>
+    {
+        bool terminal = update.Phase is ActivityOperationPhase.Completed
+            or ActivityOperationPhase.CompletedWithWarnings
+            or ActivityOperationPhase.Cancelled
+            or ActivityOperationPhase.Failed;
+        if (!entry.IsActive && !terminal) return;
+
+        entry.Progress = CalculateProgress(update, terminal);
+        entry.ProgressText = BuildOperationProgressText(update);
+        entry.Detail = entry.IsCancellationPending && !terminal
+            ? "Cancellation requested; waiting for the final result."
+            : FormatOperationDetail(update);
+
+        if (!terminal) return;
+        entry.Watch?.Stop();
+        entry.DurationText = FormatDuration(update.Elapsed ?? entry.Watch?.Elapsed ?? TimeSpan.Zero);
+        entry.IsPaused = false;
+        entry.Status = update.Phase switch
+        {
+            ActivityOperationPhase.Completed or ActivityOperationPhase.CompletedWithWarnings =>
+                ActivityStatus.Success,
+            ActivityOperationPhase.Cancelled => ActivityStatus.Canceled,
+            _ => ActivityStatus.Failed,
+        };
+        entry.DetachControls();
+        KeepActiveAtTop();
+        Persist();
+    });
 
     public void Complete(ActivityEntry e, bool ok, string? error = null)
     {
@@ -278,11 +315,104 @@ public sealed class ActivityService : ObservableObject
     private static void OnUi(Action a)
     {
         var d = Application.Current?.Dispatcher;
-        if (d is null || d.CheckAccess()) a();
+        if (d is null)
+        {
+            lock (DispatcherlessUiGate) a();
+        }
+        else if (d.CheckAccess()) a();
         else d.Invoke(a);
     }
 
     private static string Shorten(string s) => s.Length > 140 ? s[..140] + "…" : s;
+
+    private static double CalculateProgress(ActivityOperationUpdate update, bool terminal)
+    {
+        if (update.TotalBytes is > 0)
+            return Math.Clamp((double)update.BytesProcessed / update.TotalBytes.Value, 0, 1);
+        if (update.TotalEntries is > 0)
+            return Math.Clamp((double)update.EntriesProcessed / update.TotalEntries.Value, 0, 1);
+        return terminal && update.Phase is (ActivityOperationPhase.Completed
+            or ActivityOperationPhase.CompletedWithWarnings) ? 1 : -1;
+    }
+
+    private static string BuildOperationProgressText(ActivityOperationUpdate update)
+    {
+        var parts = new List<string>(6);
+        if (!string.IsNullOrWhiteSpace(update.CurrentItem)) parts.Add(Shorten(update.CurrentItem!));
+        if (update.TotalBytes is not null || update.BytesProcessed > 0)
+            parts.Add(update.TotalBytes is > 0
+                ? $"{FormatBytes(update.BytesProcessed)} / {FormatBytes(update.TotalBytes.Value)}"
+                : FormatBytes(update.BytesProcessed));
+        if (update.TotalEntries is not null || update.EntriesProcessed > 0)
+            parts.Add(update.TotalEntries is > 0
+                ? $"{Math.Max(0, update.EntriesProcessed):N0} / {update.TotalEntries.Value:N0} items"
+                : $"{Math.Max(0, update.EntriesProcessed):N0} items");
+        if (update.Elapsed is { } elapsed) parts.Add(FormatDuration(elapsed));
+        if (update.BytesPerSecond is double throughput
+            && double.IsFinite(throughput) && throughput > 0)
+            parts.Add($"{FormatBytes((long)Math.Min(throughput, long.MaxValue))}/s");
+        if (update.CompressionRatio is double ratio
+            && double.IsFinite(ratio) && ratio >= 0)
+            parts.Add($"ratio {ratio:0.###}");
+        if (update.WarningCount > 0)
+            parts.Add($"{update.WarningCount:N0} warning{(update.WarningCount == 1 ? string.Empty : "s")}");
+        return string.Join(" · ", parts);
+    }
+
+    internal static string FormatOperationDetail(ActivityOperationUpdate update) => update.Phase switch
+    {
+        ActivityOperationPhase.Queued => "Queued by the archive worker.",
+        ActivityOperationPhase.Validating => "Validating the current archive operation.",
+        ActivityOperationPhase.WaitingForInput => "Waiting for input; no continuation control is available.",
+        ActivityOperationPhase.Running => "Archive operation in progress.",
+        ActivityOperationPhase.Finalizing => "Finalizing the archive operation.",
+        ActivityOperationPhase.Completed => "Completed successfully.",
+        ActivityOperationPhase.CompletedWithWarnings =>
+            $"Completed with {update.WarningCount:N0} warning{(update.WarningCount == 1 ? string.Empty : "s")}.",
+        ActivityOperationPhase.Cancelled => "Cancelled; no retry was started.",
+        ActivityOperationPhase.Failed when update.Kind == ActivityOperationKind.ArchiveCreation
+            && ArchiveCreationFailureText.Describe(update.Failure, update.FailureLimit) is { } detail => detail,
+        ActivityOperationPhase.Failed when update.Failure == ActivityOperationFailure.DestinationConflict
+            && update.Kind is ActivityOperationKind.Extraction or ActivityOperationKind.TransferOut =>
+            ArchiveDestinationConflictText.Describe(update.DestinationConflictReason),
+        ActivityOperationPhase.Failed => $"Failed ({FormatFailure(update.Failure)}); no retry was started.",
+        _ => "Archive operation in progress.",
+    };
+
+    private static string FormatFailure(ActivityOperationFailure failure) => failure switch
+    {
+        ActivityOperationFailure.InvalidRequest => "invalid request",
+        ActivityOperationFailure.Unsupported => "unsupported operation",
+        ActivityOperationFailure.InvalidArchive => "invalid archive",
+        ActivityOperationFailure.CorruptArchive => "corrupt archive",
+        ActivityOperationFailure.PasswordRequired => "password required",
+        ActivityOperationFailure.IncorrectPassword => "incorrect password",
+        ActivityOperationFailure.UnsafePath => "unsafe archive path",
+        ActivityOperationFailure.PathCollision => "archive path collision",
+        ActivityOperationFailure.ResourceLimit => "resource limit",
+        ActivityOperationFailure.SourceChanged => "source changed",
+        ActivityOperationFailure.DestinationConflict => "destination conflict",
+        ActivityOperationFailure.PermissionDenied => "permission denied",
+        ActivityOperationFailure.InsufficientSpace => "insufficient space",
+        ActivityOperationFailure.ProviderFailure => "archive provider failure",
+        ActivityOperationFailure.WorkerUnavailable => "archive worker unavailable",
+        ActivityOperationFailure.ProtocolMismatch => "protocol mismatch",
+        ActivityOperationFailure.UnsafeOutput => "unsafe transfer output",
+        _ => "unknown error",
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = Math.Max(0, bytes);
+        int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.#} {units[unit]}";
+    }
 
     private static string FormatDuration(TimeSpan t) =>
         t.TotalSeconds < 1 ? $"{t.TotalMilliseconds:0} ms"

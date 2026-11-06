@@ -1,0 +1,262 @@
+<Window x:Class="RainArchives.App.Views.CreateArchiveDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create archive"
+        Width="820"
+        Height="620"
+        MinWidth="640"
+        MinHeight="480"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        Background="{DynamicResource BackgroundBrush}"
+        Foreground="{DynamicResource BackgroundForegroundBrush}"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.Name="Create managed archive"
+        AutomationProperties.HelpText="Review bounded local sources, managed format capability, compression, and a distinct absent destination before creating an archive.">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock x:Name="HeaderText"
+                       Style="{StaticResource SecondaryWindowTitleStyle}"
+                       Text="Create a new archive" />
+            <TextBlock Margin="0,5,0,0"
+                       Style="{StaticResource SecondaryWindowSecondaryTextStyle}"
+                       Text="Add files or folders, choose a compression preset, then select a new destination. Rain validates and reads every source inside the isolated archive worker." />
+        </StackPanel>
+
+        <ScrollViewer x:Name="CreateContentScroll"
+                      Grid.Row="1"
+                      HorizontalContentAlignment="Stretch"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      AutomationProperties.Name="Create archive setup content">
+            <Grid Margin="0,0,0,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <DockPanel Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Left"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="Archive contents" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="AddFilesButton"
+                            TabIndex="0"
+                            AutomationProperties.HelpText="Choose one or more files to place at the root of the new archive."
+                            AutomationProperties.Name="Add files to archive"
+                            Click="AddFiles_Click"
+                            Content="_Add files" />
+                    <Button x:Name="AddFolderButton"
+                            TabIndex="1"
+                            AutomationProperties.HelpText="Choose a folder to include recursively. Rain performs the actual bounded enumeration in the archive worker."
+                            AutomationProperties.Name="Add folder to archive"
+                            Click="AddFolder_Click"
+                            Content="Add _folder" />
+                    <Button x:Name="RemoveButton"
+                            KeyboardNavigation.TabIndex="2"
+                            AutomationProperties.Name="Remove selected archive inputs"
+                            AutomationProperties.HelpText="Remove the selected files or folders from this setup without changing the source objects."
+                            Click="Remove_Click"
+                            Content="Re_move"
+                            IsEnabled="False" />
+                </StackPanel>
+            </DockPanel>
+
+            <DataGrid x:Name="SourcesGrid"
+                      Height="220"
+                      Grid.Row="1"
+                      Style="{StaticResource SecondaryDataGridStyle}"
+                      KeyboardNavigation.TabIndex="3"
+                      AutomationProperties.HelpText="Files and folders that will be placed in the new archive."
+                      AutomationProperties.Name="Archive input list"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      EnableRowVirtualization="True"
+                      EnableColumnVirtualization="True"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
+                      IsReadOnly="True"
+                      PreviewKeyDown="SourcesGrid_KeyDown"
+                      SelectionChanged="SourcesGrid_SelectionChanged"
+                      SelectionMode="Extended"
+                      SelectionUnit="FullRow"
+                      ScrollViewer.CanContentScroll="True"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="90" />
+                    <DataGridTextColumn Header="Archive path" Binding="{Binding ArchivePath}" ElementStyle="{StaticResource ArchiveCellTextStyle}" Width="180" />
+                    <DataGridTextColumn Header="Source" Binding="{Binding SourcePath}" ElementStyle="{StaticResource ArchiveCellTextStyle}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock x:Name="DestinationLabel" Margin="0,0,0,5"
+                           FontWeight="SemiBold"
+                           Text="Destination" />
+                <TextBox x:Name="DestinationInput"
+                         KeyboardNavigation.TabIndex="4"
+                         AutomationProperties.HelpText="Enter a fully qualified path using the selected archive format. Existing destinations are never overwritten."
+                         AutomationProperties.Name="New archive destination"
+                         TextChanged="DestinationInput_TextChanged" />
+            </StackPanel>
+            <Button x:Name="BrowseDestinationButton"
+                    Grid.Column="1"
+                    KeyboardNavigation.TabIndex="5"
+                    Margin="10,25,0,0"
+                    AutomationProperties.Name="Browse for archive destination"
+                    AutomationProperties.HelpText="Choose a parent and new managed archive name. Existing destinations remain untouched."
+                    Click="BrowseDestination_Click"
+                    Content="_Browse" />
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Margin="0,0,0,5" FontWeight="SemiBold" Text="Archive format" />
+                <ComboBox x:Name="FormatInput"
+                          MinHeight="34"
+                          KeyboardNavigation.TabIndex="6"
+                          AutomationProperties.Name="Archive format"
+                          AutomationProperties.HelpText="Choose one managed archive format advertised by the current authenticated Worker."
+                          DisplayMemberPath="Name"
+                          SelectionChanged="FormatInput_SelectionChanged" />
+            </StackPanel>
+            <TextBlock Grid.Column="1"
+                       Margin="18,25,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource BackgroundSecondaryForegroundBrush}"
+                       Text="Only managed formats advertised by the connected worker are selectable."
+                       TextWrapping="Wrap" />
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Margin="0,0,0,5"
+                           FontWeight="SemiBold"
+                           Text="Compression preset" />
+                <ComboBox x:Name="PresetInput"
+                          MinHeight="34"
+                          KeyboardNavigation.TabIndex="7"
+                          AutomationProperties.HelpText="Choose Store, Fast, Balanced, or Maximum compression."
+                          AutomationProperties.Name="Compression preset"
+                          DisplayMemberPath="Name"
+                          SelectionChanged="PresetInput_SelectionChanged" />
+                <TextBox x:Name="PresetNameInput"
+                         Margin="0,6,0,0"
+                         KeyboardNavigation.TabIndex="8"
+                         AutomationProperties.Name="New ZIP preset name"
+                         AutomationProperties.HelpText="Optional bounded name for a reusable local ZIP preset."
+                         ToolTip="Optional name for a reusable user preset" />
+                <StackPanel Margin="0,5,0,0" Orientation="Horizontal">
+                    <Button x:Name="SavePresetButton"
+                            KeyboardNavigation.TabIndex="9"
+                            AutomationProperties.Name="Save ZIP preset"
+                            AutomationProperties.HelpText="Save this bounded local compression preset without storing archive paths or Worker authority."
+                            Click="SavePreset_Click"
+                            Content="_Save" />
+                    <Button x:Name="RemovePresetButton"
+                            Margin="6,0,0,0"
+                            KeyboardNavigation.TabIndex="10"
+                            AutomationProperties.Name="Remove ZIP preset"
+                            AutomationProperties.HelpText="Remove the selected reusable user preset. Built-in presets remain immutable."
+                            Click="RemovePreset_Click"
+                            Content="Remove _preset" />
+                </StackPanel>
+            </StackPanel>
+            <TextBlock Grid.Column="1"
+                       Margin="18,25,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource BackgroundSecondaryForegroundBrush}"
+                       Text="{Binding SelectedItem.Description, ElementName=PresetInput}"
+                       TextWrapping="Wrap" />
+        </Grid>
+
+        <Border Grid.Row="4"
+                Margin="0,14,0,0"
+                Padding="10"
+                Style="{StaticResource SecondaryCardStyle}">
+            <StackPanel>
+                <TextBlock x:Name="ReviewSummaryText"
+                           FontWeight="SemiBold"
+                           AutomationProperties.Name="Managed archive creation final review"
+                           AutomationProperties.LiveSetting="Polite"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="DestinationPolicyText"
+                           Margin="0,5,0,0"
+                           Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                           AutomationProperties.Name="Managed archive destination safety policy"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="LimitationsText"
+                           Margin="0,5,0,0"
+                           Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                           TextWrapping="Wrap"
+                           Text="This writes a new archive to a distinct absent destination. Encryption, overwrite, update, and split volumes remain unavailable. ZIP preset metadata applies only where explicitly supported." />
+                <TextBlock x:Name="PresetWarningText"
+                           Margin="0,5,0,0"
+                           Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="ValidationMessage"
+                           Margin="0,5,0,0"
+                           AutomationProperties.LiveSetting="Assertive"
+                           AutomationProperties.Name="Create archive validation message"
+                           Foreground="{DynamicResource DangerBrush}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+            </Grid>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2"
+                    Margin="0,18,0,0"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal">
+            <Button x:Name="CancelSetupButton"
+                    KeyboardNavigation.TabIndex="11"
+                    AutomationProperties.Name="Cancel archive creation setup"
+                    AutomationProperties.HelpText="Close this setup without starting an archive operation or changing any source."
+                    Content="Cancel"
+                    IsCancel="True" />
+            <Button x:Name="CreateArchiveButton"
+                    KeyboardNavigation.TabIndex="12"
+                    AutomationProperties.HelpText="Begin creating the new archive using the selected inputs and preset."
+                    AutomationProperties.Name="Create archive"
+                    Click="Create_Click"
+                    Content="_Create archive"
+                    IsDefault="True"
+                    Style="{StaticResource PrimaryButtonStyle}" />
+        </StackPanel>
+    </Grid>
+</Window>

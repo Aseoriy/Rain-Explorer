@@ -25,6 +25,12 @@ public sealed class FileItem : INotifyPropertyChanged
         init => _fullPath = value;
     }
     public bool IsDirectory { get; init; }
+    public bool IsNetworkShare { get; init; }
+    /// <summary>True for a Rain Archives virtual row. Such rows never carry a filesystem path.</summary>
+    public bool IsArchiveEntry { get; init; }
+    /// <summary>Ephemeral in-memory navigation identity. It is never serialized or passed to Windows APIs.</summary>
+    public string? ArchiveNodeId { get; init; }
+    public bool HasPhysicalPath => !IsArchiveEntry && !string.IsNullOrWhiteSpace(FullPath);
     public long Size { get; init; }
     public DateTime Modified { get; init; }
     public DateTime Created { get; init; }
@@ -65,11 +71,16 @@ public sealed class FileItem : INotifyPropertyChanged
             if (_icon is null && !_iconRequested)
             {
                 _iconRequested = true;
-                ShellIconService.LoadAsync(FullPath, IsDirectory, img =>
+                void SetIcon(ImageSource img)
                 {
                     _icon = img;
                     OnPropertyChanged(nameof(Icon));
-                });
+                }
+
+                if (IsArchiveEntry || IsNetworkShare)
+                    ShellIconService.LoadFileTypeAsync(Name, IsDirectory, SetIcon);
+                else
+                    ShellIconService.LoadAsync(FullPath, IsDirectory, SetIcon);
             }
             return _icon;
         }
@@ -88,7 +99,7 @@ public sealed class FileItem : INotifyPropertyChanged
     {
         get
         {
-            if (!IsDirectory && PhotoExtensions.Contains(Extension) &&
+            if (!IsArchiveEntry && !IsDirectory && PhotoExtensions.Contains(Extension) &&
                 _gridThumbnail is null && !_gridThumbnailRequested)
             {
                 _gridThumbnailRequested = true;
@@ -103,7 +114,9 @@ public sealed class FileItem : INotifyPropertyChanged
     }
 
     public string TypeLabel =>
-        IsDirectory ? "Folder" : (Extension.Length > 0 ? $"{Extension} file" : "File");
+        IsArchiveEntry && IsDirectory ? "Archive folder"
+        : IsArchiveEntry ? (Extension.Length > 0 ? $"{Extension} archive entry" : "Archive entry")
+        : IsDirectory ? "Folder" : (Extension.Length > 0 ? $"{Extension} file" : "File");
 
     // Folder size is computed lazily in the background when the setting is on.
     private long? _folderSize;
@@ -195,31 +208,64 @@ internal static class Icons
     private static readonly Dictionary<string, (string Key, string? Tint)> Map = new()
     {
         // images (cyan)
-        ["png"] = ("image", "#7DD3FC"), ["jpg"] = ("image", "#7DD3FC"), ["jpeg"] = ("image", "#7DD3FC"),
-        ["gif"] = ("image", "#7DD3FC"), ["webp"] = ("image", "#7DD3FC"), ["svg"] = ("image", "#7DD3FC"),
-        ["bmp"] = ("image", "#7DD3FC"), ["ico"] = ("image", "#7DD3FC"),
+        ["png"] = ("image", "#7DD3FC"),
+        ["jpg"] = ("image", "#7DD3FC"),
+        ["jpeg"] = ("image", "#7DD3FC"),
+        ["gif"] = ("image", "#7DD3FC"),
+        ["webp"] = ("image", "#7DD3FC"),
+        ["svg"] = ("image", "#7DD3FC"),
+        ["bmp"] = ("image", "#7DD3FC"),
+        ["ico"] = ("image", "#7DD3FC"),
         // video (fuchsia)
-        ["mp4"] = ("film", "#F0ABFC"), ["mkv"] = ("film", "#F0ABFC"), ["mov"] = ("film", "#F0ABFC"),
-        ["avi"] = ("film", "#F0ABFC"), ["webm"] = ("film", "#F0ABFC"),
+        ["mp4"] = ("film", "#F0ABFC"),
+        ["mkv"] = ("film", "#F0ABFC"),
+        ["mov"] = ("film", "#F0ABFC"),
+        ["avi"] = ("film", "#F0ABFC"),
+        ["webm"] = ("film", "#F0ABFC"),
         // audio (green)
-        ["mp3"] = ("music", "#86EFAC"), ["wav"] = ("music", "#86EFAC"), ["flac"] = ("music", "#86EFAC"),
-        ["ogg"] = ("music", "#86EFAC"), ["m4a"] = ("music", "#86EFAC"),
+        ["mp3"] = ("music", "#86EFAC"),
+        ["wav"] = ("music", "#86EFAC"),
+        ["flac"] = ("music", "#86EFAC"),
+        ["ogg"] = ("music", "#86EFAC"),
+        ["m4a"] = ("music", "#86EFAC"),
         // docs
-        ["pdf"] = ("file-text", "#FCA5A5"), ["doc"] = ("file-text", "#93C5FD"), ["docx"] = ("file-text", "#93C5FD"),
-        ["xls"] = ("file-text", "#86EFAC"), ["xlsx"] = ("file-text", "#86EFAC"),
-        ["ppt"] = ("file-text", "#FDBA74"), ["pptx"] = ("file-text", "#FDBA74"),
-        ["txt"] = ("file-text", null), ["md"] = ("file-text", null), ["rtf"] = ("file-text", null),
+        ["pdf"] = ("file-text", "#FCA5A5"),
+        ["doc"] = ("file-text", "#93C5FD"),
+        ["docx"] = ("file-text", "#93C5FD"),
+        ["xls"] = ("file-text", "#86EFAC"),
+        ["xlsx"] = ("file-text", "#86EFAC"),
+        ["ppt"] = ("file-text", "#FDBA74"),
+        ["pptx"] = ("file-text", "#FDBA74"),
+        ["txt"] = ("file-text", null),
+        ["md"] = ("file-text", null),
+        ["rtf"] = ("file-text", null),
         // code
-        ["js"] = ("file-code", "#FDE047"), ["ts"] = ("file-code", "#7DD3FC"), ["jsx"] = ("file-code", "#7DD3FC"),
-        ["tsx"] = ("file-code", "#7DD3FC"), ["json"] = ("file-code", "#FCD34D"), ["html"] = ("globe", "#FDBA74"),
-        ["css"] = ("file-code", "#A5B4FC"), ["py"] = ("file-code", "#7DD3FC"), ["rs"] = ("file-code", "#FCA5A5"),
-        ["go"] = ("file-code", "#67E8F9"), ["c"] = ("file-code", null), ["cpp"] = ("file-code", null),
-        ["cs"] = ("file-code", "#C4B5FD"), ["java"] = ("file-code", null), ["sh"] = ("file-code", null),
+        ["js"] = ("file-code", "#FDE047"),
+        ["ts"] = ("file-code", "#7DD3FC"),
+        ["jsx"] = ("file-code", "#7DD3FC"),
+        ["tsx"] = ("file-code", "#7DD3FC"),
+        ["json"] = ("file-code", "#FCD34D"),
+        ["html"] = ("globe", "#FDBA74"),
+        ["css"] = ("file-code", "#A5B4FC"),
+        ["py"] = ("file-code", "#7DD3FC"),
+        ["rs"] = ("file-code", "#FCA5A5"),
+        ["go"] = ("file-code", "#67E8F9"),
+        ["c"] = ("file-code", null),
+        ["cpp"] = ("file-code", null),
+        ["cs"] = ("file-code", "#C4B5FD"),
+        ["java"] = ("file-code", null),
+        ["sh"] = ("file-code", null),
         // archives (amber)
-        ["zip"] = ("archive", "#FCD34D"), ["rar"] = ("archive", "#FCD34D"), ["7z"] = ("archive", "#FCD34D"),
-        ["tar"] = ("archive", "#FCD34D"), ["gz"] = ("archive", "#FCD34D"),
+        ["zip"] = ("archive", "#FCD34D"),
+        ["rar"] = ("archive", "#FCD34D"),
+        ["7z"] = ("archive", "#FCD34D"),
+        ["tar"] = ("archive", "#FCD34D"),
+        ["gz"] = ("archive", "#FCD34D"),
         // executables (violet)
-        ["exe"] = ("zap", "#C084FC"), ["msi"] = ("zap", "#C084FC"), ["bat"] = ("zap", "#C084FC"), ["cmd"] = ("zap", "#C084FC"),
+        ["exe"] = ("zap", "#C084FC"),
+        ["msi"] = ("zap", "#C084FC"),
+        ["bat"] = ("zap", "#C084FC"),
+        ["cmd"] = ("zap", "#C084FC"),
     };
 
     /// <summary>Violet folder tint (accent-bright).</summary>

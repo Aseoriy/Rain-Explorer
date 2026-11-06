@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+    <PackageReference Include="MSTest" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <ProjectReference Include="../../src/RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <ProjectReference Include="../../src/RainArchives.App/RainArchives.App.csproj" />
+    <ProjectReference Include="../../src/RainArchives.Cli/RainArchives.Cli.csproj" />
+    <ProjectReference Include="../../src/RainArchives.Client/RainArchives.Client.csproj" />
+    <ProjectReference Include="../../src/RainArchives.Providers.WinRar/RainArchives.Providers.WinRar.csproj" />
+    <ProjectReference Include="../../src/RainArchives.Security/RainArchives.Security.csproj" />
+    <ProjectReference Include="../../src/RainArchives.Worker/RainArchives.Worker.csproj" />
+    <ProjectReference Include="../RainArchives.RecoveryCrashProbe/RainArchives.RecoveryCrashProbe.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../fixtures/corpus/**/*">
+      <Link>fixtures/corpus/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

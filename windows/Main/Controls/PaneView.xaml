@@ -747,6 +747,24 @@
 
                 <!-- Sort / View / Split -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
+                    <Button Style="{StaticResource IconButton}" Width="26" Height="26" Padding="4"
+                            Margin="0,0,2,0" ToolTip="Previous archive page (Page Up)"
+                            AutomationProperties.Name="Previous archive page"
+                            Visibility="{Binding IsArchiveView, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding CanGoToPreviousArchivePage}"
+                            Click="ArchivePreviousPage_Click">
+                        <Path Style="{StaticResource IconPath}" Width="11" Height="11"
+                              Data="{StaticResource Ic.arrow-left}" Stroke="{StaticResource TextMuted}" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Width="26" Height="26" Padding="4"
+                            Margin="0,0,4,0" ToolTip="Next archive page (Page Down)"
+                            AutomationProperties.Name="Next archive page"
+                            Visibility="{Binding IsArchiveView, Converter={StaticResource BoolToVis}}"
+                            IsEnabled="{Binding CanGoToNextArchivePage}"
+                            Click="ArchiveNextPage_Click">
+                        <Path Style="{StaticResource IconPath}" Width="11" Height="11"
+                              Data="{StaticResource Ic.chevron-right}" Stroke="{StaticResource TextMuted}" />
+                    </Button>
                     <!-- Sort menu -->
                     <Button x:Name="SortButton" Style="{StaticResource IconButton}"
                             Click="OpenButtonMenu_Click" Tag="Sort" ToolTip="Sort by"
@@ -792,7 +810,7 @@
         <ctrl:DrivesView Panel.ZIndex="2" Background="{DynamicResource AppBackgroundBrush}"
                          Visibility="{Binding IsDrivesView, Converter={StaticResource BoolToVis}}" />
         <!-- Folder view: file list + marquee, with an optional preview pane on the right. -->
-        <Grid Visibility="{Binding IsFolderView, Converter={StaticResource BoolToVis}}">
+        <Grid Visibility="{Binding IsContentsView, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="240" />
                 <ColumnDefinition x:Name="PreviewSplitterCol" Width="0" />
@@ -831,6 +849,17 @@
                                   Stroke="{StaticResource AccentBright}" />
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="MenuNestedArchiveOpen"
+                              Header="Open as nested archive…"
+                              Visibility="Collapsed"
+                              Click="NestedArchiveOpen_Click"
+                              AutomationProperties.Name="Open selected file as nested archive"
+                              AutomationProperties.HelpText="Explicitly ask the current Rain Archives session to open this material file as a bounded nested archive.">
+                        <MenuItem.Icon>
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                  Data="{StaticResource Ic.archive}" Stroke="{StaticResource TextMuted}" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="MenuOpenNewTab" Header="Open in new tab" Click="OpenNewTab_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.plus}"
@@ -847,6 +876,42 @@
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.terminal}"
                                   Stroke="{StaticResource TextMuted}" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator x:Name="MenuArchiveOperationSeparator" Visibility="Collapsed" />
+                    <MenuItem x:Name="MenuArchiveIntegrity"
+                              Header="Test archive integrity"
+                              InputGestureText="Ctrl+Shift+I"
+                              Visibility="Collapsed"
+                              Click="ArchiveIntegrity_Click"
+                              AutomationProperties.Name="Test archive integrity"
+                              AutomationProperties.HelpText="Run a read-only integrity test through the current Rain Archives session.">
+                        <MenuItem.Icon>
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                  Data="{StaticResource Ic.shield}" Stroke="{StaticResource TextMuted}" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem x:Name="MenuArchiveExtract"
+                              Header="Extract selected to new folder…"
+                              InputGestureText="Ctrl+Shift+E"
+                              Visibility="Collapsed"
+                              Click="ArchiveExtract_Click"
+                              AutomationProperties.Name="Extract selected archive entries to a new folder"
+                              AutomationProperties.HelpText="Choose an absent destination folder and extract only the current archive selection without merging or overwriting.">
+                        <MenuItem.Icon>
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                  Data="{StaticResource Ic.archive}" Stroke="{StaticResource TextMuted}" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem x:Name="MenuArchiveRebuildCopy"
+                              Header="Rebuild ZIP to new copy…"
+                              Visibility="Collapsed"
+                              Click="ArchiveRebuildCopy_Click"
+                              AutomationProperties.Name="Rebuild current ZIP to a distinct new copy"
+                              AutomationProperties.HelpText="Query the connected worker for current-session rebuild eligibility, then review a distinct absent ZIP destination. The original remains untouched.">
+                        <MenuItem.Icon>
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                  Data="{StaticResource Ic.package}" Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
@@ -875,15 +940,27 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuCompress" Header="Compress to ZIP" Click="Compress_Click">
+                    <MenuItem x:Name="MenuCreateArchive" Header="Create archive…" Click="CreateArchive_Click"
+                              AutomationProperties.Name="Create managed archive from the newest physical selection"
+                              AutomationProperties.HelpText="Query the connected archive worker before reviewing supported formats, presets, source shape, and a distinct new destination.">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.package}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuExtract" Header="Extract here" Click="Extract_Click">
+                    <MenuItem x:Name="MenuExtract" Header="Extract here" Click="Extract_Click"
+                              AutomationProperties.Name="Extract selected physical archives here"
+                              AutomationProperties.HelpText="Content-check up to 16 selected files with the isolated archive worker, then extract each supported archive sequentially into a distinct new sibling folder.">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.archive}"
+                                  Stroke="{StaticResource TextMuted}" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem x:Name="MenuExtractTo" Header="Extract to…" Click="ExtractTo_Click"
+                              AutomationProperties.Name="Extract selected physical archives to a chosen folder"
+                              AutomationProperties.HelpText="Choose a parent folder, then extract each supported archive through the isolated worker into a distinct new child folder without merging or overwriting.">
+                        <MenuItem.Icon>
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.folder}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>

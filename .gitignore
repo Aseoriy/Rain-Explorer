@@ -1,58 +1,14 @@
-# Keep the repository limited to source, required assets and build scripts.
-*
-!*/
-
-# Preserve the existing repository presentation.
-!/.gitignore
-!/README.md
-!/Preview.png
-
-# Windows application, tests and installer.
-!/windows/Main/**/*.cs
-!/windows/Main/**/*.xaml
-!/windows/Main/**/*.csproj
-!/windows/Main/**/*.props
-!/windows/Main/**/*.targets
-!/windows/Main/**/*.manifest
-!/windows/Main/Assets/**/*.png
-!/windows/Main/Assets/**/*.ico
-!/windows/Main/Assets/**/*.svg
-!/windows/Tests/**/*.cs
-!/windows/Tests/**/*.csproj
-!/windows/Tests/**/*.props
-!/windows/Tests/**/*.targets
-!/windows/Installer/*.iss
-!/windows/*.sln
-!/windows/*.slnx
-
-# Linux application, tests, icon tooling and packaging.
-!/linux/Main/**/*.cs
-!/linux/Main/**/*.axaml
-!/linux/Main/**/*.csproj
-!/linux/Main/**/*.props
-!/linux/Main/**/*.targets
-!/linux/Main/**/*.manifest
-!/linux/Main/Assets/**/*.png
-!/linux/Main/Assets/**/*.ico
-!/linux/Main/Assets/**/*.svg
-!/linux/Tests/**/*.cs
-!/linux/Tests/**/*.csproj
-!/linux/Tests/**/*.props
-!/linux/Tests/**/*.targets
-!/linux/tools/*.py
-!/linux/packaging/*.sh
-!/linux/packaging/*.desktop
-!/linux/packaging/icons/*.png
-!/linux/*.sln
-!/linux/*.slnx
-
-# Build output, dependencies and caches on either platform.
+# Build, publish and test output (all platforms).
 bin/
 obj/
+tmpobj/
 dist/
+artifacts/
 TestResults/
-node_modules/
+BenchmarkDotNet.Artifacts/
+benchmark-evidence/
 packages/
+node_modules/
 .avalonia-build-tasks/
 __pycache__/
 .pytest_cache/
@@ -60,17 +16,29 @@ __pycache__/
 venv/
 
 # Local development files and private notes.
-legacy-electron/
+windows/Main/legacy-electron/
+Codex Extra Files/
+AGENTS.md
+CLAUDE.md
+notes/
 .vs/
 .idea/
 .vscode/
-docs/
-notes/
-Codex Extra Files/
-AGENTS.md
 *.user
 *.suo
+*.userprefs
 *.log
+
+# Local publish/signing material.
+*.pfx
+*.snk
+*.cer
+*.key
+
+# Crash and diagnostic output.
+*.dmp
+*.etl
+*.trace
 
 # Operating-system files.
 Thumbs.db

@@ -11,7 +11,7 @@
     Height="720" Width="1140" MinHeight="480" MinWidth="760"
     WindowStartupLocation="CenterScreen"
     Background="{StaticResource Bg}"
-    Foreground="{StaticResource Text}"
+    Foreground="{DynamicResource Text}"
     FontFamily="{DynamicResource AppFont}" FontSize="13"
     WindowStyle="None" ResizeMode="CanResize"
     UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
@@ -26,7 +26,7 @@
         <!-- Sidebar place row: glass hover, vector icon follows Foreground -->
         <Style x:Key="SidebarButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Margin" Value="0,1" />
@@ -40,8 +40,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="{StaticResource Glass3}" />
-                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource Glass3}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Text}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -51,7 +51,7 @@
     </Window.Resources>
 
     <Border x:Name="RootBorder" Background="{DynamicResource AppBackgroundBrush}"
-            BorderBrush="{StaticResource Line2}" BorderThickness="1">
+            BorderBrush="{DynamicResource Line2}" BorderThickness="1">
         <Grid>
             <!-- Ambient orb: two soft radial glows bleeding from the corners.
                  Themed via OrbColor* (DynamicResource), pulses very slowly.
@@ -95,8 +95,8 @@
                 </Grid.RowDefinitions>
 
                 <!-- ===== Title bar ===== -->
-                <Grid Grid.Row="0" Background="{StaticResource Glass2}">
-                    <Border BorderBrush="{StaticResource Line1}" BorderThickness="0,0,0,1" />
+                <Grid Grid.Row="0" Background="{DynamicResource Glass2}">
+                    <Border BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1" />
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
                         <Button x:Name="SidebarToggle" Style="{StaticResource CaptionButton}" Width="34"
                                 Click="SidebarToggle_Click" ToolTip="Show/hide sidebar"
@@ -109,7 +109,7 @@
                         <Image Source="Assets/rain-cloud.png" Width="19" Height="19" Margin="6,0,0,0"
                                VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Rain Explorer" FontSize="14" FontWeight="Bold"
-                                   Foreground="{StaticResource Text}"
+                                   Foreground="{DynamicResource Text}"
                                    Margin="9,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
 
@@ -193,7 +193,7 @@
                            Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
                            PopupAnimation="Fade" HorizontalOffset="-300" VerticalOffset="4"
                            DataContext="{x:Static svc:ActivityService.Instance}">
-                        <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                        <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1"
                                 CornerRadius="12" Width="368" Margin="12" Padding="6">
                             <Border.Effect>
                                 <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="30" ShadowDepth="6" />
@@ -202,10 +202,10 @@
                                 <Grid DockPanel.Dock="Top" Margin="8,8,6,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                              Data="{StaticResource Ic.clock}" Stroke="{StaticResource AccentBright}"
+                                              Data="{StaticResource Ic.clock}" Stroke="{DynamicResource AccentBright}"
                                               VerticalAlignment="Center" />
                                         <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
-                                                   Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="Hide" Style="{StaticResource GhostButton}"
@@ -218,14 +218,14 @@
                                 </Grid>
 
                                 <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
-                                           Foreground="{StaticResource TextFaint}" FontSize="12" Margin="10,8,0,14"
+                                           Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="10,8,0,14"
                                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
 
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding Items}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border x:Name="activityCard" Background="{StaticResource Glass2}" CornerRadius="8"
+                                                <Border x:Name="activityCard" Background="{DynamicResource Glass2}" CornerRadius="8"
                                                         BorderBrush="Transparent" BorderThickness="1"
                                                         Padding="11,9" Margin="2,2,2,5">
                                                     <Grid>
@@ -238,15 +238,19 @@
                                                               Width="16" Height="16" Margin="0,1,11,0"
                                                               VerticalAlignment="Top"
                                                               Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
-                                                              Stroke="{StaticResource TextMuted}" />
+                                                              Stroke="{DynamicResource TextMuted}" />
                                                         <StackPanel Grid.Column="1">
                                                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                                       Foreground="{StaticResource Text}" />
-                                                            <TextBlock Text="{Binding Detail}" FontSize="11"
-                                                                       Foreground="{StaticResource TextFaint}"
-                                                                       TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                                                       Foreground="{DynamicResource Text}" />
+                                                             <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                                        Foreground="{DynamicResource TextMuted}"
+                                                                        ToolTip="{Binding Detail}"
+                                                                        AutomationProperties.LiveSetting="Polite"
+                                                                        TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                                                             <TextBlock Text="{Binding ProgressText}" FontSize="11"
-                                                                       Foreground="{StaticResource TextMuted}"
+                                                                       Foreground="{DynamicResource TextMuted}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       TextWrapping="NoWrap"
                                                                        Margin="0,4,0,0"
                                                                        Visibility="{Binding HasProgressText,
                                                                            Converter={StaticResource BoolToVis}}" />
@@ -280,7 +284,7 @@
                                                                            Foreground="{StaticResource Warn}"
                                                                            VerticalAlignment="Center" />
                                                             </StackPanel>
-                                                            <TextBlock FontSize="10" Foreground="{StaticResource TextFaint}"
+                                                            <TextBlock FontSize="10" Foreground="{DynamicResource TextFaint}"
                                                                        HorizontalAlignment="Right" Margin="0,3,0,0"
                                                                        FontFamily="{StaticResource MonoFont}">
                                                                 <!-- Run.Text binds TwoWay by default; these targets are
@@ -303,11 +307,11 @@
                                                         <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Danger}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}" Value="Canceled">
-                                                        <Setter TargetName="dot" Property="Fill" Value="{StaticResource TextMuted}" />
-                                                        <Setter TargetName="stext" Property="Foreground" Value="{StaticResource TextMuted}" />
+                                                        <Setter TargetName="dot" Property="Fill" Value="{DynamicResource TextMuted}" />
+                                                        <Setter TargetName="stext" Property="Foreground" Value="{DynamicResource TextMuted}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding IsPinned}" Value="True">
-                                                        <Setter TargetName="activityCard" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                                        <Setter TargetName="activityCard" Property="BorderBrush" Value="{DynamicResource AccentLine}" />
                                                     </DataTrigger>
                                                 </DataTemplate.Triggers>
                                             </DataTemplate>
@@ -331,16 +335,16 @@
                     <!-- Sidebar (bound to MainViewModel). Width is animated by the collapse
                          toggle; the column is Auto so it follows the border's width. -->
                     <Border x:Name="Sidebar" Grid.Column="0" Width="220" ClipToBounds="True"
-                            Background="{StaticResource Glass2}"
-                            BorderBrush="{StaticResource Line1}" BorderThickness="0,0,1,0">
+                            Background="{DynamicResource Glass2}"
+                            BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,1,0">
                         <DockPanel LastChildFill="True" Width="220" HorizontalAlignment="Left">
                             <!-- Footer: Rain Explorer brand + publisher -->
                             <Border DockPanel.Dock="Bottom" Padding="8,8,10,12">
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Rain Explorer" FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextDim}" />
+                                               Foreground="{DynamicResource TextDim}" />
                                     <TextBlock Text="A Sail Solutions App" FontSize="10"
-                                               Foreground="{StaticResource TextFaint}" Margin="0,1,0,0" />
+                                               Foreground="{DynamicResource TextFaint}" Margin="0,1,0,0" />
                                 </StackPanel>
                             </Border>
 
@@ -359,7 +363,7 @@
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                                        <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                         <Setter Property="Template">
                                             <Setter.Value>
@@ -376,13 +380,13 @@
                                                                     <MenuItem Header="Open" Click="NodeOpen_Click">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.arrow-right}" Stroke="{StaticResource AccentBright}" />
+                                                                                  Data="{StaticResource Ic.arrow-right}" Stroke="{DynamicResource AccentBright}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                     <MenuItem Header="Open in new tab" Click="NodeOpenNewTab_Click">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                                                                                  Data="{StaticResource Ic.plus}" Stroke="{DynamicResource TextMuted}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                     <Separator />
@@ -390,14 +394,14 @@
                                                                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.palette}" Stroke="{StaticResource TextMuted}" />
+                                                                                  Data="{StaticResource Ic.palette}" Stroke="{DynamicResource TextMuted}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                     <MenuItem Header="Rename…" Click="NodeRename_Click"
                                                                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
+                                                                                  Data="{StaticResource Ic.pencil}" Stroke="{DynamicResource TextMuted}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                     <MenuItem Header="Unpin" Click="NodeUnpin_Click"
@@ -411,14 +415,14 @@
                                                                               Visibility="{Binding IsPinned, Converter={StaticResource InverseBoolToVis}}">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.star}" Stroke="{StaticResource AccentBright}" />
+                                                                                  Data="{StaticResource Ic.star}" Stroke="{DynamicResource AccentBright}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                     <Separator />
                                                                     <MenuItem Header="Refresh" Click="NodeRefresh_Click">
                                                                         <MenuItem.Icon>
                                                                             <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                                  Data="{StaticResource Ic.refresh}" Stroke="{StaticResource TextMuted}" />
+                                                                                  Data="{StaticResource Ic.refresh}" Stroke="{DynamicResource TextMuted}" />
                                                                         </MenuItem.Icon>
                                                                     </MenuItem>
                                                                 </ContextMenu>
@@ -438,7 +442,7 @@
                                                                                 <Path x:Name="chev" Width="9" Height="9"
                                                                                       Stretch="Uniform"
                                                                                       Data="{StaticResource Ic.chevron-right}"
-                                                                                      Stroke="{StaticResource TextFaint}"
+                                                                                      Stroke="{DynamicResource TextFaint}"
                                                                                       StrokeThickness="2"
                                                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                             </Border>
@@ -464,18 +468,18 @@
                                                             <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
                                                         </Trigger>
                                                         <Trigger SourceName="row" Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource Glass3}" />
-                                                            <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                            <Setter TargetName="row" Property="Background" Value="{DynamicResource Glass3}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Text}" />
                                                         </Trigger>
                                                         <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />
-                                                            <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource AccentLine}" />
-                                                            <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                            <Setter TargetName="row" Property="Background" Value="{DynamicResource AccentWash}" />
+                                                            <Setter TargetName="row" Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Text}" />
                                                         </DataTrigger>
                                                         <!-- File drag hovering this node: accent drop highlight -->
                                                         <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
-                                                            <Setter TargetName="row" Property="Background" Value="{StaticResource AccentWash}" />
-                                                            <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource AccentLine}" />
+                                                            <Setter TargetName="row" Property="Background" Value="{DynamicResource AccentWash}" />
+                                                            <Setter TargetName="row" Property="BorderBrush" Value="{DynamicResource AccentLine}" />
                                                         </DataTrigger>
                                                         <!-- Headers: section labels, never highlighted -->
                                                         <DataTrigger Binding="{Binding IsHeader}" Value="True">
@@ -508,13 +512,13 @@
                                                             <MenuItem Header="New list…" Click="NewList_Click">
                                                                 <MenuItem.Icon>
                                                                     <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                          Data="{StaticResource Ic.plus}" Stroke="{StaticResource AccentBright}" />
+                                                                          Data="{StaticResource Ic.plus}" Stroke="{DynamicResource AccentBright}" />
                                                                 </MenuItem.Icon>
                                                             </MenuItem>
                                                             <MenuItem Header="Rename list…" Click="RenameList_Click">
                                                                 <MenuItem.Icon>
                                                                     <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                                                          Data="{StaticResource Ic.pencil}" Stroke="{StaticResource TextMuted}" />
+                                                                          Data="{StaticResource Ic.pencil}" Stroke="{DynamicResource TextMuted}" />
                                                                 </MenuItem.Icon>
                                                             </MenuItem>
                                                             <MenuItem Header="Delete / hide list" Click="DeleteList_Click">
@@ -527,10 +531,10 @@
                                                     </StackPanel.ContextMenu>
                                                     <Path x:Name="hchev" Width="9" Height="9" Stretch="Uniform"
                                                           Data="{StaticResource Ic.chevron-down}"
-                                                          Stroke="{StaticResource TextFaint}" StrokeThickness="2"
+                                                          Stroke="{DynamicResource TextFaint}" StrokeThickness="2"
                                                           VerticalAlignment="Center" Margin="0,0,5,0" />
                                                     <TextBlock Text="{Binding Name, Converter={StaticResource Upper}}"
-                                                               Foreground="{StaticResource TextFaint}"
+                                                               Foreground="{DynamicResource TextFaint}"
                                                                FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
                                                 </StackPanel>
                                                 <Button x:Name="addPin" Grid.Column="1" Width="20" Height="20"
@@ -541,11 +545,11 @@
                                                         <ControlTemplate TargetType="Button">
                                                             <Border x:Name="pb" Background="{TemplateBinding Background}" CornerRadius="5">
                                                                 <Path Style="{StaticResource IconPath}" Width="13" Height="13"
-                                                                      Data="{StaticResource Ic.plus}" Stroke="{StaticResource TextMuted}" />
+                                                                      Data="{StaticResource Ic.plus}" Stroke="{DynamicResource TextMuted}" />
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="pb" Property="Background" Value="{StaticResource Glass4}" />
+                                                                    <Setter TargetName="pb" Property="Background" Value="{DynamicResource Glass4}" />
                                                                 </Trigger>
                                                             </ControlTemplate.Triggers>
                                                         </ControlTemplate>
@@ -571,7 +575,7 @@
                                                 <Setter TargetName="hchev" Property="Data" Value="{StaticResource Ic.chevron-right}" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
-                                                <Setter TargetName="hdr" Property="Background" Value="{StaticResource AccentWash}" />
+                                                <Setter TargetName="hdr" Property="Background" Value="{DynamicResource AccentWash}" />
                                             </DataTrigger>
                                         </HierarchicalDataTemplate.Triggers>
                                     </HierarchicalDataTemplate>
@@ -592,7 +596,7 @@
                                        DataContext="{Binding LeftPane}" />
 
                         <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
-                                      Background="{StaticResource Line1}"
+                                      Background="{DynamicResource Line1}"
                                       Visibility="{Binding IsSplit, Converter={StaticResource BoolToVis}}" />
 
                         <ctrl:PaneView Grid.Column="2" DataContext="{Binding RightPane}"

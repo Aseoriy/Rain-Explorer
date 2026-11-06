@@ -54,6 +54,33 @@ public static class ShellIconService
     public static void LoadAsync(string path, bool isDirectory, Action<BitmapSource> onLoaded)
     {
         string key = CacheKey(path, isDirectory);
+        QueueLoad(key, () => Resolve(path, isDirectory, forceFileType: false), onLoaded);
+    }
+
+    /// <summary>
+    /// Resolves the Windows icon for a virtual file name without touching a filesystem
+    /// path. Archive rows use this for normal extension-associated icons while keeping
+    /// executable and shortcut content inert inside the archive worker boundary.
+    /// </summary>
+    public static void LoadFileTypeAsync(
+        string fileName,
+        bool isDirectory,
+        Action<BitmapSource> onLoaded)
+    {
+        string extension = Path.GetExtension(fileName);
+        string key = isDirectory
+            ? "::dir"
+            : extension.Length == 0
+                ? "::type:noext"
+                : "::type:" + extension.ToLowerInvariant();
+        QueueLoad(key, () => Resolve(fileName, isDirectory, forceFileType: true), onLoaded);
+    }
+
+    private static void QueueLoad(
+        string key,
+        Func<BitmapSource?> resolver,
+        Action<BitmapSource> onLoaded)
+    {
 
         lock (Gate)
         {
@@ -74,7 +101,7 @@ public static class ShellIconService
         Task.Run(() =>
         {
             BitmapSource? img = null;
-            try { lock (NativeGate) { img = Resolve(path, isDirectory); } }
+            try { lock (NativeGate) { img = resolver(); } }
             catch { /* fall back to the vector glyph */ }
             if (img is not null && img.CanFreeze) img.Freeze();
 
@@ -93,13 +120,19 @@ public static class ShellIconService
             }
 
             if (img is not null && waiters is not null)
-                Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                void Publish()
                 {
                     foreach (var cb in waiters)
                     {
                         try { cb(img); } catch { /* a row may have been unloaded */ }
                     }
-                });
+                }
+
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher is null || dispatcher.CheckAccess()) Publish();
+                else _ = dispatcher.BeginInvoke(Publish);
+            }
         });
     }
 
@@ -110,7 +143,10 @@ public static class ShellIconService
         return PerFileExts.Contains(ext) ? path : (ext.Length == 0 ? "::noext" : ext.ToLowerInvariant());
     }
 
-    private static BitmapSource? Resolve(string path, bool isDirectory)
+    private static BitmapSource? Resolve(
+        string path,
+        bool isDirectory,
+        bool forceFileType)
     {
         // Windows icon packs commonly replace the stock folder resource while the
         // per-user shell image list can keep serving an older default icon. Extracting
@@ -123,11 +159,14 @@ public static class ShellIconService
 
         // Folders + ordinary files can be resolved purely from attributes (no disk
         // touch). Files that carry a unique icon must hit the real path.
-        bool byAttributes = isDirectory || !PerFileExts.Contains(Path.GetExtension(path));
+        string extension = Path.GetExtension(path);
+        bool byAttributes = forceFileType || isDirectory || !PerFileExts.Contains(extension);
         uint attrs = isDirectory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
         if (byAttributes) flags |= SHGFI_USEFILEATTRIBUTES;
 
-        string query = byAttributes ? (isDirectory ? "folder" : Path.GetExtension(path)) : path;
+        string query = byAttributes
+            ? isDirectory ? "folder" : extension.Length == 0 ? "file" : extension
+            : path;
 
         IntPtr res = SHGetFileInfo(query, attrs, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(), flags);
         if (res == IntPtr.Zero || info.hIcon == IntPtr.Zero) return null;
@@ -139,6 +178,9 @@ public static class ShellIconService
         }
         finally { DestroyIcon(info.hIcon); }
     }
+
+    internal static BitmapSource? ResolveFileTypeIcon(string fileName, bool isDirectory) =>
+        Resolve(fileName, isDirectory, forceFileType: true);
 
     internal static BitmapSource? ResolveStockFolderIcon()
     {

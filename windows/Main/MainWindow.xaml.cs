@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private bool _sidebarInputSelectionPending;
     private bool _waitingForTransfers;
     private bool _closingAfterTransfers;
+    private bool _waitingForArchiveCleanup;
+    private bool _closingAfterArchiveCleanup;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -278,13 +280,13 @@ public partial class MainWindow : Window
     private void AddShortcut(Key key, ModifierKeys mods, Action action) =>
         InputBindings.Add(new KeyBinding(new RelayCommand(_ => action()), key, mods));
 
-    /// <summary>Open <paramref name="folder"/> in a new tab of the active pane, optionally
+    /// <summary>Open <paramref name="target"/> in a new tab of the active pane, optionally
     /// highlighting <paramref name="select"/> once it loads. Used when a second launch is
     /// forwarded to this (the single) running instance instead of starting a new process.</summary>
-    public void OpenPathInNewTab(string folder, string? select)
+    public void OpenPathInNewTab(string target, string? select)
     {
         App.SelectPath = select;
-        _vm.ActivePane.NewTab(folder, activate: true);
+        _vm.ActivePane.NewTab(target, activate: true);
     }
 
     /// <summary>Create a second Rain Explorer window and move the live tab into it.</summary>
@@ -520,9 +522,20 @@ public partial class MainWindow : Window
             base.OnClosing(e);
             return;
         }
-        if (_persistWindowPlacement || isLastWindow) SaveWindowPlacement();
-        if (isLastWindow) _vm.SaveSession();
-        else _vm.FlushActiveProjects();
+        if (!_closingAfterArchiveCleanup)
+        {
+            if (_persistWindowPlacement || isLastWindow) SaveWindowPlacement();
+            if (isLastWindow) _vm.SaveSession();
+            else _vm.FlushActiveProjects();
+            e.Cancel = true;
+            if (!_waitingForArchiveCleanup)
+            {
+                _waitingForArchiveCleanup = true;
+                _ = CloseArchiveSessionsAndWindowAsync(isLastWindow);
+            }
+            base.OnClosing(e);
+            return;
+        }
         base.OnClosing(e);
     }
 
@@ -535,11 +548,41 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private async Task CloseArchiveSessionsAndWindowAsync(bool isLastWindow)
+    {
+        try
+        {
+            await DisposeWithFinalCleanupAsync(
+                () => _vm.DisposeAsync().AsTask(),
+                isLastWindow ? () => ArchiveClientRuntime.Shared.DisposeAsync().AsTask() : null);
+        }
+        finally
+        {
+            _waitingForArchiveCleanup = false;
+            _closingAfterArchiveCleanup = true;
+            Close();
+        }
+    }
+
+    internal static async Task DisposeWithFinalCleanupAsync(
+        Func<Task> disposeWindow,
+        Func<Task>? disposeApplication)
+    {
+        try
+        {
+            await disposeWindow();
+        }
+        finally
+        {
+            if (disposeApplication is not null) await disposeApplication();
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
         ActivityService.Instance.ShowRequested -= OnActivityShowRequested;
-        _vm.Dispose();
+        if (!_closingAfterArchiveCleanup) _vm.Dispose();
         base.OnClosed(e);
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
         {

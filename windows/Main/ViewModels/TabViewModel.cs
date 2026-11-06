@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using RainExplorer.Helpers;
@@ -16,7 +17,7 @@ namespace RainExplorer.ViewModels;
 /// One browser tab: its own current folder, navigation history, sort, and filter.
 /// All per-tab state lives here so tabs are fully independent.
 /// </summary>
-public enum PageKind { Folder, Home, Drives }
+public enum PageKind { Folder, Home, Drives, Archive }
 
 public sealed class TabViewModel : ObservableObject, IDisposable
 {
@@ -25,11 +26,15 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     public const string DrivesToken = "Drives";
 
     private readonly FileSystemService _fs;
+    private readonly ArchiveLocationAdapter _archive;
+    private readonly ArchiveCreationService _archiveCreation;
+    private readonly PhysicalArchiveExtractionService _physicalArchiveExtraction;
     private readonly List<FileItem> _all = new();      // unfiltered contents of cwd
     private readonly List<string> _history = new();
     private int _histIndex = -1;
     private CancellationTokenSource? _driveCountCts;
     private FileSystemWatcher? _folderWatcher;
+    private int _watchSetupVersion;
     private DispatcherTimer? _watchRefreshTimer;
     private DateTime _suppressWatchedRefreshUntilUtc;
     private int _inlineEditDepth;
@@ -37,7 +42,11 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     private bool _reloadAfterBusy;
     private bool _disposed;
     private int _navigationVersion;
+    private CancellationTokenSource? _navigationCts;
     private string? _pendingRestoreTarget;
+    private Task? _archiveDisposeTask;
+    private Task? _archiveCreationDisposeTask;
+    private Task? _physicalArchiveExtractionDisposeTask;
 
     private string _sortKey = "Name";
     private int _sortDir = 1;                            // 1 asc, -1 desc
@@ -64,23 +73,57 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             if (Set(ref _page, value))
             {
                 OnPropertyChanged(nameof(IsFolderView));
+                OnPropertyChanged(nameof(IsContentsView));
                 OnPropertyChanged(nameof(IsHomeView));
                 OnPropertyChanged(nameof(IsDrivesView));
+                OnPropertyChanged(nameof(IsArchiveView));
+                OnPropertyChanged(nameof(IsNetworkServer));
+                OnPropertyChanged(nameof(CanUsePhysicalFileCommands));
+                OnPropertyChanged(nameof(RequiresArchiveOperationPassword));
+                OnPropertyChanged(nameof(CanTestArchiveIntegrity));
+                OnPropertyChanged(nameof(CanExtractArchiveSelection));
+                OnPropertyChanged(nameof(CanRebuildArchiveCopy));
             }
         }
     }
     public bool IsFolderView => _page == PageKind.Folder;
+    public bool IsContentsView => IsFolderView || IsArchiveView;
     public bool IsHomeView => _page == PageKind.Home;
     public bool IsDrivesView => _page == PageKind.Drives;
+    public bool IsArchiveView => _page == PageKind.Archive;
+    public bool IsNetworkServer => IsFolderView && NetworkPath.TryGetServerRoot(CurrentPath, out _);
+    public bool CanUsePhysicalFileCommands => IsFolderView && !IsNetworkServer;
+    public bool RequiresArchiveOperationPassword => IsArchiveView
+        && _archive.RequiresOperationPassword;
+    public bool CanTestArchiveIntegrity => IsArchiveView && _archive.CanTestIntegrity;
+    public bool CanExtractArchiveSelection => IsArchiveView && _archive.CanExtractSelection;
+    public bool CanRebuildArchiveCopy => IsArchiveView && _archive.CanRebuildCopy;
+    public IReadOnlyList<ArchiveBreadcrumb> ArchiveBreadcrumbs => _archive.Breadcrumbs;
+    public bool CanGoToPreviousArchivePage => IsArchiveView && _archive.CanGoToPreviousPage;
+    public bool CanGoToNextArchivePage => IsArchiveView && _archive.CanGoToNextPage;
 
     public bool HasNoRecents => Recents.Count == 0;
 
     /// <summary>Raised after a successful navigation, so the view can animate.</summary>
     public event Action? ContentsChanged;
 
-    public TabViewModel(FileSystemService fs)
+    public TabViewModel(FileSystemService fs, ArchiveClientRuntime? archiveRuntime = null)
+        : this(fs, archiveRuntime ?? ArchiveClientRuntime.Shared, previewLeaseFactory: null)
+    {
+    }
+
+    internal TabViewModel(
+        FileSystemService fs,
+        ArchiveClientRuntime archiveRuntime,
+        ArchiveEntryPreviewLeaseFactory? previewLeaseFactory)
     {
         _fs = fs;
+        _archive = previewLeaseFactory is null
+            ? new ArchiveLocationAdapter(archiveRuntime)
+            : new ArchiveLocationAdapter(archiveRuntime, previewLeaseFactory);
+        _archiveCreation = new ArchiveCreationService(archiveRuntime, ArchiveActivitySink.Instance);
+        _physicalArchiveExtraction = new PhysicalArchiveExtractionService(archiveRuntime);
+        _archive.Changed += OnArchiveChanged;
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingsChanged;
         BackCommand = new RelayCommand(_ => GoBack(), _ => CanGoBack);
         ForwardCommand = new RelayCommand(_ => GoForward(), _ => CanGoForward);
@@ -106,11 +149,31 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     // ---- Bindable properties ------------------------------------------------
     private string _currentPath = string.Empty;
-    public string CurrentPath { get => _currentPath; set => Set(ref _currentPath, value); }
+    public string CurrentPath
+    {
+        get => _currentPath;
+        set
+        {
+            if (!Set(ref _currentPath, value)) return;
+            OnPropertyChanged(nameof(IsNetworkServer));
+            OnPropertyChanged(nameof(CanUsePhysicalFileCommands));
+            OnPropertyChanged(nameof(CanGoUp));
+        }
+    }
 
     /// <summary>The location session persistence should restore, including a folder that
     /// is still loading and has not replaced <see cref="CurrentPath"/> yet.</summary>
-    public string RestoreTarget => _pendingRestoreTarget ?? CurrentPath;
+    public string RestoreTarget
+    {
+        get
+        {
+            if (_pendingRestoreTarget is not null) return _pendingRestoreTarget;
+            if (IsArchiveView) return _archive.TryGetPersistentTarget(out string target) ? target : string.Empty;
+            return CurrentPath;
+        }
+    }
+
+    public bool CanDuplicate => !IsArchiveView || _archive.CanPersistLocation;
 
     private void SetPendingRestoreTarget(string? target)
     {
@@ -248,31 +311,41 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     public ICommand GoToAddressCommand { get; }
     public ICommand OpenEntryCommand { get; }
 
-    public bool CanGoBack => _histIndex > 0;
-    public bool CanGoForward => _histIndex >= 0 && _histIndex < _history.Count - 1;
-    public bool CanGoUp => !string.IsNullOrEmpty(CurrentPath) && _fs.GetParent(CurrentPath) is not null;
+    public bool CanGoBack => IsArchiveView
+        ? _archive.CanGoBack || _histIndex > 0
+        : _histIndex > 0;
+    public bool CanGoForward => IsArchiveView
+        ? _archive.CanGoForward || HasOuterForwardHistory
+        : HasOuterForwardHistory;
+    public bool CanGoUp => IsArchiveView ? _archive.CanGoUp
+        : !string.IsNullOrEmpty(CurrentPath) && _fs.GetParent(CurrentPath) is not null;
 
     // ---- Navigation ---------------------------------------------------------
     public async Task NavigateAsync(string? path, bool pushHistory)
     {
         if (_disposed || string.IsNullOrWhiteSpace(path)) return;
-        path = path.Trim();
+        path = NetworkPath.Normalize(path);
         int navigationVersion = unchecked(++_navigationVersion);
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
+        _navigationCts = new CancellationTokenSource();
+        CancellationToken ct = _navigationCts.Token;
+        _searchCts?.Cancel();
+
+        if (ArchiveLocationSerializer.IsArchiveTarget(path))
+        {
+            await OpenArchiveLocationAsync(path, pushHistory, navigationVersion);
+            return;
+        }
 
         // Special dashboard pages.
         if (path is HomeToken or DrivesToken)
         {
+            await CloseArchiveLocationAsync();
+            if (_disposed || navigationVersion != _navigationVersion) return;
             SetPendingRestoreTarget(null);
             Busy = false;
             ShowPage(path == HomeToken ? PageKind.Home : PageKind.Drives, path, pushHistory);
-            return;
-        }
-
-        if (!Directory.Exists(path))
-        {
-            SetPendingRestoreTarget(null);
-            Busy = false;
-            Status = $"⚠️ Not a folder: {path}";
             return;
         }
 
@@ -280,7 +353,35 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         Busy = true;
         try
         {
-            var entries = await _fs.ReadDirectoryAsync(path);
+            if (!NetworkPath.TryGetServerRoot(path, out _) && ArchiveFileTypes.IsSupportedPath(path)
+                && await Task.Run(() => File.Exists(path), ct).WaitAsync(TimeSpan.FromSeconds(20), ct))
+            {
+                if (_disposed || navigationVersion != _navigationVersion) return;
+                await OpenArchiveLocationAsync(path, pushHistory, navigationVersion);
+                return;
+            }
+
+            IReadOnlyList<FileItem> entries;
+            try
+            {
+                entries = await _fs.ReadDirectoryAsync(path, ct);
+            }
+            catch (Exception ex) when (pushHistory && NetworkPath.IsNetworkPath(path)
+                                       && NetworkConnectionService.RequiresSignIn(ex))
+            {
+                ct.ThrowIfCancellationRequested();
+                var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive);
+                if (owner is null) throw;
+                if (!await NetworkConnectionService.SignInAsync(path, new WindowInteropHelper(owner).Handle, ct))
+                {
+                    SetPendingRestoreTarget(string.IsNullOrEmpty(CurrentPath) ? path : null);
+                    Status = "Network sign-in cancelled.";
+                    return;
+                }
+                entries = await _fs.ReadDirectoryAsync(path, ct);
+            }
+            if (_disposed || navigationVersion != _navigationVersion) return;
+            await CloseArchiveLocationAsync();
             if (_disposed || navigationVersion != _navigationVersion) return;
 
             _all.Clear();
@@ -289,7 +390,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             CurrentPath = path;
             SetPendingRestoreTarget(null);
             Title = FolderDisplayName(path);
-            RecentsStore.Instance.Add(path, isDirectory: true);
+            if (!IsNetworkServer) RecentsStore.Instance.Add(path, isDirectory: true);
             WatchFolder(path);
 
             // Restore this folder's remembered sort.
@@ -308,12 +409,17 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             ApplyView();
             ContentsChanged?.Invoke();
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
             if (!_disposed && navigationVersion == _navigationVersion)
             {
-                SetPendingRestoreTarget(null);
-                Status = $"⚠️ {ex.Message}";
+                // An offline network tab restored into an empty tab must retain its
+                // saved address so Refresh and the next session can try it again.
+                SetPendingRestoreTarget(string.IsNullOrEmpty(CurrentPath) && NetworkPath.IsNetworkPath(path) ? path : null);
+                Status = ex is TimeoutException
+                    ? "⚠️ The network location took too long to respond. Check the address and connection, then try again."
+                    : $"⚠️ {ex.Message}";
             }
         }
         finally
@@ -322,9 +428,51 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnArchiveChanged(object? sender, EventArgs e)
+    {
+        void Apply()
+        {
+            if (_disposed) return;
+            StopWatchingFolder();
+            _sizeCts?.Cancel();
+            _all.Clear();
+            _all.AddRange(_archive.Items);
+            Page = PageKind.Archive;
+            CurrentPath = string.Empty;
+            Title = _archive.Title;
+            Busy = _archive.State == ArchiveLocationState.Loading;
+            Status = _archive.Status;
+            PopulateSorted(_all);
+            OnPropertyChanged(nameof(ArchiveBreadcrumbs));
+            OnPropertyChanged(nameof(RestoreTarget));
+            OnPropertyChanged(nameof(CanDuplicate));
+            OnPropertyChanged(nameof(CanGoBack));
+            OnPropertyChanged(nameof(CanGoForward));
+            OnPropertyChanged(nameof(CanGoUp));
+            OnPropertyChanged(nameof(CanGoToPreviousArchivePage));
+            OnPropertyChanged(nameof(CanGoToNextArchivePage));
+            OnPropertyChanged(nameof(RequiresArchiveOperationPassword));
+            OnPropertyChanged(nameof(CanTestArchiveIntegrity));
+            OnPropertyChanged(nameof(CanExtractArchiveSelection));
+            OnPropertyChanged(nameof(CanRebuildArchiveCopy));
+            CommandManager.InvalidateRequerySuggested();
+            ContentsChanged?.Invoke();
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) Apply();
+        else _ = dispatcher.BeginInvoke(Apply);
+    }
+
+    private async Task CloseArchiveLocationAsync()
+    {
+        if (!_archive.IsOpen && !IsArchiveView) return;
+        await _archive.CloseAsync().ConfigureAwait(true);
+    }
+
     private static string FolderDisplayName(string path)
     {
-        string name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+        string name = NetworkPath.GetDisplayName(path);
         return string.IsNullOrEmpty(name) ? path : name;   // root like "C:\" has no file name
     }
 
@@ -334,6 +482,83 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             _history.RemoveRange(_histIndex + 1, _history.Count - _histIndex - 1);
         _history.Add(path);
         _histIndex = _history.Count - 1;
+        NotifyNavigationStateChanged();
+    }
+
+    private bool HasOuterForwardHistory =>
+        _histIndex >= 0 && _histIndex < _history.Count - 1;
+
+    private async Task OpenArchiveLocationAsync(
+        string target,
+        bool pushHistory,
+        int navigationVersion)
+    {
+        bool hadPriorArchive = _archive.IsOpen;
+        string priorSource = _archive.SourcePath;
+        string? requestedSource = TryGetArchiveSourcePath(target);
+        string historyTarget = ArchiveLocationSerializer.IsArchiveTarget(target)
+            ? target
+            : requestedSource ?? target;
+
+        SetPendingRestoreTarget(target);
+        try
+        {
+            await _archive.OpenAsync(target);
+            if (_disposed || navigationVersion != _navigationVersion || !pushHistory) return;
+
+            bool adoptedRequestedArchive = requestedSource is not null
+                && _archive.IsOpen
+                && string.Equals(
+                    _archive.SourcePath,
+                    requestedSource,
+                    StringComparison.OrdinalIgnoreCase);
+            bool initialAttemptOwnsPresentation = !hadPriorArchive && IsArchiveView;
+            bool preservedDifferentArchive = hadPriorArchive
+                && _archive.IsOpen
+                && string.Equals(
+                    _archive.SourcePath,
+                    priorSource,
+                    StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(priorSource, requestedSource, StringComparison.OrdinalIgnoreCase);
+            if ((!adoptedRequestedArchive && !initialAttemptOwnsPresentation)
+                || preservedDifferentArchive)
+                return;
+
+            if (_history.Count == 0
+                && requestedSource is not null
+                && Path.GetDirectoryName(requestedSource) is { Length: > 0 } parent)
+            {
+                PushHistory(parent);
+            }
+            PushHistory(historyTarget);
+        }
+        finally
+        {
+            SetPendingRestoreTarget(null);
+        }
+    }
+
+    private static string? TryGetArchiveSourcePath(string target)
+    {
+        if (ArchiveLocationSerializer.IsArchiveTarget(target))
+            return ArchiveLocationSerializer.TryDeserialize(target, out ArchiveLocation location)
+                ? location.SourcePath
+                : null;
+        try { return Path.GetFullPath(target); }
+        catch (Exception exception) when (exception is ArgumentException
+                                               or NotSupportedException
+                                               or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private void NotifyNavigationStateChanged()
+    {
+        OnPropertyChanged(nameof(CanGoBack));
+        OnPropertyChanged(nameof(CanGoForward));
+        OnPropertyChanged(nameof(CanGoUp));
+        CommandManager.InvalidateRequerySuggested();
     }
 
     // ---- Dashboard pages ----------------------------------------------------
@@ -362,7 +587,8 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         Recents.Clear();
         foreach (var e in RecentsStore.Instance.Items)
         {
-            bool exists = e.IsDirectory ? Directory.Exists(e.Path) : File.Exists(e.Path);
+            bool exists = NetworkPath.IsNetworkPath(e.Path)
+                || (e.IsDirectory ? Directory.Exists(e.Path) : File.Exists(e.Path));
             if (!exists) continue;
             Recents.Add(new FileItem
             {
@@ -378,7 +604,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         PinnedTiles.Clear();
         foreach (var p in SettingsStore.Instance.Settings.Pinned)
         {
-            if (!Directory.Exists(p.Path)) continue;
+            if (!NetworkPath.IsNetworkPath(p.Path) && !Directory.Exists(p.Path)) continue;
             PinnedTiles.Add(new FileItem
             {
                 Name = string.IsNullOrWhiteSpace(p.Name) ? NiceName(p.Path) : p.Name,
@@ -401,7 +627,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     private static string NiceName(string path)
     {
-        string name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+        string name = NetworkPath.GetDisplayName(path);
         return string.IsNullOrEmpty(name) ? path : name;
     }
 
@@ -484,33 +710,72 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     private void GoBack()
     {
+        if (IsArchiveView)
+        {
+            if (_archive.GoBack()) ClearArchiveQuery();
+            else if (_histIndex > 0)
+            {
+                _histIndex--;
+                NotifyNavigationStateChanged();
+                _ = NavigateAsync(_history[_histIndex], false);
+            }
+            return;
+        }
         if (!CanGoBack) return;
         _histIndex--;
+        NotifyNavigationStateChanged();
         _ = NavigateAsync(_history[_histIndex], false);
     }
 
     private void GoForward()
     {
+        if (IsArchiveView)
+        {
+            if (_archive.GoForward()) ClearArchiveQuery();
+            else if (HasOuterForwardHistory)
+            {
+                _histIndex++;
+                NotifyNavigationStateChanged();
+                _ = NavigateAsync(_history[_histIndex], false);
+            }
+            return;
+        }
         if (!CanGoForward) return;
         _histIndex++;
+        NotifyNavigationStateChanged();
         _ = NavigateAsync(_history[_histIndex], false);
     }
 
     private void GoUp()
     {
+        if (IsArchiveView)
+        {
+            if (_archive.GoUp()) ClearArchiveQuery();
+            return;
+        }
         var parent = _fs.GetParent(CurrentPath);
         if (parent is not null) _ = NavigateAsync(parent, true);
     }
 
-    private void Refresh() => _ = ReloadAsync();
+    private void Refresh() => _ = IsArchiveView ? _archive.RefreshAsync() : ReloadAsync();
 
     /// <summary>Re-read the current folder (used after a file operation).</summary>
     public async Task ReloadAsync(bool animate = true, bool automatic = false)
     {
         if (_disposed) return;
+        if (string.IsNullOrEmpty(CurrentPath) && _pendingRestoreTarget is { } pending)
+        {
+            if (!automatic && !Busy) await NavigateAsync(pending, pushHistory: true);
+            return;
+        }
+        if (IsArchiveView)
+        {
+            if (!automatic) await _archive.RefreshAsync();
+            return;
+        }
         if (automatic && !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
 
-        if (Page != PageKind.Folder || !Directory.Exists(CurrentPath))
+        if (Page != PageKind.Folder)
         {
             await NavigateAsync(CurrentPath, false);
             return;
@@ -524,11 +789,12 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
 
         string path = CurrentPath;
+        int navigationVersion = _navigationVersion;
         Busy = true;
         try
         {
-            var entries = await _fs.ReadDirectoryAsync(path);
-            if (_disposed || Page != PageKind.Folder ||
+            var entries = await _fs.ReadDirectoryAsync(path, _navigationCts?.Token ?? default);
+            if (_disposed || navigationVersion != _navigationVersion || Page != PageKind.Folder ||
                 !string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -540,14 +806,16 @@ public sealed class TabViewModel : ObservableObject, IDisposable
                 ApplyView();
             if (animate) ContentsChanged?.Invoke();
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (!_disposed) Status = $"⚠️ {ex.Message}";
+            if (!_disposed && navigationVersion == _navigationVersion)
+                Status = ex is TimeoutException ? "⚠️ The network location took too long to respond. Try refreshing again." : $"⚠️ {ex.Message}";
         }
         finally
         {
-            if (!_disposed) Busy = false;
-            if (_reloadAfterBusy && !_disposed)
+            if (!_disposed && navigationVersion == _navigationVersion) Busy = false;
+            if (_reloadAfterBusy && !_disposed && navigationVersion == _navigationVersion)
             {
                 _reloadAfterBusy = false;
                 _ = ReloadAsync(animate: false);
@@ -555,10 +823,10 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void WatchFolder(string path)
+    private async void WatchFolder(string path)
     {
         if (_disposed) return;
-        if (!SettingsStore.Instance.Settings.AutoRefreshFolders)
+        if (NetworkPath.TryGetServerRoot(path, out _) || !SettingsStore.Instance.Settings.AutoRefreshFolders)
         {
             StopWatchingFolder();
             return;
@@ -568,24 +836,46 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             return;
 
         StopWatchingFolder();
+        int setupVersion = _watchSetupVersion;
         try
         {
-            _folderWatcher = new FileSystemWatcher(path)
+            var watcher = NetworkPath.IsNetworkPath(path)
+                ? await Task.Run(() => CreateFolderWatcher(path))
+                : CreateFolderWatcher(path);
+            if (_disposed || setupVersion != _watchSetupVersion
+                || !string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase))
             {
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
-                               NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime,
-                IncludeSubdirectories = false,
-                EnableRaisingEvents = true,
-            };
-            _folderWatcher.Changed += OnWatchedFolderChanged;
-            _folderWatcher.Created += OnWatchedFolderChanged;
-            _folderWatcher.Deleted += OnWatchedFolderChanged;
-            _folderWatcher.Renamed += OnWatchedFolderChanged;
-            _folderWatcher.Error += OnWatchedFolderError;
+                watcher.Dispose();
+                return;
+            }
+            _folderWatcher = watcher;
         }
         catch
         {
-            StopWatchingFolder();
+            // The location can still be browsed and refreshed if notifications are unavailable.
+        }
+    }
+
+    private FileSystemWatcher CreateFolderWatcher(string path)
+    {
+        var watcher = new FileSystemWatcher(path);
+        try
+        {
+            watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
+                                   NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime;
+            watcher.IncludeSubdirectories = false;
+            watcher.Changed += OnWatchedFolderChanged;
+            watcher.Created += OnWatchedFolderChanged;
+            watcher.Deleted += OnWatchedFolderChanged;
+            watcher.Renamed += OnWatchedFolderChanged;
+            watcher.Error += OnWatchedFolderError;
+            watcher.EnableRaisingEvents = true;
+            return watcher;
+        }
+        catch
+        {
+            watcher.Dispose();
+            throw;
         }
     }
 
@@ -682,6 +972,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     private void OnWatchedFolderChanged(object sender, FileSystemEventArgs e)
     {
+        if (!ReferenceEquals(sender, _folderWatcher)) return;
         if (!SettingsStore.Instance.Settings.AutoRefreshFolders) return;
         if (DateTime.UtcNow < _suppressWatchedRefreshUntilUtc) return;
         if (_inlineEditDepth > 0)
@@ -697,7 +988,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         if (_disposed || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
         Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            if (_disposed || Page != PageKind.Folder
+            if (_disposed || !ReferenceEquals(sender, _folderWatcher) || Page != PageKind.Folder
                 || !SettingsStore.Instance.Settings.AutoRefreshFolders) return;
             StopWatchingFolder();
             WatchFolder(CurrentPath);
@@ -741,6 +1032,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
 
     private void StopWatchingFolder()
     {
+        unchecked { _watchSetupVersion++; }
         if (_folderWatcher is null) return;
         _folderWatcher.EnableRaisingEvents = false;
         _folderWatcher.Changed -= OnWatchedFolderChanged;
@@ -757,6 +1049,9 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         unchecked { _navigationVersion++; }
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
+        _navigationCts = null;
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
         StopWatchingFolder();
         _watchRefreshTimer?.Stop();
@@ -769,6 +1064,21 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         _sizeCts?.Cancel();
         _sizeCts?.Dispose();
         _sizeCts = null;
+        _archive.Changed -= OnArchiveChanged;
+        _archiveDisposeTask ??= _archive.DisposeAsync().AsTask();
+        _archiveCreationDisposeTask ??= _archiveCreation.DisposeAsync().AsTask();
+        _physicalArchiveExtractionDisposeTask ??=
+            _physicalArchiveExtraction.DisposeAsync().AsTask();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (_archiveDisposeTask is not null) await _archiveDisposeTask.ConfigureAwait(false);
+        if (_archiveCreationDisposeTask is not null)
+            await _archiveCreationDisposeTask.ConfigureAwait(false);
+        if (_physicalArchiveExtractionDisposeTask is not null)
+            await _physicalArchiveExtractionDisposeTask.ConfigureAwait(false);
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
@@ -783,7 +1093,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Page == PageKind.Folder && Directory.Exists(CurrentPath))
+        if (Page == PageKind.Folder)
             WatchFolder(CurrentPath);
     }
 
@@ -794,7 +1104,18 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     public void Open(FileItem? item)
     {
         if (item is null) return;
+        if (item.IsArchiveEntry)
+        {
+            if (item.IsDirectory)
+            {
+                if (_archive.Open(item)) ClearArchiveQuery();
+            }
+            else _ = OpenNestedArchiveAsync(item);
+            return;
+        }
         if (item.IsDirectory) _ = NavigateAsync(item.FullPath, true);
+        else if (ArchiveFileTypes.IsSupportedPath(item.Name))
+            _ = NavigateAsync(item.FullPath, pushHistory: true);
         else
         {
             try { _fs.OpenWithShell(item.FullPath); RecentsStore.Instance.Add(item.FullPath, isDirectory: false); }
@@ -802,12 +1123,149 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool TryGetArchiveTarget(FileItem item, out string target) =>
+        _archive.TryGetPersistentTarget(item, out target);
+
+    public bool NavigateArchive(string? nodeId)
+    {
+        bool navigated = IsArchiveView && _archive.Navigate(nodeId);
+        if (navigated) ClearArchiveQuery();
+        return navigated;
+    }
+
+    public bool NavigateArchive(int archiveDepth, string? nodeId)
+    {
+        bool navigated = IsArchiveView && _archive.Navigate(archiveDepth, nodeId);
+        if (navigated) ClearArchiveQuery();
+        return navigated;
+    }
+
+    public bool CanOpenNestedArchive(FileItem? item) =>
+        IsArchiveView && _archive.CanOpenNestedArchive(item);
+
+    public async Task<ArchiveNestedOpenOutcome> OpenNestedArchiveAsync(
+        FileItem item,
+        char[]? password = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsArchiveView)
+        {
+            if (password is not null) Array.Clear(password);
+            return ArchiveNestedOpenOutcome.Refused;
+        }
+        ArchiveNestedOpenOutcome outcome = await _archive.OpenNestedArchiveAsync(
+            item, password, cancellationToken);
+        if (outcome == ArchiveNestedOpenOutcome.Opened) ClearArchiveQuery();
+        return outcome;
+    }
+
+    private void ClearArchiveQuery()
+    {
+        if (_filter.Length != 0)
+        {
+            _filter = string.Empty;
+            OnPropertyChanged(nameof(Filter));
+        }
+        if (_recursive)
+        {
+            _recursive = false;
+            OnPropertyChanged(nameof(Recursive));
+        }
+    }
+
+    public bool MoveArchivePage(int direction) => IsArchiveView && _archive.MovePage(direction);
+
+    public Task<ArchiveEntryPreviewResult> LoadArchivePreviewAsync(
+        FileItem item,
+        CancellationToken cancellationToken = default) =>
+        IsArchiveView
+            ? _archive.LoadPreviewAsync(item, cancellationToken)
+            : Task.FromResult(ArchiveEntryPreviewResult.Fixed(ArchiveEntryPreviewState.Stale));
+
+    public void UpdateArchiveSelection(IReadOnlyList<FileItem> selectedItems)
+    {
+        if (!IsArchiveView) return;
+        _archive.UpdateSelection(selectedItems);
+        OnPropertyChanged(nameof(CanExtractArchiveSelection));
+    }
+
+    public Task<ArchiveOperationResult> TestArchiveIntegrityAsync(
+        char[]? password = null,
+        CancellationToken cancellationToken = default) =>
+        IsArchiveView
+            ? _archive.TestIntegrityAsync(password, cancellationToken)
+            : Task.FromResult(new ArchiveOperationResult(ArchiveOperationOutcome.Stale));
+
+    public Task<ArchiveOperationResult> ExtractArchiveSelectionAsync(
+        string destinationPath,
+        char[]? password = null,
+        CancellationToken cancellationToken = default) =>
+        IsArchiveView
+            ? _archive.ExtractSelectionAsync(destinationPath, password, cancellationToken)
+            : Task.FromResult(new ArchiveOperationResult(ArchiveOperationOutcome.Stale));
+
+    public Task<ArchiveRebuildCapabilitySnapshot> LoadArchiveRebuildCapabilitiesAsync(
+        CancellationToken cancellationToken = default) =>
+        IsArchiveView
+            ? _archive.LoadRebuildCapabilitiesAsync(cancellationToken)
+            : Task.FromResult(ArchiveRebuildCapabilitySnapshot.Fixed(
+                ArchiveWriteCapabilityState.Stale));
+
+    public Task<ArchiveOperationResult> RebuildArchiveCopyAsync(
+        ArchiveRebuildRequest request,
+        CancellationToken cancellationToken = default) =>
+        IsArchiveView
+            ? _archive.RebuildCopyAsync(request, cancellationToken)
+            : Task.FromResult(new ArchiveOperationResult(ArchiveOperationOutcome.Stale));
+
+    public Task<ArchiveCreationCapabilitySnapshot> LoadArchiveCreationCapabilitiesAsync(
+        CancellationToken cancellationToken = default) =>
+        IsFolderView
+            ? _archiveCreation.LoadCapabilitiesAsync(cancellationToken)
+            : Task.FromResult(ArchiveCreationCapabilitySnapshot.Fixed(
+                ArchiveWriteCapabilityState.Stale));
+
+    public Task<ArchiveOperationResult> CreateArchiveAsync(
+        ArchiveCreationRequest request,
+        CancellationToken cancellationToken = default) =>
+        IsFolderView
+            ? _archiveCreation.CreateAsync(request, cancellationToken)
+            : Task.FromResult(new ArchiveOperationResult(ArchiveOperationOutcome.Stale));
+
+    internal Task<PhysicalArchiveExtractionBatchResult> ExtractPhysicalArchivesAsync(
+        IReadOnlyList<string> sourcePaths,
+        Func<string, char[]?> passwordPrompt,
+        CancellationToken cancellationToken = default) =>
+        IsFolderView
+            ? _physicalArchiveExtraction.ExtractAsync(
+                sourcePaths,
+                passwordPrompt,
+                cancellationToken)
+            : Task.FromResult(PhysicalArchiveExtractionBatchResult.Refused(
+                sourcePaths.Count,
+                ArchiveOperationOutcome.Stale));
+
+    internal Task<PhysicalArchiveExtractionBatchResult> ExtractPhysicalArchivesToAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationParent,
+        Func<string, char[]?> passwordPrompt,
+        CancellationToken cancellationToken = default) =>
+        IsFolderView
+            ? _physicalArchiveExtraction.ExtractToAsync(
+                sourcePaths,
+                destinationParent,
+                passwordPrompt,
+                cancellationToken)
+            : Task.FromResult(PhysicalArchiveExtractionBatchResult.Refused(
+                sourcePaths.Count,
+                ArchiveOperationOutcome.Stale));
+
     // ---- Sort + filter ------------------------------------------------------
     private void Sort(string key)
     {
         if (SortKey == key) SortDir = -SortDir;
         else { SortKey = key; SortDir = 1; }
-        SortStore.Instance.Set(CurrentPath, new SortPref(SortKey, SortDir));
+        if (!IsArchiveView) SortStore.Instance.Set(CurrentPath, new SortPref(SortKey, SortDir));
 
         // Re-sort whatever is currently shown (folder contents or search results).
         if (_isSearchView) PopulateSorted(_searchResults);
@@ -818,7 +1276,12 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     private void OnQueryChanged()
     {
         _searchCts?.Cancel();
-        if (Recursive && !string.IsNullOrWhiteSpace(Filter))
+        if (IsArchiveView)
+        {
+            _archive.SetSearch(Filter, Recursive);
+            return;
+        }
+        if (!IsNetworkServer && Recursive && !string.IsNullOrWhiteSpace(Filter))
             _ = RunSearchAsync(Filter);
         else
         {
@@ -906,7 +1369,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         _sizeCts?.Cancel();
         _sizeCts?.Dispose();
         _sizeCts = null;
-        if (!SettingsStore.Instance.Settings.CalculateFolderSizes || Page != PageKind.Folder) return;
+        if (!SettingsStore.Instance.Settings.CalculateFolderSizes || Page != PageKind.Folder || IsNetworkServer) return;
 
         var dirs = Items.Where(i => i.IsDirectory && !i.FolderSizeKnown).ToList();
         if (dirs.Count == 0) return;

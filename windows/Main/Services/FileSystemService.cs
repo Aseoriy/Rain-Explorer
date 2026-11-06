@@ -9,12 +9,25 @@ namespace RainExplorer.Services;
 /// </summary>
 public sealed class FileSystemService
 {
+    private readonly Func<string, bool, CancellationToken, IReadOnlyList<FileItem>> _readShares;
+
+    public FileSystemService() : this(NetworkShareService.ReadShares) { }
+
+    internal FileSystemService(Func<string, bool, CancellationToken, IReadOnlyList<FileItem>> readShares)
+        => _readShares = readShares;
+
     /// <summary>Read a directory's immediate children. Inaccessible entries are skipped.</summary>
-    public async Task<IReadOnlyList<FileItem>> ReadDirectoryAsync(string path)
+    public async Task<IReadOnlyList<FileItem>> ReadDirectoryAsync(string path, CancellationToken ct = default)
     {
+        path = NetworkPath.Normalize(path);
         bool showHidden = SettingsStore.Instance.Settings.ShowHiddenFiles;
-        return await Task.Run(() =>
+        bool network = NetworkPath.IsNetworkPath(path);
+        var read = Task.Run(() =>
         {
+            ct.ThrowIfCancellationRequested();
+            if (NetworkPath.TryGetServerRoot(path, out _)) return _readShares(path, showHidden, ct);
+            if (!network && !Directory.Exists(path))
+                throw new DirectoryNotFoundException($"Not a folder: {path}");
             var result = new List<FileItem>();
             var dir = new DirectoryInfo(path);
 
@@ -22,6 +35,7 @@ public sealed class FileSystemService
             {
                 foreach (var info in dir.EnumerateFileSystemInfos())
                 {
+                    ct.ThrowIfCancellationRequested();
                     try
                     {
                         // Skip hidden/system entries unless the user opted to show them.
@@ -47,14 +61,20 @@ public sealed class FileSystemService
                     }
                 }
             }
-            catch
+            catch (OperationCanceledException) { throw; }
+            catch when (!network)
             {
                 // The directory itself may be inaccessible, or its lazy enumerator may
                 // fail after yielding a few entries. Keep the entries already read.
             }
 
             return (IReadOnlyList<FileItem>)result;
-        });
+        }, ct);
+        // Native SMB calls can outlive a cancelled navigation. Stop waiting while the
+        // worker finishes and releases its resources without touching the current tab.
+        return network
+            ? await read.WaitAsync(TimeSpan.FromSeconds(20), ct)
+            : await read.WaitAsync(ct);
     }
 
     /// <summary>
@@ -231,8 +251,10 @@ public sealed class FileSystemService
 
     public string? GetParent(string path)
     {
-        var parent = Directory.GetParent(path);
-        return parent?.FullName;
+        if (NetworkPath.IsNetworkPath(path)) return NetworkPath.GetParent(path);
+        try { return Directory.GetParent(path)?.FullName; }
+        catch (ArgumentException) { return null; }
+        catch (IOException) { return null; }
     }
 
     /// <summary>Open a file with its default app, or a folder in this explorer's caller.</summary>

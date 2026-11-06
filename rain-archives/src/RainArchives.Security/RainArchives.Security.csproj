@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <ProjectReference Include="../RainArchives.Core/RainArchives.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RainArchives.UnitTests" />
+    <InternalsVisibleTo Include="RainArchives.IntegrationTests" />
+    <InternalsVisibleTo Include="RainArchives.RecoveryCrashProbe" />
+    <InternalsVisibleTo Include="RainArchives.Worker" />
+  </ItemGroup>
+</Project>

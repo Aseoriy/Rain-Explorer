@@ -1,0 +1,1049 @@
+<Window x:Class="RainArchives.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding ArchiveTitle}"
+        Width="1120"
+        Height="720"
+        MinWidth="760"
+        MinHeight="480"
+        AutomationProperties.Name="Rain Archives archive browser"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
+        SourceInitialized="MainWindow_SourceInitialized"
+        SizeChanged="MainWindow_SizeChanged"
+        WindowStartupLocation="CenterScreen">
+    <Window.InputBindings>
+        <KeyBinding Key="Left" Modifiers="Alt" Command="{Binding BackCommand}" />
+        <KeyBinding Key="Right" Modifiers="Alt" Command="{Binding ForwardCommand}" />
+        <KeyBinding Key="Up" Modifiers="Alt" Command="{Binding UpCommand}" />
+        <KeyBinding Key="Home" Modifiers="Control" Command="{Binding RootCommand}" />
+        <KeyBinding Key="F" Modifiers="Control" Command="{Binding FocusSearchCommand}" />
+        <KeyBinding Key="OemComma" Modifiers="Control" Command="{Binding SettingsCommand}" />
+        <KeyBinding Key="PageUp" Modifiers="Alt" Command="{Binding Browser.PreviousPageCommand}" />
+        <KeyBinding Key="PageDown" Modifiers="Alt" Command="{Binding Browser.NextPageCommand}" />
+        <KeyBinding Key="Enter" Modifiers="Alt" Command="{Binding ShowPropertiesCommand}" />
+        <KeyBinding Key="P" Modifiers="Control" Command="{Binding PreviewSelectionCommand}" />
+        <KeyBinding Key="T" Modifiers="Control" Command="{Binding TestCommand}" />
+        <KeyBinding Key="E" Modifiers="Control" Command="{Binding ExtractSelectionCommand}" />
+    </Window.InputBindings>
+
+    <Grid KeyboardNavigation.TabNavigation="Local">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="20,12,20,11"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                TextElement.Foreground="{DynamicResource SurfaceForegroundBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="270" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0"
+                                Margin="0,0,24,0"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal">
+                        <Border Width="40"
+                                Height="40"
+                                Background="{DynamicResource AccentWashBrush}"
+                                BorderBrush="{DynamicResource AccentWashForegroundBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <Path Width="23"
+                                  Height="23"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Archive}"
+                                  Stroke="{DynamicResource AccentWashForegroundBrush}"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeThickness="1.8"
+                                  Stretch="Uniform" />
+                        </Border>
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock FontSize="17"
+                                       FontWeight="SemiBold"
+                                       Text="Rain Archives" />
+                            <TextBlock Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                       Text="Private archive workspace" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Margin="0,0,18,0"
+                                VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource ShellTitleStyle}"
+                                   Text="{Binding ArchiveTitle}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Margin="0,2,0,0"
+                                   Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                   Text="{Binding ArchiveDetails}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <Grid Grid.Column="2" VerticalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.ColumnSpan="2"
+                               Padding="0,0,0,3"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               Target="{Binding ElementName=SearchInput}"
+                               Content="_Search current folder" />
+                        <Path Grid.Row="1"
+                              Grid.Column="0"
+                              Width="16"
+                              Height="16"
+                              Margin="10,0,0,0"
+                              Panel.ZIndex="1"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource Icon.Search}"
+                              IsHitTestVisible="False"
+                              Stroke="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round"
+                              StrokeThickness="1.7"
+                              Stretch="Uniform" />
+                        <TextBox x:Name="SearchInput"
+                                 Grid.Row="1"
+                                 Grid.ColumnSpan="2"
+                                 Padding="34,5,10,5"
+                                 AutomationProperties.HelpText="Filter only the current archive folder using Unicode-aware case-insensitive matching. Ctrl+F focuses this field."
+                                 AutomationProperties.Name="Search archive entries"
+                                 IsEnabled="{Binding Browser.CanSearch}"
+                                 KeyboardNavigation.TabIndex="0"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Search the current archive folder (Ctrl+F)" />
+                    </Grid>
+                </Grid>
+
+                <WrapPanel x:Name="CommandBar"
+                           Grid.Row="1"
+                           Margin="0,11,0,0"
+                           Orientation="Horizontal">
+                    <Button x:Name="OpenArchiveButton"
+                            AutomationProperties.Name="Open archive"
+                            KeyboardNavigation.TabIndex="1"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding OpenCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Open}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Open archive" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="CreateArchiveButton"
+                            AutomationProperties.HelpText="Create a new supported archive from selected files or folders. Available formats come from the connected worker."
+                            AutomationProperties.Name="Create archive"
+                            KeyboardNavigation.TabIndex="2"
+                            Command="{Binding CreateCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Create}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Create" />
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1"
+                            Height="22"
+                            Margin="3,5,11,5"
+                            Background="{DynamicResource BorderBrush}" />
+
+                    <Button x:Name="ExtractButton"
+                            AutomationProperties.Name="Extract archive contents"
+                            KeyboardNavigation.TabIndex="3"
+                            IsEnabled="{Binding CanExtract}"
+                            Style="{StaticResource BrowserButtonStyle}"
+                            Click="Extract_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Extract}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="E_xtract" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="RebuildCopyButton"
+                            AutomationProperties.HelpText="{Binding RebuildCopyHelpText}"
+                            AutomationProperties.Name="Rebuild ZIP copy"
+                            KeyboardNavigation.TabIndex="4"
+                            IsEnabled="{Binding CanRebuildCopy}"
+                            Style="{StaticResource BrowserButtonStyle}"
+                            ToolTip="{Binding RebuildCopyHelpText}"
+                            Command="{Binding RebuildCopyCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Rebuild}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Rebuild copy" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="TestButton"
+                            AutomationProperties.Name="Test archive integrity"
+                            KeyboardNavigation.TabIndex="5"
+                            Style="{StaticResource BrowserButtonStyle}"
+                            Command="{Binding TestCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Test}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Test" />
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1"
+                            Height="22"
+                            Margin="3,5,11,5"
+                            Background="{DynamicResource BorderBrush}" />
+
+                    <Button x:Name="RecoveryButton"
+                            AutomationProperties.HelpText="Review interrupted archive creations and retained nested workspaces. Recovery actions require explicit inspection and confirmation."
+                            AutomationProperties.Name="Open archive recovery center"
+                            KeyboardNavigation.TabIndex="6"
+                            Style="{StaticResource UtilityButtonStyle}"
+                            Command="{Binding RecoveryCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Recovery}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Recovery" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ActivityButton"
+                            AutomationProperties.HelpText="Review active, queued, and retained terminal operations plus fixed-field support diagnostics."
+                            AutomationProperties.Name="Open Activity Center"
+                            KeyboardNavigation.TabIndex="7"
+                            Style="{StaticResource UtilityButtonStyle}"
+                            Command="{Binding ActivityCenterCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Activity}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Activity" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SettingsButton"
+                            AutomationProperties.HelpText="Manage bounded local UI defaults and ZIP presets. No archive paths, secrets, recovery authority, or operation history are stored. Ctrl+Comma."
+                            AutomationProperties.Name="Open Settings and Presets"
+                            KeyboardNavigation.TabIndex="8"
+                            Style="{StaticResource UtilityButtonStyle}"
+                            Command="{Binding SettingsCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Settings}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="_Settings" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ThemeButton"
+                            AutomationProperties.HelpText="Choose System, Light, or Dark. Windows High Contrast always takes priority."
+                            AutomationProperties.Name="Choose application theme"
+                            KeyboardNavigation.TabIndex="9"
+                            Style="{StaticResource UtilityButtonStyle}"
+                            Click="ThemeButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu AutomationProperties.Name="Application theme choices">
+                                <MenuItem x:Name="SystemThemeMenuItem"
+                                          AutomationProperties.Name="Use system application theme"
+                                          Header="_System"
+                                          IsCheckable="True"
+                                          Click="UseSystemTheme_Click" />
+                                <MenuItem x:Name="LightThemeMenuItem"
+                                          AutomationProperties.Name="Use light application theme"
+                                          Header="_Light"
+                                          IsCheckable="True"
+                                          Click="UseLightTheme_Click" />
+                                <MenuItem x:Name="DarkThemeMenuItem"
+                                          AutomationProperties.Name="Use dark application theme"
+                                          Header="_Dark"
+                                          IsCheckable="True"
+                                          Click="UseDarkTheme_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Theme}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <AccessText Margin="7,0,0,0" Text="T_heme" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="CancelButton"
+                            AutomationProperties.HelpText="Cancel is available only when the latest bounded operation snapshot authorizes it."
+                            AutomationProperties.Name="Cancel current archive operation"
+                            KeyboardNavigation.TabIndex="10"
+                            Style="{StaticResource DangerButtonStyle}"
+                            Command="{Binding CancelCommand}"
+                            IsEnabled="{Binding CanCancelCurrentOperationFromSnapshot}"
+                            Visibility="{Binding CanCancelCurrentOperationFromSnapshot, Converter={StaticResource BooleanToVisibility}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Cancel}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Style="{StaticResource IconPathStyle}" />
+                            <TextBlock Margin="7,0,0,0" Text="Cancel" />
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                 Padding="14,8"
+                Background="{DynamicResource SurfaceMutedBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                TextElement.Foreground="{DynamicResource SurfaceMutedForegroundBrush}"
+                Visibility="{Binding Browser.HasSession, Converter={StaticResource BooleanToVisibility}}">
+            <DockPanel>
+                <Button x:Name="BackButton"
+                        DockPanel.Dock="Left"
+                        AutomationProperties.HelpText="Return to the previous archive location. Alt+Left."
+                        AutomationProperties.Name="Back in archive"
+                        IsEnabled="{Binding Browser.CanGoBack}"
+                        KeyboardNavigation.TabIndex="11"
+                        Style="{StaticResource BrowserButtonStyle}"
+                        Command="{Binding BackCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource Icon.Back}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Style="{StaticResource IconPathStyle}" />
+                        <AccessText Margin="6,0,0,0" Text="_Back" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ForwardButton"
+                        DockPanel.Dock="Left"
+                        AutomationProperties.HelpText="Move to the next archive location. Alt+Right."
+                        AutomationProperties.Name="Forward in archive"
+                        IsEnabled="{Binding Browser.CanGoForward}"
+                        KeyboardNavigation.TabIndex="12"
+                        Style="{StaticResource BrowserButtonStyle}"
+                        Command="{Binding ForwardCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource Icon.Forward}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Style="{StaticResource IconPathStyle}" />
+                        <AccessText Margin="6,0,0,0" Text="_Forward" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="UpButton"
+                        DockPanel.Dock="Left"
+                        AutomationProperties.HelpText="Move to the parent archive folder. Alt+Up."
+                        AutomationProperties.Name="Up one archive folder"
+                        IsEnabled="{Binding Browser.CanGoUp}"
+                        KeyboardNavigation.TabIndex="13"
+                        Style="{StaticResource BrowserButtonStyle}"
+                        Command="{Binding UpCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource Icon.Up}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Style="{StaticResource IconPathStyle}" />
+                        <AccessText Margin="6,0,0,0" Text="_Up" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RootButton"
+                        DockPanel.Dock="Left"
+                        AutomationProperties.HelpText="Return to the archive root. Ctrl+Home."
+                        AutomationProperties.Name="Archive root"
+                        IsEnabled="{Binding Browser.CanGoUp}"
+                        KeyboardNavigation.TabIndex="14"
+                        Style="{StaticResource BrowserButtonStyle}"
+                        Command="{Binding RootCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource Icon.Root}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              Style="{StaticResource IconPathStyle}" />
+                        <AccessText Margin="6,0,0,0" Text="_Root" />
+                    </StackPanel>
+                </Button>
+                <Border Margin="4,0,0,0"
+                        Background="{DynamicResource SurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="7"
+                        TextElement.Foreground="{DynamicResource SurfaceRaisedForegroundBrush}">
+                    <ScrollViewer Padding="5,0"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Breadcrumbs}"
+                                  KeyboardNavigation.TabNavigation="Local">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Width="12"
+                                          Height="12"
+                                          Margin="2,0,3,0"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.ChevronRight}"
+                                          Stroke="{DynamicResource SurfaceRaisedSecondaryForegroundBrush}"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          StrokeStartLineCap="Round"
+                                          StrokeThickness="1.8"
+                                          Stretch="Uniform" />
+                                    <Button Margin="0"
+                                            MinHeight="28"
+                                            Padding="8,3"
+                                            AutomationProperties.HelpText="Navigate to this canonical archive-relative location."
+                                            AutomationProperties.Name="{Binding AutomationName}"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="0"
+                                            Content="{Binding Name}"
+                                            KeyboardNavigation.TabIndex="15"
+                                            Tag="{Binding EntryId}"
+                                            Click="Breadcrumb_Click" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Border x:Name="WelcomePanel"
+                    Margin="18"
+                    Style="{StaticResource ShellCardStyle}"
+                    Visibility="{Binding Browser.IsWelcomeVisible, Converter={StaticResource BooleanToVisibility}}">
+                <Grid MaxWidth="940"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.05*" MinWidth="280" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" MinWidth="280" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <Border Width="56"
+                                Height="56"
+                                HorizontalAlignment="Left"
+                                Background="{DynamicResource AccentWashBrush}"
+                                BorderBrush="{DynamicResource AccentWashForegroundBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <Path Width="30"
+                                  Height="30"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Archive}"
+                                  Stroke="{DynamicResource AccentWashForegroundBrush}"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeThickness="1.7"
+                                  Stretch="Uniform" />
+                        </Border>
+                        <TextBlock Margin="0,16,0,0"
+                                   FontSize="25"
+                                   FontWeight="SemiBold"
+                                   LineHeight="31"
+                                   Text="Open an archive.&#x0a;Keep the original untouched." />
+                        <TextBlock Margin="0,9,0,0"
+                                   MaxWidth="430"
+                                   Style="{StaticResource ShellSecondaryTextStyle}"
+                                   Text="Browse, inspect, test, and selectively extract through the isolated worker—without unpacking everything first." />
+                        <WrapPanel x:Name="WelcomeActionPanel"
+                                   Margin="0,18,0,0"
+                                   HorizontalAlignment="Left"
+                                   Orientation="Horizontal">
+                             <Button AutomationProperties.Name="Choose an archive from welcome"
+                                     Content="Choose an archive"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding OpenCommand}" />
+                            <Button AutomationProperties.HelpText="Create a new supported archive from selected files or folders. Available formats come from the connected worker."
+                                     AutomationProperties.Name="Create archive from welcome"
+                                     Content="Create archive"
+                                    Command="{Binding CreateCommand}" />
+                            <Button AutomationProperties.HelpText="Review interrupted archive creations and retained nested workspaces."
+                                     AutomationProperties.Name="Open archive recovery center from welcome"
+                                     Content="Recovery"
+                                    Style="{StaticResource UtilityButtonStyle}"
+                                    Command="{Binding RecoveryCommand}" />
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <Border Grid.Column="2"
+                            Padding="16"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource SurfaceMutedBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="9"
+                            TextElement.Foreground="{DynamicResource SurfaceMutedForegroundBrush}">
+                        <StackPanel>
+                            <TextBlock Foreground="{DynamicResource SurfaceMutedForegroundBrush}"
+                                       Style="{StaticResource ShellSectionHeadingStyle}"
+                                       Text="Careful by default" />
+
+                            <Grid Margin="0,15,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Path Width="20"
+                                      Height="20"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top"
+                                      Data="{StaticResource Icon.Preview}"
+                                      Stroke="{DynamicResource SurfaceMutedAccentForegroundBrush}"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round"
+                                      StrokeThickness="1.7"
+                                      Stretch="Uniform" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock FontWeight="SemiBold" Text="Browse before extracting" />
+                                    <TextBlock Margin="0,2,0,0"
+                                               Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                                               Style="{StaticResource ShellSecondaryTextStyle}"
+                                               Text="A bounded list keeps large archives responsive." />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Path Width="20"
+                                      Height="20"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top"
+                                      Data="{StaticResource Icon.Original}"
+                                      Stroke="{DynamicResource SurfaceMutedSuccessForegroundBrush}"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round"
+                                      StrokeThickness="1.7"
+                                      Stretch="Uniform" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock FontWeight="SemiBold" Text="Original stays unchanged" />
+                                    <TextBlock Margin="0,2,0,0"
+                                               Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                                               Style="{StaticResource ShellSecondaryTextStyle}"
+                                               Text="Writes require a distinct, absent destination." />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Path Width="20"
+                                      Height="20"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top"
+                                      Data="{StaticResource Icon.Shield}"
+                                      Stroke="{DynamicResource SurfaceMutedAccentForegroundBrush}"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round"
+                                      StrokeThickness="1.7"
+                                      Stretch="Uniform" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock FontWeight="SemiBold" Text="Inert, bounded preview" />
+                                    <TextBlock Margin="0,2,0,0"
+                                               Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                                               Style="{StaticResource ShellSecondaryTextStyle}"
+                                               Text="Text preview never executes archive content." />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <DockPanel LastChildFill="True"
+                       Visibility="{Binding Browser.IsBrowserSurfaceVisible, Converter={StaticResource BooleanToVisibility}}">
+                <Border x:Name="PreviewPanel"
+                         DockPanel.Dock="Right"
+                         Width="320"
+                         MinWidth="320"
+                         MaxWidth="380"
+                         AutomationProperties.HelpText="Validated archive and selected-entry properties plus a bounded inert text preview. Opened only on request and closed with the inspector Close button."
+                         AutomationProperties.Name="Archive properties and safe preview"
+                         Background="{DynamicResource SurfaceBrush}"
+                         BorderBrush="{DynamicResource BorderStrongBrush}"
+                        BorderThickness="1,0,0,0"
+                        TextElement.Foreground="{DynamicResource SurfaceForegroundBrush}"
+                        Visibility="{Binding IsInspectorVisible, Converter={StaticResource BooleanToVisibility}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <DockPanel Margin="14,12,12,8" LastChildFill="True">
+                            <Button x:Name="CloseInspectorButton"
+                                    DockPanel.Dock="Right"
+                                    Margin="12,0,0,0"
+                                    Padding="10,4"
+                                    AutomationProperties.HelpText="Close the properties or safe preview inspector. Any active preview is cancelled and fully drained before focus returns to the current archive selection."
+                                    AutomationProperties.Name="Close archive inspector"
+                                    Command="{Binding CloseInspectorCommand}"
+                                    Content="_Close inspector"
+                                    Style="{StaticResource UtilityButtonStyle}"
+                                    KeyboardNavigation.TabIndex="20" />
+                            <TextBlock VerticalAlignment="Center"
+                                       Style="{StaticResource ShellSectionHeadingStyle}"
+                                       Text="Inspector" />
+                        </DockPanel>
+                        <TabControl x:Name="InspectorTabs"
+                                    Grid.Row="1"
+                                    Padding="8"
+                                    AutomationProperties.Name="Archive inspector"
+                                     Background="{DynamicResource SurfaceBrush}"
+                                     BorderBrush="{DynamicResource BorderBrush}"
+                                     Foreground="{DynamicResource SurfaceForegroundBrush}"
+                                    KeyboardNavigation.TabIndex="21"
+                                    SelectedIndex="{Binding InspectorSelectedTabIndex, Mode=TwoWay}">
+                        <TabItem Header="_Properties"
+                                 AutomationProperties.HelpText="Show fixed-field properties for the current archive and selected entry."
+                                 AutomationProperties.Name="Archive properties">
+                            <ScrollViewer Padding="8"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock FontSize="16"
+                                               FontWeight="SemiBold"
+                                               Text="{Binding Properties.StateTitle}" />
+                                     <TextBlock Margin="0,5,0,10"
+                                                 Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                               Text="{Binding Properties.StateMessage}"
+                                               TextWrapping="Wrap" />
+
+                                    <ItemsControl AutomationProperties.Name="Validated archive properties"
+                                                  ItemsSource="{Binding Properties.ArchiveItems}"
+                                                  Visibility="{Binding Properties.HasArchiveProperties, Converter={StaticResource BooleanToVisibility}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,9"
+                                                      AutomationProperties.HelpText="{Binding HelpText}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="126" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock FontWeight="SemiBold"
+                                                               Text="{Binding Name}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Margin="10,0,0,0"
+                                                               AutomationProperties.HelpText="{Binding HelpText}"
+                                                               Text="{Binding Value}"
+                                                               TextWrapping="Wrap" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Separator Margin="0,8,0,12" />
+                                    <TextBlock FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Text="{Binding Properties.SelectedEntryTitle}"
+                                               TextTrimming="CharacterEllipsis" />
+                                     <TextBlock Margin="0,5,0,10"
+                                                 Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                               Text="{Binding Properties.SelectedEntryMessage}"
+                                               TextWrapping="Wrap" />
+                                    <ItemsControl AutomationProperties.Name="Validated selected entry properties"
+                                                  ItemsSource="{Binding Properties.EntryItems}"
+                                                  Visibility="{Binding Properties.HasSelectedEntry, Converter={StaticResource BooleanToVisibility}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,9"
+                                                      AutomationProperties.HelpText="{Binding HelpText}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="126" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock FontWeight="SemiBold"
+                                                               Text="{Binding Name}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Margin="10,0,0,0"
+                                                               AutomationProperties.HelpText="{Binding HelpText}"
+                                                               Text="{Binding Value}"
+                                                               TextWrapping="Wrap" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <TabItem Header="_Safe preview"
+                                 AutomationProperties.HelpText="Show the bounded inert text preview for the current selection."
+                                 AutomationProperties.Name="Safe preview">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Text="{Binding Preview.EntryTitle}"
+                                           TextTrimming="CharacterEllipsis" />
+
+                                <ProgressBar Grid.Row="1"
+                                             Height="4"
+                                             Margin="0,10,0,0"
+                                             AutomationProperties.Name="Safe preview loading"
+                                             IsIndeterminate="True"
+                                             Visibility="{Binding Preview.IsLoading, Converter={StaticResource BooleanToVisibility}}" />
+
+                                 <TextBlock Grid.Row="2"
+                                            Margin="0,10,0,8"
+                                            Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                                           Text="{Binding Preview.Details}"
+                                           TextWrapping="Wrap" />
+
+                                <Border x:Name="PreviewStatePanel"
+                                         Grid.Row="3"
+                                         Padding="14"
+                                         AutomationProperties.HelpText="{Binding Preview.StateMessage}"
+                                         AutomationProperties.Name="{Binding Preview.StateTitle}"
+                                         Background="{DynamicResource SurfaceMutedBrush}"
+                                         BorderBrush="{DynamicResource BorderStrongBrush}"
+                                        BorderThickness="1"
+                                        Focusable="True"
+                                        TextElement.Foreground="{DynamicResource SurfaceMutedForegroundBrush}"
+                                        Visibility="{Binding Preview.IsStatusVisible, Converter={StaticResource BooleanToVisibility}}">
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding Preview.StateTitle}"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,8,0,0"
+                                                   HorizontalAlignment="Center"
+                                                   MaxWidth="330"
+                                                   Text="{Binding Preview.StateMessage}"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBox x:Name="PreviewTextBox"
+                                         Grid.Row="3"
+                                         Padding="10"
+                                          AcceptsReturn="True"
+                                          AutomationProperties.HelpText="Read-only inert text decoded from at most one mebibyte of the selected archive entry."
+                                          AutomationProperties.Name="Safe text preview content"
+                                          Background="{DynamicResource SurfaceRaisedBrush}"
+                                          BorderBrush="{DynamicResource BorderStrongBrush}"
+                                          FontFamily="{StaticResource MonoFontFamily}"
+                                          Foreground="{DynamicResource SurfaceRaisedForegroundBrush}"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         IsReadOnly="True"
+                                         Text="{Binding Preview.Text, Mode=OneWay}"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Visibility="{Binding Preview.IsTextVisible, Converter={StaticResource BooleanToVisibility}}" />
+                            </Grid>
+                        </TabItem>
+                        </TabControl>
+                    </Grid>
+                </Border>
+
+                <Grid Background="{DynamicResource SurfaceBrush}"
+                      TextElement.Foreground="{DynamicResource SurfaceForegroundBrush}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DataGrid x:Name="EntriesGrid"
+                              Grid.Row="0"
+                              Margin="0"
+                              AutomationProperties.HelpText="Press Enter to open a folder, Ctrl+P for bounded safe preview, Alt+Enter for properties, or Shift+F10 for the current command menu. At most 512 rows are materialized."
+                               AutomationProperties.Name="Archive entries"
+                               AlternationCount="2"
+                               AutoGenerateColumns="False"
+                               CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              EnableRowVirtualization="True"
+                              EnableColumnVirtualization="True"
+                               GridLinesVisibility="Horizontal"
+                              HeadersVisibility="Column"
+                              IsReadOnly="True"
+                              ItemsSource="{Binding Entries}"
+                               KeyboardNavigation.TabIndex="16"
+                              ScrollViewer.CanContentScroll="True"
+                              SelectedItem="{Binding Browser.SelectedEntry, Mode=TwoWay}"
+                               SelectionMode="Extended"
+                               SelectionUnit="FullRow"
+                               Style="{StaticResource ArchiveDataGridStyle}"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              Visibility="{Binding Browser.IsEntryListVisible, Converter={StaticResource BooleanToVisibility}}"
+                              ContextMenuOpening="EntriesGrid_ContextMenuOpening"
+                              KeyDown="EntriesGrid_KeyDown"
+                              MouseDoubleClick="EntriesGrid_MouseDoubleClick"
+                              PreviewMouseRightButtonDown="EntriesGrid_PreviewMouseRightButtonDown"
+                              SelectionChanged="EntriesGrid_SelectionChanged">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                         AutomationProperties.Name="Archive entry commands">
+                                <MenuItem x:Name="NavigateEntryMenuItem"
+                                          AutomationProperties.HelpText="Open the selected archive folder without creating a filesystem path. Enter."
+                                          AutomationProperties.Name="Open selected archive folder"
+                                          Command="{Binding NavigateSelectionCommand}"
+                                          Header="_Open folder"
+                                          Visibility="{Binding CommandContext.CanNavigate, Converter={StaticResource BooleanToVisibility}}" />
+                                <MenuItem x:Name="PreviewEntryMenuItem"
+                                          AutomationProperties.HelpText="Request the existing bounded inert preview for the selected regular file. Ctrl+P."
+                                          AutomationProperties.Name="Safely preview selected archive file"
+                                          Command="{Binding PreviewSelectionCommand}"
+                                          Header="Safe _preview"
+                                          Visibility="{Binding CommandContext.CanPreview, Converter={StaticResource BooleanToVisibility}}" />
+                                <MenuItem x:Name="EntryPropertiesMenuItem"
+                                          AutomationProperties.HelpText="Show only validated archive and selected-entry properties. Alt+Enter."
+                                          AutomationProperties.Name="Show validated archive properties"
+                                          Command="{Binding ShowPropertiesCommand}"
+                                          Header="_Properties"
+                                          Visibility="{Binding CommandContext.CanShowProperties, Converter={StaticResource BooleanToVisibility}}" />
+                                <Separator />
+                                <MenuItem x:Name="ExtractSelectedMenuItem"
+                                          AutomationProperties.HelpText="Extract only the current bounded selection to a distinct absent destination. Ctrl+E."
+                                          AutomationProperties.Name="Extract selected archive entries"
+                                          Command="{Binding ExtractSelectionCommand}"
+                                          Header="_Extract selected"
+                                          Visibility="{Binding CommandContext.CanExtractSelected, Converter={StaticResource BooleanToVisibility}}" />
+                                <MenuItem x:Name="TestIntegrityMenuItem"
+                                          AutomationProperties.HelpText="Run the existing archive integrity operation. Ctrl+T."
+                                          AutomationProperties.Name="Test archive integrity"
+                                          Command="{Binding TestCommand}"
+                                          Header="_Test archive integrity"
+                                          Visibility="{Binding CommandContext.CanTestIntegrity, Converter={StaticResource BooleanToVisibility}}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Name" SortMemberPath="Name" Width="2*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="8,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Path Width="16"
+                                                  Height="16"
+                                                  HorizontalAlignment="Left"
+                                                  VerticalAlignment="Center"
+                                                  Data="{StaticResource Icon.File}"
+                                                  Style="{StaticResource ArchiveFileIconStyle}"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeThickness="1.6"
+                                                  Stretch="Uniform"
+                                                  Visibility="{Binding IsDirectory, Converter={StaticResource InverseBooleanToVisibility}}" />
+                                            <Path Width="16"
+                                                  Height="16"
+                                                  HorizontalAlignment="Left"
+                                                  VerticalAlignment="Center"
+                                                  Data="{StaticResource Icon.Folder}"
+                                                  Style="{StaticResource ArchiveFolderIconStyle}"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeThickness="1.6"
+                                                  Stretch="Uniform"
+                                                  Visibility="{Binding IsDirectory, Converter={StaticResource BooleanToVisibility}}" />
+                                            <TextBlock Grid.Column="1"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding Name}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Occurrence" Binding="{Binding Occurrence}" ElementStyle="{StaticResource ArchiveCellTechnicalTextStyle}" Width="90" />
+                            <DataGridTextColumn Header="Type" Binding="{Binding Kind}" ElementStyle="{StaticResource ArchiveCellTextStyle}" Width="100" />
+                            <DataGridTextColumn Header="Size" Binding="{Binding OriginalSize}" ElementStyle="{StaticResource ArchiveCellTechnicalTextStyle}" Width="110" />
+                            <DataGridTextColumn Header="Compressed" Binding="{Binding CompressedSize}" ElementStyle="{StaticResource ArchiveCellTechnicalTextStyle}" Width="110" />
+                            <DataGridTextColumn Header="Modified" Binding="{Binding Modified}" ElementStyle="{StaticResource ArchiveCellTechnicalTextStyle}" Width="150" />
+                            <DataGridTextColumn Header="Security" Binding="{Binding Safety}" ElementStyle="{StaticResource ArchiveCellTextStyle}" Width="120" />
+                            <DataGridTextColumn Header="Encryption" Binding="{Binding Encryption}" ElementStyle="{StaticResource ArchiveCellTextStyle}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border x:Name="BrowserStatePanel"
+                            Grid.Row="0"
+                             Margin="18"
+                             Padding="32"
+                             AutomationProperties.Name="Archive browser state"
+                             Background="{DynamicResource SurfaceRaisedBrush}"
+                             BorderBrush="{DynamicResource BorderStrongBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            TextElement.Foreground="{DynamicResource SurfaceRaisedForegroundBrush}"
+                            Visibility="{Binding Browser.IsStatePanelVisible, Converter={StaticResource BooleanToVisibility}}">
+                        <StackPanel MaxWidth="520"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                            <TextBlock HorizontalAlignment="Center"
+                                       FontSize="21"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding Browser.StateTitle}"
+                                       TextAlignment="Center" />
+                            <TextBlock Margin="0,9,0,0"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource SurfaceRaisedSecondaryForegroundBrush}"
+                                       Text="{Binding Browser.StateMessage}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap" />
+                            <ProgressBar Height="5"
+                                         Margin="0,18,0,0"
+                                         IsIndeterminate="True"
+                                         Visibility="{Binding Browser.IsLoading, Converter={StaticResource BooleanToVisibility}}" />
+                            <Button Margin="0,18,0,0"
+                                    HorizontalAlignment="Center"
+                                    AutomationProperties.HelpText="Choose an archive explicitly. Rain Archives does not automatically retry or reopen a stale source."
+                                    AutomationProperties.Name="Choose an archive from browser state"
+                                    Command="{Binding OpenCommand}"
+                                    Content="Choose an archive"
+                                    KeyboardNavigation.TabIndex="17"
+                                    Visibility="{Binding Browser.CanChooseArchiveFromState, Converter={StaticResource BooleanToVisibility}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="1"
+                             Padding="12,7"
+                             Background="{DynamicResource SurfaceMutedBrush}"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="0,1,0,0"
+                            TextElement.Foreground="{DynamicResource SurfaceMutedForegroundBrush}"
+                            Visibility="{Binding Browser.HasSession, Converter={StaticResource BooleanToVisibility}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                 <TextBlock x:Name="BrowserStatusText"
+                                            AutomationProperties.Name="Archive browser status"
+                                           Text="{Binding Browser.StatusAnnouncement}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Margin="0,2,0,0"
+                                            Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                                           Text="{Binding Browser.PageSummary}" />
+                                <TextBlock x:Name="ContextCommandStatusText"
+                                           Margin="0,2,0,0"
+                                            AutomationProperties.Name="Available archive commands"
+                                            Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                                           Text="{Binding CommandContext.StatusAnnouncement}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button x:Name="PreviousPageButton"
+                                        AutomationProperties.HelpText="Show the previous bounded page. Alt+Page Up."
+                                        AutomationProperties.Name="Previous archive result page"
+                                        Command="{Binding Browser.PreviousPageCommand}"
+                                        Content="Previous"
+                                        IsEnabled="{Binding Browser.CanGoToPreviousPage}"
+                                        KeyboardNavigation.TabIndex="18"
+                                        Style="{StaticResource BrowserButtonStyle}" />
+                                <Button x:Name="NextPageButton"
+                                        AutomationProperties.HelpText="Show the next bounded page. Alt+Page Down."
+                                        AutomationProperties.Name="Next archive result page"
+                                        Command="{Binding Browser.NextPageCommand}"
+                                        Content="Next"
+                                        IsEnabled="{Binding Browser.CanGoToNextPage}"
+                                        KeyboardNavigation.TabIndex="19"
+                                        Style="{StaticResource BrowserButtonStyle}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </DockPanel>
+        </Grid>
+
+        <Border Grid.Row="3"
+                 Padding="18,10"
+                AutomationProperties.Name="Archive operation progress"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                TextElement.Foreground="{DynamicResource SurfaceForegroundBrush}"
+                Visibility="{Binding ActiveActivity.IsVisible, Converter={StaticResource BooleanToVisibility}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock TextTrimming="CharacterEllipsis"
+                               Text="{Binding ActiveActivity.Description}" />
+                    <TextBlock Margin="0,2,0,0"
+                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding ActiveActivity.Details}" />
+                </StackPanel>
+                <ProgressBar Grid.Column="1"
+                             Height="8"
+                             Margin="14,0"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="{Binding ActiveActivity.IsIndeterminate, Mode=OneWay}"
+                             Maximum="100"
+                             Value="{Binding ActiveActivity.Progress, Mode=OneWay}" />
+                <TextBlock Grid.Column="2"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                            Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                           Text="{Binding ActiveActivity.Phase}" />
+            </Grid>
+        </Border>
+
+        <StatusBar x:Name="MainStatusBar"
+                   Grid.Row="4"
+                   AutomationProperties.LiveSetting="Polite"
+                   AutomationProperties.Name="Rain Archives status"
+                   Background="{DynamicResource BackgroundBrush}"
+                   BorderBrush="{DynamicResource BorderBrush}"
+                   BorderThickness="0,1,0,0"
+                   Foreground="{DynamicResource BackgroundForegroundBrush}">
+            <StatusBarItem>
+                <TextBlock x:Name="MainStatusText"
+                           AutomationProperties.Name="Current Rain Archives status"
+                           Foreground="{DynamicResource BackgroundSecondaryForegroundBrush}"
+                           Text="{Binding StatusText}" />
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

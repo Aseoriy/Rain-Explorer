@@ -73,6 +73,7 @@
                 <ScrollViewer x:Name="TextScroll" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                     <TextBox x:Name="TextView" IsReadOnly="True" BorderThickness="0"
+                             AutomationProperties.Name="Archive or file text preview"
                              Background="Transparent" Foreground="{StaticResource TextDim}"
                              FontFamily="{StaticResource MonoFont}" FontSize="12"
                              TextWrapping="NoWrap" IsReadOnlyCaretVisible="False" />
@@ -106,6 +107,8 @@
                           Stroke="{StaticResource TextFaint}" StrokeThickness="1.3"
                           HorizontalAlignment="Center" Data="{StaticResource Ic.file}" />
                     <TextBlock x:Name="EmptyText" Foreground="{StaticResource TextFaint}"
+                               AutomationProperties.Name="Preview status"
+                               AutomationProperties.LiveSetting="Polite"
                                Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="13"
                                TextAlignment="Center" MaxWidth="220" TextWrapping="Wrap" />
                 </StackPanel>

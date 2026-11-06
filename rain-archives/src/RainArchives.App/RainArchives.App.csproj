@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RainArchives</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\RainArchives.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <ProjectReference Include="../RainArchives.Client/RainArchives.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RainArchives.UnitTests" />
+  </ItemGroup>
+
+  <Target Name="PublishArchiveWorker" AfterTargets="Publish">
+    <PropertyGroup>
+      <_ArchiveWorkerPublishDirectory>$([System.IO.Path]::Combine('$(PublishDir)', 'worker'))</_ArchiveWorkerPublishDirectory>
+      <_ArchiveWorkerPublishProperties>Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishReadyToRun=$(PublishReadyToRun);PublishDir=$(_ArchiveWorkerPublishDirectory)</_ArchiveWorkerPublishProperties>
+    </PropertyGroup>
+    <Error Condition="'$(PublishSingleFile)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'"
+           Text="Rain Archives has not validated single-file, trimmed, or AOT packaging for the isolated archive worker." />
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../RainArchives.Worker/RainArchives.Worker.csproj"
+             Targets="Publish"
+             BuildInParallel="false"
+             Properties="$(_ArchiveWorkerPublishProperties)" />
+    <Error Condition="!Exists('$(_ArchiveWorkerPublishDirectory)/RainArchives.Worker.exe')"
+           Text="The Rain Archives worker publish did not produce RainArchives.Worker.exe." />
+  </Target>
+</Project>

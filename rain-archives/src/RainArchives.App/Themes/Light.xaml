@@ -1,0 +1,69 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="ThemePaletteMarker">#00000000</Color>
+    <Color x:Key="BackgroundColor">#FFF7F5FA</Color>
+    <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
+    <Color x:Key="SurfaceMutedColor">#FFF1EDF5</Color>
+    <Color x:Key="SurfaceRaisedColor">#FFFFFFFF</Color>
+    <Color x:Key="BorderColor">#FFE2DBE8</Color>
+    <Color x:Key="BorderStrongColor">#FFC8BCD2</Color>
+    <Color x:Key="TextColor">#FF211A28</Color>
+    <Color x:Key="MutedTextColor">#FF665C70</Color>
+    <Color x:Key="SubtleTextColor">#FF82778C</Color>
+    <Color x:Key="AccentColor">#FF7C3AED</Color>
+    <Color x:Key="AccentHoverColor">#FF6D28D9</Color>
+    <Color x:Key="AccentPressedColor">#FF5B21B6</Color>
+    <Color x:Key="AccentForegroundColor">#FFFFFFFF</Color>
+    <Color x:Key="AccentWashColor">#FFEFE5FC</Color>
+    <Color x:Key="FocusColor">#FF7C3AED</Color>
+    <Color x:Key="SuccessColor">#FF147A55</Color>
+    <Color x:Key="WarningColor">#FF8A5A00</Color>
+    <Color x:Key="DangerColor">#FFB4233A</Color>
+    <Color x:Key="SelectionColor">#FFEADDFC</Color>
+    <Color x:Key="DisabledTextColor">#FF8A8290</Color>
+
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceMutedBrush" Color="{StaticResource SurfaceMutedColor}" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrongColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="SubtleTextBrush" Color="{StaticResource SubtleTextColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource AccentPressedColor}" />
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="{StaticResource AccentForegroundColor}" />
+    <SolidColorBrush x:Key="AccentWashBrush" Color="{StaticResource AccentWashColor}" />
+    <SolidColorBrush x:Key="FocusBrush" Color="{StaticResource FocusColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource SelectionColor}" />
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
+    <SolidColorBrush x:Key="BackgroundForegroundBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="BackgroundSecondaryForegroundBrush" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="SurfaceForegroundBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="SurfaceSecondaryForegroundBrush" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="SurfaceAccentForegroundBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="SurfaceMutedForegroundBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="SurfaceMutedSecondaryForegroundBrush" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="SurfaceMutedAccentForegroundBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="SurfaceMutedSuccessForegroundBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="SurfaceRaisedForegroundBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="SurfaceRaisedSecondaryForegroundBrush" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="AccentWashForegroundBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="SelectionForegroundBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="SelectionBorderBrush" Color="{StaticResource AccentColor}" />
+
+    <!-- These application-scoped keys let existing system-resource-based views follow an explicit theme. -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource SurfaceMutedColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="{StaticResource BorderStrongColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource AccentForegroundColor}" />
+</ResourceDictionary>

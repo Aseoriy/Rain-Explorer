@@ -1,0 +1,25 @@
+# Build and test output
+**/bin/
+**/obj/
+TestResults/
+BenchmarkDotNet.Artifacts/
+artifacts/
+benchmark-evidence/
+
+# IDE and user-local state
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Local publish/signing material
+*.pfx
+*.snk
+*.cer
+*.key
+
+# Crash and diagnostic output
+*.dmp
+*.etl
+*.trace

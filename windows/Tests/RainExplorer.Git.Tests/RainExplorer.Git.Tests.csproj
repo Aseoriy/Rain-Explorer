@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <RainArchivesRoot Condition="'$(RainArchivesRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\Rain Archives</RainArchivesRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +20,25 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Main\RainExplorer.csproj" />
+    <ProjectReference Include="$(RainArchivesRoot)\src\RainArchives.Contracts\RainArchives.Contracts.csproj" />
+    <ProjectReference Include="$(RainArchivesRoot)\src\RainArchives.Client\RainArchives.Client.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(RainArchivesRoot)\tests\fixtures\corpus\**\*"
+          Link="fixtures\corpus\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyRainArchivesWorkerForTests" AfterTargets="Build">
+    <ItemGroup>
+      <_RainArchivesWorkerFiles Include="$(RainArchivesRoot)\src\RainArchives.Worker\bin\$(Configuration)\net10.0-windows\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RainArchivesWorkerFiles)"
+          DestinationFiles="@(_RainArchivesWorkerFiles->'$(OutDir)worker\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Error Condition="!Exists('$(OutDir)worker\RainArchives.Worker.exe')"
+           Text="The Rain Archives Worker test payload was not copied." />
+  </Target>
 
 </Project>

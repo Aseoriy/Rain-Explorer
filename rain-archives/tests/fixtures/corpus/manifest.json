@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "passwordIdentifier": "fixture-password-v1",
+  "checksumsFile": "generated-hashes.json",
+  "generators": {
+    "sevenZip": {
+      "name": "7-Zip Extra",
+      "version": "26.02 x64",
+      "releaseDate": "2026-06-25",
+      "officialDownloadPage": "https://www.7-zip.org/download.html",
+      "packageSha256": "081DF9E9311DFD9C9E0E98C1C80180B99BB51E4CB24156B5F3057FE3C259D70A",
+      "executableSha256": "35D4D69D7CD6CB44558F208C3B1334268013F9DAF82D2DDA848893A1C30C59C2"
+    },
+    "dotNetZip": {
+      "name": "DotNetZip 2025 command-line tool",
+      "version": "2025.2.3.0",
+      "usage": "Independent classic split-ZIP fixture generation only; never shipped or invoked by Rain Archives.",
+      "officialRepository": "https://github.com/DinoChiesa/dotnetzip-2025",
+      "release": "v2025.02.15",
+      "sourceCommit": "866343fa8508d120ebc4cb0f3a6cfe95b7e6987c",
+      "binaryPackageSha256": "9478CE160EBAFC33677A9FB0E5E16A6B4D5AFF50DCE5ACD9EA313FB2D4C8FD6E",
+      "sourcePackageSha256": "07E6097B7FB4FE04375C9B46E07AB1BC22BC0DFECA1A5537BF8EE6EA7E70902A",
+      "executableSha256": "0665EF2A0DCE4E358C032567352EFB9A60B869BE7D23FFFD99B30441D16F557D",
+      "license": "Apache-2.0",
+      "licenseSha256": "69849221BFB90053DE2134EF5E6D540287B4B98062326492F1F96F5DA685524B",
+      "noticeSha256": "03A6B79D704D7C47653907A91D323CFFABDC487E91463753922EBC63999A1188"
+    },
+    "rar": {
+      "name": "RAR command-line tool",
+      "version": "7.20.0 x64",
+      "usage": "Fixture generation only; never shipped or invoked by Rain Archives.",
+      "authenticodeSigner": "win.rar GmbH",
+      "executableSha256": "2CE9D9F8CD10E8CEB3A943E1464938ECAB682313F8E4525DF17068B3EAE5B05B"
+    }
+  },
+  "sourceTimestampUtc": "2026-01-02T03:04:06Z",
+  "sourceFiles": [
+    {
+      "path": "source/alpha.txt",
+      "length": 65,
+      "sha256": "42C82805FB9599A724D099683BB0AD73BA6931A5A859E5B5DD2F2BD43FB00868"
+    },
+    {
+      "path": "source/beta.txt",
+      "length": 17,
+      "sha256": "CF6E10CD1871B45A498F644ED8D37A6C935D89153745F5E4F3EEEC0354949A63"
+    },
+    {
+      "path": "source/classic-payload.bin",
+      "length": 393216,
+      "sha256": "652AF48580AD2F5C89F549B749B44A3AF5AE1917BA3F114800BFF235920A757C"
+    },
+    {
+      "path": "source/payload.bin",
+      "length": 16384,
+      "sha256": "EBB1B719A8CFE5681439D2A080BBDE1DAF5F52CA84CA58CBD47D3E0AD3A551CB"
+    },
+    {
+      "path": "source/unicode-雪.txt",
+      "length": 9,
+      "sha256": "B550ABF52B3500720734589CE534AE1E6F5CA0575D7A8E78BA1659972C3CCE3E"
+    }
+  ],
+  "fixtureGroups": {
+    "zip": [
+      "plain.zip",
+      "plain-truncated.zip",
+      "aes256.zip",
+      "zipcrypto.zip",
+      "stored-valid.zip",
+      "stored-corrupt-crc.zip",
+      "split.zip.001",
+      "classic-split.z01",
+      "classic-split.zip"
+    ],
+    "sevenZip": [
+      "solid.7z",
+      "encrypted.7z",
+      "header-encrypted.7z",
+      "split.7z.001"
+    ],
+    "rar": [
+      "plain.rar",
+      "plain-truncated.rar",
+      "solid.rar",
+      "header-encrypted.rar",
+      "split.part01.rar"
+    ],
+    "streams": [
+      "alpha-truncated.gz",
+      "sample.tar",
+      "sample.tar.gz",
+      "sample.tar.bz2",
+      "sample.tar.xz",
+      "alpha.txt.gz",
+      "alpha.txt.bz2",
+      "alpha.txt.xz"
+    ]
+  },
+  "expectedLimitations": {
+    "sevenZipEncryption": "Managed 7z encryption is accepted only for variants covered by the checked corpus; native-provider adoption remains a separate conformance gate.",
+    "multipartMutation": "Checked split ZIP, 7z, and RAR archives are list-only until every volume is identity-locked and fingerprinted.",
+    "encryptedBytes": "Encrypted archive bytes include random salts or initialization vectors; checked hashes are authoritative."
+  }
+}

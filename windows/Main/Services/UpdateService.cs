@@ -53,7 +53,7 @@ public static class UpdateService
                 return plus >= 0 ? info[..plus] : info;
             }
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            return v is null ? "1.2.3" : $"{v.Major}.{v.Minor}.{v.Build}";
+            return v is null ? "2.0.0-beta-1" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }
 

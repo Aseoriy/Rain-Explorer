@@ -56,7 +56,7 @@ public partial class SettingsView : UserControl
         else
         {
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            VersionText.Text = v is null ? "v1.2.3" : $"v{v.Major}.{v.Minor}.{v.Build}";
+            VersionText.Text = v is null ? "v2.0.0-beta-1" : $"v{v.Major}.{v.Minor}.{v.Build}";
         }
 
         ConfigPathText.Text = Path.Combine(
@@ -67,6 +67,7 @@ public partial class SettingsView : UserControl
 
         DataContext = SettingsStore.Instance.Settings;
         FontBox.SelectedItem = SettingsStore.Instance.Settings.FontFamily;
+        RefreshArchiveDefaultsStatus();
     }
 
     private void FontSearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -157,6 +158,55 @@ public partial class SettingsView : UserControl
         {
             CheckUpdatesButton.IsEnabled = true;
         }
+    }
+
+    private void ArchiveDefaults_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        ArchiveDefaultsButton.IsEnabled = false;
+        try
+        {
+            ArchiveAssociationRegistrationResult result =
+                ArchiveFileAssociationService.RegisterForCurrentUser();
+            if (result.Outcome == ArchiveAssociationRegistrationOutcome.Conflict)
+            {
+                ArchiveDefaultsStatusText.Text =
+                    "Rain Explorer's archive-handler identity is already owned by another registration. Nothing was changed.";
+                return;
+            }
+            if (result.Outcome != ArchiveAssociationRegistrationOutcome.Completed)
+            {
+                ArchiveDefaultsStatusText.Text =
+                    "Rain Explorer couldn't register its archive handler. Nothing changed your current defaults.";
+                return;
+            }
+
+            ArchiveDefaultsStatusText.Text =
+                ArchiveFileAssociationService.OpenWindowsDefaultAppsPage()
+                    ? "Ready. In Windows, press Set default once to use Rain Explorer for every listed archive type."
+                    : "Rain Explorer is registered, but Windows Settings couldn't open. Open Settings > Apps > Default apps to finish.";
+        }
+        finally
+        {
+            ArchiveDefaultsButton.IsEnabled = true;
+        }
+    }
+
+    private void RefreshArchiveDefaultsStatus()
+    {
+        ArchiveDefaultsStatusText.Text =
+            ArchiveFileAssociationService.GetRegistrationState() switch
+            {
+                ArchiveAssociationRegistrationState.Registered =>
+                    "Ready to apply. Choose Set as default, then press Set default once in Windows.",
+                ArchiveAssociationRegistrationState.NeedsRepair =>
+                    "Rain Explorer's registration needs repair. Choose Set as default to repair it.",
+                ArchiveAssociationRegistrationState.Conflict =>
+                    "Rain Explorer's archive-handler identity is owned by another registration. Nothing will be overwritten.",
+                ArchiveAssociationRegistrationState.Unavailable =>
+                    "Windows archive-handler registration isn't available in this session.",
+                _ =>
+                    "Choose Set as default. Windows requires one final Set default confirmation.",
+            };
     }
 
     private void OpenConfigFolder_Click(object sender, System.Windows.RoutedEventArgs e)

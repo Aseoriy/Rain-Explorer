@@ -1,0 +1,282 @@
+[
+  {
+    "Path": "archives/7z/encrypted.7z",
+    "Length": 286,
+    "Sha256": "14B1C187A61A2149B3BB864511AF3FED8EF89796D3DE8583B4391AA2A88A64B6"
+  },
+  {
+    "Path": "archives/7z/header-encrypted.7z",
+    "Length": 318,
+    "Sha256": "A268BB0F77C4638AC5E01CC63BE28AC1A163A14F387D5649BC944161335C970E"
+  },
+  {
+    "Path": "archives/7z/solid.7z",
+    "Length": 279,
+    "Sha256": "AD43359A6EFE94ADDEC1F6C4FF3ABC24473C1E3814461CCE8ACC9F4B102BB523"
+  },
+  {
+    "Path": "archives/7z/split.7z.001",
+    "Length": 2048,
+    "Sha256": "9A4333BBD6D1895F3B44A35EBEF5A2F5E85A5F111BCE5D5B9D008535AA64D26E"
+  },
+  {
+    "Path": "archives/7z/split.7z.002",
+    "Length": 2048,
+    "Sha256": "9EB919642550079991533E05C4C37BB396474B68922FE71459A63C3B948FDD7F"
+  },
+  {
+    "Path": "archives/7z/split.7z.003",
+    "Length": 2048,
+    "Sha256": "2E6E953BC2845C6E98FAD0BE6F3B6CFABD497AC1B557B43BFB22F3E295C34537"
+  },
+  {
+    "Path": "archives/7z/split.7z.004",
+    "Length": 2048,
+    "Sha256": "281D95D6AF3DBEC5830A302884462E6C12DCA388584FF45DD23EF36B848558AA"
+  },
+  {
+    "Path": "archives/7z/split.7z.005",
+    "Length": 2048,
+    "Sha256": "DA97870B843490C7C6FFC8219C508981CD84A1C5114CB7F769D04A5F66024B57"
+  },
+  {
+    "Path": "archives/7z/split.7z.006",
+    "Length": 2048,
+    "Sha256": "3266E27DFE38EFE0D1FCB91DA36962FD6A607D84D9F3E25310E101E8F61CB9A9"
+  },
+  {
+    "Path": "archives/7z/split.7z.007",
+    "Length": 2048,
+    "Sha256": "3B254674233230D956AB40339769EF6D0A631F20A6FD99517437C584EC85A2C1"
+  },
+  {
+    "Path": "archives/7z/split.7z.008",
+    "Length": 2048,
+    "Sha256": "D3D620E81DBBD1A245F561BA060C4ED732DA82E0E6448511087C0F588FEC13EB"
+  },
+  {
+    "Path": "archives/7z/split.7z.009",
+    "Length": 130,
+    "Sha256": "3DD67FF8E7AE55091057D8C23A170296029443C0195413F1E03A7C40DC1DE498"
+  },
+  {
+    "Path": "archives/rar/directory-no-crc.rar",
+    "Length": 73,
+    "Sha256": "383D913AC291ECF034D5EB953E1A7A399AD2B9DD27E01F3E772C82CEBA02C6C1"
+  },
+  {
+    "Path": "archives/rar/header-encrypted.rar",
+    "Length": 462,
+    "Sha256": "EBBF8A0E44619C049D1EB9186F51D7599C217FD2D4CE7827AE305E66296BE06F"
+  },
+  {
+    "Path": "archives/rar/plain-truncated.rar",
+    "Length": 120,
+    "Sha256": "BD1594A447A1A3F1E969E01A5B2394EEEF1B5DB85A70650EE13E3B0D4429DDDB"
+  },
+  {
+    "Path": "archives/rar/plain.rar",
+    "Length": 195,
+    "Sha256": "3AA3C9EBE814AF47DEE5FC4F990771002C4DA269EE02A5074E4D1E8293291DE5"
+  },
+  {
+    "Path": "archives/rar/solid.rar",
+    "Length": 268,
+    "Sha256": "2DC021E5559313CE9A8BCC46ACAF2880BF6115ADFC9ACCCDE107A35F21EE69F2"
+  },
+  {
+    "Path": "archives/rar/split.part01.rar",
+    "Length": 2048,
+    "Sha256": "D7869DAB45C729878BBE554A462C909941268C38A186838BE44E8E350A6DC353"
+  },
+  {
+    "Path": "archives/rar/split.part02.rar",
+    "Length": 2048,
+    "Sha256": "22BD14E2DC46AA8B58BC299C659AFC8427C3D49DC9B59767CA395580A312FF96"
+  },
+  {
+    "Path": "archives/rar/split.part03.rar",
+    "Length": 2048,
+    "Sha256": "20F03F5A0C4F7A0FFDDD570576EDD1DA6CDCA96BE19E371EF6AFB12E35544C0C"
+  },
+  {
+    "Path": "archives/rar/split.part04.rar",
+    "Length": 2048,
+    "Sha256": "A1DC3A18A77AFFBC1A5FA44BE0AA895CE3F3D646DAE99EA130AB22278659E80B"
+  },
+  {
+    "Path": "archives/rar/split.part05.rar",
+    "Length": 2048,
+    "Sha256": "98E3B2DDE84EB7FD14D173988A7C36E4F250D65EB99C14DB76B215CC652CB5AC"
+  },
+  {
+    "Path": "archives/rar/split.part06.rar",
+    "Length": 2048,
+    "Sha256": "34F0E3686C748AD56777B392529923BAC7315AE9D9848B8AE26125B37467D9B1"
+  },
+  {
+    "Path": "archives/rar/split.part07.rar",
+    "Length": 2048,
+    "Sha256": "D1461A83253EECA3D5AD84DA7CC87ADD3F441635B2946653D3FB78ECFD4E29A4"
+  },
+  {
+    "Path": "archives/rar/split.part08.rar",
+    "Length": 2048,
+    "Sha256": "B3090977316574691FEC4177BC3EC090469E5BAC6A5041C5622451FBACC8E32B"
+  },
+  {
+    "Path": "archives/rar/split.part09.rar",
+    "Length": 1374,
+    "Sha256": "83433FFCCC9086904A25BC2CDA2C3AF79F93653021DAC7FBF01E7212274AAD55"
+  },
+  {
+    "Path": "archives/streams/alpha-truncated.gz",
+    "Length": 87,
+    "Sha256": "E5D8A3CD8765310CE1DC6097CB3D29BFA2617297E62A854CDC2856C40754EAEF"
+  },
+  {
+    "Path": "archives/streams/alpha.txt.bz2",
+    "Length": 105,
+    "Sha256": "2A5996E35DC035B0892A6012797C269E3AE0E9793C8AD7AC346C29D155DA273C"
+  },
+  {
+    "Path": "archives/streams/alpha.txt.gz",
+    "Length": 95,
+    "Sha256": "66AEF7C9E6B6D2E966BF65DF1C49EAF8D4924DB62848D06EC75DBC8134839430"
+  },
+  {
+    "Path": "archives/streams/alpha.txt.xz",
+    "Length": 120,
+    "Sha256": "6F65C0FCB3C4263D6235D3C971B27D590A314067655346157CFDED7FEA9567AA"
+  },
+  {
+    "Path": "archives/streams/sample.tar",
+    "Length": 3072,
+    "Sha256": "38284F403E2FE1846CBA90ACCF88CD273A5A1FC04DA982747426A020FBE9CCCF"
+  },
+  {
+    "Path": "archives/streams/sample.tar.bz2",
+    "Length": 217,
+    "Sha256": "C1D3F44FAD9F8164C32AEC60659C1996714CBEEDDBFEC0B753BF858586D847E9"
+  },
+  {
+    "Path": "archives/streams/sample.tar.gz",
+    "Length": 204,
+    "Sha256": "8D3119EA84BF84A22789EBBC6D655B2F23F74F4B2679813F5E9AC2D3AB48ABC2"
+  },
+  {
+    "Path": "archives/streams/sample.tar.xz",
+    "Length": 232,
+    "Sha256": "EF0D1FAA15581FDFB91C5B79A95409D44DFA8EA621B7F4EAC85F87E3F4DF3202"
+  },
+  {
+    "Path": "archives/zip/aes256.zip",
+    "Length": 468,
+    "Sha256": "72368497C78A685A63BE3642DF54F8C1D4A5AE80F59137041A89BD770C9FBF43"
+  },
+  {
+    "Path": "archives/zip/classic-split.z01",
+    "Length": 65536,
+    "Sha256": "7CE0FC1204BDB664876B5E1E388278885ECE880EB216A5C59E912641BF6D5A7F"
+  },
+  {
+    "Path": "archives/zip/classic-split.z02",
+    "Length": 65536,
+    "Sha256": "1999F9CF0FAF0DA6E3EBA4F8BCD6AFED627B1D62C71D14B8B6DB8BE362667BE8"
+  },
+  {
+    "Path": "archives/zip/classic-split.z03",
+    "Length": 65536,
+    "Sha256": "C52109C240ADB8E77C7B27F57EABBD953B7F1E5C079DEE97150366BFEA1F4B8C"
+  },
+  {
+    "Path": "archives/zip/classic-split.z04",
+    "Length": 65536,
+    "Sha256": "A6DBC18559B4CF2437E2348C129604B5E63197E1AA9E05C2C05C651C9E126F5C"
+  },
+  {
+    "Path": "archives/zip/classic-split.z05",
+    "Length": 65536,
+    "Sha256": "C888DB1A60FFA1B1435F7CF561773C66D6F0D09679DD6AB2770A5E30151F928B"
+  },
+  {
+    "Path": "archives/zip/classic-split.z06",
+    "Length": 65536,
+    "Sha256": "EBDF856BFE554E4F25329A7CD41392694B0F0EF5D856802DEEE8DA1AA7B6DA42"
+  },
+  {
+    "Path": "archives/zip/classic-split.zip",
+    "Length": 255,
+    "Sha256": "6BE8D8DDD600DA5EF35365F1628D70FD7F659365998A037D66A59BBF759CF094"
+  },
+  {
+    "Path": "archives/zip/plain-truncated.zip",
+    "Length": 256,
+    "Sha256": "FEDAEE4BA7F5D712F0A34001FD9B356D92C56E4729A580D858D99ECDFD969C0B"
+  },
+  {
+    "Path": "archives/zip/plain.zip",
+    "Length": 513,
+    "Sha256": "EC2B18237115E295366F6DE410B0588D85F1FD274910244399554235B4EEB541"
+  },
+  {
+    "Path": "archives/zip/split.zip.001",
+    "Length": 2048,
+    "Sha256": "BE3071327E4EFE0AF344F83602BC9B3D285C09CBE2E72266DBAEAF9EB10A96FB"
+  },
+  {
+    "Path": "archives/zip/split.zip.002",
+    "Length": 2048,
+    "Sha256": "90D5D70D7A39FAA739FCA7D6DF09283E0C68E061970D8CE5FF688A6C84A18BE1"
+  },
+  {
+    "Path": "archives/zip/split.zip.003",
+    "Length": 2048,
+    "Sha256": "3241E6BF154D0C33BC80A5ACA282A0D94566F68FD57B21EDE6C7FB9D1EAB6D6D"
+  },
+  {
+    "Path": "archives/zip/split.zip.004",
+    "Length": 2048,
+    "Sha256": "410D421BBD8183710BD4A8132ACCFCDC2A7FCFD49AEE73A474B0DC3E41604D74"
+  },
+  {
+    "Path": "archives/zip/split.zip.005",
+    "Length": 2048,
+    "Sha256": "EBFF433622FC39F7A4381BBC8C1C16C71EBF885DCA8CBC4195D547CE98E48D43"
+  },
+  {
+    "Path": "archives/zip/split.zip.006",
+    "Length": 2048,
+    "Sha256": "17633D3B93362B3BD688EA7F6FEEDF5955194417ADACFD313FCB9C29583743F0"
+  },
+  {
+    "Path": "archives/zip/split.zip.007",
+    "Length": 2048,
+    "Sha256": "827AC7DB8017000AF6BD0645BEEB3AE8E7BA044F8A0F0E21BD466A29CBE21F1D"
+  },
+  {
+    "Path": "archives/zip/split.zip.008",
+    "Length": 2048,
+    "Sha256": "23C31ED239A019E2A915639BD6EAAB05504DC5BD6962DFDB8BF773222CC4F9FB"
+  },
+  {
+    "Path": "archives/zip/split.zip.009",
+    "Length": 156,
+    "Sha256": "F946CB678F4A71026D08FEC4F185483FF5C66ABB515BF05D81818A3662EFDAED"
+  },
+  {
+    "Path": "archives/zip/stored-corrupt-crc.zip",
+    "Length": 217,
+    "Sha256": "E2A7B54506D09C27FBF05B58A649585F75B76FDC06A49E1595D30113AA683A41"
+  },
+  {
+    "Path": "archives/zip/stored-valid.zip",
+    "Length": 217,
+    "Sha256": "31E2D5E469FF7313A1FE16D16F9F3CCF27E08D9F9149F6E085506C73EE583C12"
+  },
+  {
+    "Path": "archives/zip/zipcrypto.zip",
+    "Length": 229,
+    "Sha256": "181C45BCCAA82F3CC3C93E668C216114FBB011F1024C6C6A9A6C2C0AFC369638"
+  }
+]

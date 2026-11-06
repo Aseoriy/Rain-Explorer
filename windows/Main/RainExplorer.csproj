@@ -20,18 +20,61 @@
     <Company>Aseoriy</Company>
     <Authors>Aseoriy</Authors>
     <Copyright>© 2026 Aseoriy</Copyright>
-    <Version>1.2.3</Version>
-    <AssemblyVersion>1.2.3.0</AssemblyVersion>
-    <FileVersion>1.2.3.0</FileVersion>
+    <Version>2.0.0-beta-1</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+
+    <!-- Development source root only. Release packaging can override this with a pinned package root. -->
+    <RainArchivesRoot Condition="'$(RainArchivesRoot)' == ''">$(MSBuildThisFileDirectory)..\..\rain-archives</RainArchivesRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="Assets\rain-cloud.png" />
+    <None Update="Assets\RainArchive.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SharpCompress" Version="0.49.1" />
     <PackageReference Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(RainArchivesRoot)\src\RainArchives.Contracts\RainArchives.Contracts.csproj" />
+    <ProjectReference Include="$(RainArchivesRoot)\src\RainArchives.Client\RainArchives.Client.csproj" />
+  </ItemGroup>
+
+  <!-- The Worker is a build/package payload, never an application API reference. -->
+  <Target Name="BuildAndCopyRainArchivesWorker" AfterTargets="Build">
+    <PropertyGroup>
+      <_RainArchivesWorkerProject>$(RainArchivesRoot)\src\RainArchives.Worker\RainArchives.Worker.csproj</_RainArchivesWorkerProject>
+      <_RainArchivesWorkerOutput>$(RainArchivesRoot)\src\RainArchives.Worker\bin\$(Configuration)\net10.0-windows</_RainArchivesWorkerOutput>
+    </PropertyGroup>
+    <MSBuild Projects="$(_RainArchivesWorkerProject)" Targets="Build" BuildInParallel="false"
+             Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <_RainArchivesWorkerFiles Include="$(_RainArchivesWorkerOutput)\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RainArchivesWorkerFiles)"
+          DestinationFiles="@(_RainArchivesWorkerFiles->'$(OutDir)worker\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Error Condition="!Exists('$(OutDir)worker\RainArchives.Worker.exe')"
+           Text="The Rain Archives Worker build did not produce RainArchives.Worker.exe." />
+  </Target>
+
+  <Target Name="PublishRainArchivesWorker" AfterTargets="Publish">
+    <PropertyGroup>
+      <_RainArchivesWorkerPublishDirectory>$([System.IO.Path]::Combine('$(PublishDir)', 'worker'))</_RainArchivesWorkerPublishDirectory>
+      <_RainArchivesWorkerPublishProperties>Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishReadyToRun=$(PublishReadyToRun);PublishDir=$(_RainArchivesWorkerPublishDirectory)</_RainArchivesWorkerPublishProperties>
+    </PropertyGroup>
+    <Error Condition="'$(PublishSingleFile)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'"
+           Text="Rain Explorer has not validated single-file, trimmed, or AOT packaging for the isolated Rain Archives Worker." />
+    <MSBuild Projects="$(RainArchivesRoot)\src\RainArchives.Worker\RainArchives.Worker.csproj"
+             Targets="Publish" BuildInParallel="false"
+             Properties="$(_RainArchivesWorkerPublishProperties)" />
+    <Error Condition="!Exists('$(_RainArchivesWorkerPublishDirectory)\RainArchives.Worker.exe')"
+           Text="The Rain Archives Worker publish did not produce RainArchives.Worker.exe." />
+  </Target>
 
 </Project>

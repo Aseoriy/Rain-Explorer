@@ -17,6 +17,13 @@ public static class FileManagerActivation
     internal static IReadOnlyList<string> LaunchCommand()
     {
         string assembly = typeof(FileManagerActivation).Assembly.Location;
+        string? appImage = Environment.GetEnvironmentVariable("APPIMAGE");
+        string? appDir = Environment.GetEnvironmentVariable("APPDIR");
+        // The mounted payload disappears on exit; activation must reopen the image.
+        // Ignore AppImage variables inherited from an unrelated parent application.
+        if (appImage is not null && Path.IsPathFullyQualified(appImage) && File.Exists(appImage)
+            && appDir is not null && Path.IsPathFullyQualified(appDir) && PathUtil.IsStrictlyInside(appDir, assembly))
+            return [appImage];
         string appHost = Path.Combine(Path.GetDirectoryName(assembly)!, "RainExplorer");
         if (File.Exists(appHost)) return [appHost];
         string? dotnet = Path.GetFileName(Environment.ProcessPath) == "dotnet" ? Environment.ProcessPath

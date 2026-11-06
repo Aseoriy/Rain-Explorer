@@ -53,18 +53,6 @@ public sealed class ProcessLauncherTests
     }
 
     [Fact]
-    public void OpenWithKeepsAPathContainingSpacesAsOneArgument()
-    {
-        string path = @"E:\Some Folder\Probe App.exe";
-
-        ProcessStartInfo start = ProcessLauncher.CreateOpenWithStartInfo(path);
-
-        Assert.True(start.UseShellExecute);
-        Assert.Equal("rundll32.exe", start.FileName);
-        Assert.Equal(["shell32.dll,OpenAs_RunDLL", path], start.ArgumentList);
-    }
-
-    [Fact]
     public void LaunchedExecutableReceivesItsContainingDirectoryIncludingSpaces()
     {
         string root = Path.Combine(Path.GetTempPath(), $"Rain Explorer launch test {Guid.NewGuid():N}");

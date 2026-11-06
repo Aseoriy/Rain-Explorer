@@ -1,7 +1,6 @@
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -251,6 +250,7 @@ public partial class PaneView : UserControl
 
     private void FileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        _tab?.UpdateArchiveSelection(SelectedItems());
         if (!SettingsStore.Instance.Settings.ShowPreviewPane) return;
         // Debounce so fast arrow-key scrubbing doesn't load every intermediate file.
         _previewTimer ??= CreatePreviewTimer();
@@ -269,7 +269,11 @@ public partial class PaneView : UserControl
     {
         if (Preview is null) return;
         var sel = FileList.SelectedItems;
-        Preview.ShowItem(sel.Count == 1 ? sel[0] as FileItem : null, sel.Count);
+        var previewItem = sel.Count == 1 ? sel[0] as FileItem : null;
+        if (previewItem is { IsArchiveEntry: true } && _tab is { IsArchiveView: true })
+            Preview.ShowArchiveItem(_tab, previewItem);
+        else
+            Preview.ShowItem(previewItem is { IsArchiveEntry: false } ? previewItem : null, sel.Count);
     }
 
     private void PreviewSplitter_DragCompleted(object sender,
@@ -348,9 +352,11 @@ public partial class PaneView : UserControl
         flyout.Opacity = 0;
         transform.Y = -6;
         flyout.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1,
-            TimeSpan.FromMilliseconds(150)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+            TimeSpan.FromMilliseconds(150))
+        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
         transform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-6, 0,
-            TimeSpan.FromMilliseconds(170)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+            TimeSpan.FromMilliseconds(170))
+        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
     }
 
     private void CloseToolbarPopups()
@@ -432,10 +438,11 @@ public partial class PaneView : UserControl
         if (Keyboard.FocusedElement is TextBox) return;            // inline rename in progress
         if (ItemFromPoint<FileItem>(e) is not { } item) return;
         if (FileList.SelectedItems.Count > 1) return;              // don't hijack multi-select
-        if (item.IsDirectory && SettingsStore.Instance.Settings.OpenFoldersInNewTab)
-            _vm?.NewTab(item.FullPath, activate: true);
+        if (item.IsDirectory && SettingsStore.Instance.Settings.OpenFoldersInNewTab
+            && TryGetTabTarget(item, out string target))
+            _vm?.NewTab(target, activate: true);
         else
-            _vm?.SelectedTab?.Open(item);
+            OpenItem(item);
     }
 
     /// <summary>Open a folder in a new tab of this pane (used by the breadcrumb context menu).</summary>
@@ -443,6 +450,7 @@ public partial class PaneView : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        Preview?.Clear();
         if (_vm is not null)
         {
             _vm.ActiveContentsChanged -= PlayListAnimation;
@@ -668,9 +676,18 @@ public partial class PaneView : UserControl
     // immediately instead of fading from zero and feeling like the folder reloaded.
     private void OnSelectedTabChanged()
     {
-        if (_tab is not null) _tab.PropertyChanged -= OnTabPropertyChanged;
+        Preview?.Clear();
+        if (_tab is not null)
+        {
+            _tab.UpdateArchiveSelection([]);
+            _tab.PropertyChanged -= OnTabPropertyChanged;
+        }
         _tab = _vm?.SelectedTab;
-        if (_tab is not null) _tab.PropertyChanged += OnTabPropertyChanged;
+        if (_tab is not null)
+        {
+            _tab.PropertyChanged += OnTabPropertyChanged;
+            _tab.UpdateArchiveSelection(SelectedItems());
+        }
         FileList.BeginAnimation(OpacityProperty, null);
         FileList.Opacity = 1;
         ListTransform.BeginAnimation(TranslateTransform.YProperty, null);
@@ -722,6 +739,7 @@ public partial class PaneView : UserControl
     // ---- Navigation animation (subtle fade + slide up) ---------------------
     private void PlayListAnimation()
     {
+        Preview?.Clear();
         var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
@@ -781,20 +799,63 @@ public partial class PaneView : UserControl
         _vm?.SelectedTab?.SortCommand.Execute(key);
     }
 
+    private void ArchivePreviousPage_Click(object sender, RoutedEventArgs e) =>
+        _tab?.MoveArchivePage(-1);
+
+    private void ArchiveNextPage_Click(object sender, RoutedEventArgs e) =>
+        _tab?.MoveArchivePage(1);
+
     // ---- Open on double-click ----------------------------------------------
     private void FileList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (FileList.SelectedItem is not FileItem item) return;
         // Optionally open folders in a new tab instead of navigating in place.
-        if (item.IsDirectory && SettingsStore.Instance.Settings.OpenFoldersInNewTab)
-            _vm?.NewTab(item.FullPath, activate: true);
+        if (item.IsDirectory && SettingsStore.Instance.Settings.OpenFoldersInNewTab
+            && TryGetTabTarget(item, out string target))
+            _vm?.NewTab(target, activate: true);
         else
         {
             // In-place folder navigation: the second click's trailing mouse event can
             // land on the freshly-loaded list and select whatever row is now under the
             // cursor. Clear that stray selection once the new folder finishes loading.
             if (item.IsDirectory) _clearSelectionAfterNav = true;
-            _vm?.SelectedTab?.Open(item);
+            OpenItem(item);
+        }
+    }
+
+    private async void OpenItem(FileItem item)
+    {
+        TabViewModel? tab = _vm?.SelectedTab;
+        if (tab is null) return;
+        if (!tab.IsArchiveView || !item.IsArchiveEntry || item.IsDirectory)
+        {
+            tab.Open(item);
+            return;
+        }
+
+        ArchiveNestedOpenOutcome outcome = await tab.OpenNestedArchiveAsync(item);
+        if (outcome != ArchiveNestedOpenOutcome.PasswordRequired
+            || !ReferenceEquals(_vm?.SelectedTab, tab)
+            || !tab.IsArchiveView)
+            return;
+
+        var dialog = new ArchivePasswordDialog("selected nested archive")
+        {
+            Owner = Window.GetWindow(this),
+        };
+        char[]? password = null;
+        try
+        {
+            if (dialog.ShowDialog() != true) return;
+            password = dialog.TakePassword();
+            await tab.OpenNestedArchiveAsync(item, password);
+            password = null; // ownership transferred to the adapter
+        }
+        finally
+        {
+            if (password is not null) Array.Clear(password);
+            dialog.ClearCapturedPassword();
+            FileList.Focus();
         }
     }
 
@@ -802,9 +863,10 @@ public partial class PaneView : UserControl
     private void FileList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Middle) return;
-        if (ItemFromPoint<FileItem>(e) is { IsDirectory: true } dir)
+        if (ItemFromPoint<FileItem>(e) is { IsDirectory: true } dir
+            && TryGetTabTarget(dir, out string target))
         {
-            _vm?.NewTab(dir.FullPath, activate: false);
+            _vm?.NewTab(target, activate: false);
             e.Handled = true;
         }
     }
@@ -1271,9 +1333,11 @@ public partial class PaneView : UserControl
             ProjectsFlyout.Opacity = 0;
             ProjectsFlyoutTransform.Y = -6;
             ProjectsFlyout.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1,
-                TimeSpan.FromMilliseconds(150)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+                TimeSpan.FromMilliseconds(150))
+            { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
             ProjectsFlyoutTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-6, 0,
-                TimeSpan.FromMilliseconds(170)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+                TimeSpan.FromMilliseconds(170))
+            { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
             return;
         }
 
@@ -1628,7 +1692,8 @@ public partial class PaneView : UserControl
             return;
         }
 
-        if (!_maybeDrag || e.LeftButton != MouseButtonState.Pressed) return;
+        if (!_maybeDrag || e.LeftButton != MouseButtonState.Pressed
+            || _tab?.CanUsePhysicalFileCommands != true) return;
         if (Keyboard.FocusedElement is TextBox) return;   // inline rename in progress
 
         var pos = e.GetPosition(null);
@@ -2889,7 +2954,20 @@ public partial class PaneView : UserControl
     // ===================== File operations (context menu) ====================
 
     private List<FileItem> SelectedItems() => FileList.SelectedItems.Cast<FileItem>().ToList();
-    private List<string> SelectedPaths() => SelectedItems().Select(i => i.FullPath).ToList();
+    private List<string> SelectedPaths() => SelectedItems()
+        .Where(item => item.HasPhysicalPath)
+        .Select(item => item.FullPath)
+        .ToList();
+
+    private bool TryGetTabTarget(FileItem item, out string target)
+    {
+        target = string.Empty;
+        if (item.IsArchiveEntry)
+            return _tab?.TryGetArchiveTarget(item, out target) == true;
+        if (!item.IsDirectory || !item.HasPhysicalPath) return false;
+        target = item.FullPath;
+        return true;
+    }
     private void SetStatus(string msg) { if (_tab is not null) _tab.Status = msg; }
 
     // Right-click selects the row under the cursor (unless it's already in the selection),
@@ -2905,39 +2983,63 @@ public partial class PaneView : UserControl
         }
     }
 
-    private static readonly HashSet<string> ArchiveExts =
-        new(StringComparer.OrdinalIgnoreCase) { ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2" };
-
     private void FileContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         _fileContextMenuOpen = true;
         var items = SelectedItems();
         int n = items.Count;
         bool has = n > 0;
+        bool physical = _tab?.CanUsePhysicalFileCommands == true
+            && items.All(item => item.HasPhysicalPath);
         bool singleDir = n == 1 && items[0].IsDirectory;
         bool singleFile = n == 1 && !items[0].IsDirectory;
-        bool anyZip = items.Any(i => !i.IsDirectory && ArchiveExts.Contains(Path.GetExtension(i.Name)));
         bool anyDir = items.Any(i => i.IsDirectory);
+        bool physicalArchiveSelection = physical
+            && has
+            && !anyDir
+            && n <= PhysicalArchiveExtractionService.MaximumArchiveCount;
+        bool archive = _tab?.IsArchiveView == true;
 
-        MenuOpen.IsEnabled = n == 1;
-        MenuOpenNewTab.IsEnabled = singleDir;
-        MenuOpenWith.IsEnabled = singleFile;
-        MenuOpenTerminal.IsEnabled = _tab is not null;
+        _tab?.UpdateArchiveSelection(items);
+        MenuArchiveOperationSeparator.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
+        MenuArchiveIntegrity.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
+        MenuArchiveExtract.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
+        MenuArchiveRebuildCopy.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
+        MenuNestedArchiveOpen.Visibility = archive && singleFile
+            ? Visibility.Visible : Visibility.Collapsed;
+        MenuArchiveIntegrity.IsEnabled = archive && _tab?.CanTestArchiveIntegrity == true;
+        MenuArchiveExtract.IsEnabled = archive && _tab?.CanExtractArchiveSelection == true;
+        MenuArchiveRebuildCopy.IsEnabled = archive && _tab?.CanRebuildArchiveCopy == true;
+        MenuNestedArchiveOpen.IsEnabled = archive && singleFile
+            && _tab?.CanOpenNestedArchive(items[0]) == true;
 
-        BuildPinMenu(items.Where(i => i.IsDirectory).ToList());
-        MenuCut.IsEnabled = has;
-        MenuCopy.IsEnabled = has;
-        MenuCopyPath.IsEnabled = has;
-        MenuPaste.IsEnabled = ClipboardHasFiles();
-        MenuCompress.IsEnabled = has;
-        MenuExtract.IsEnabled = anyZip;
-        MenuShortcut.IsEnabled = has;
-        MenuRename.IsEnabled = n == 1;
-        MenuDelete.IsEnabled = has;
-        MenuProperties.IsEnabled = n == 1;
+        MenuOpen.IsEnabled = n == 1 && (physical || items[0].IsDirectory);
+        MenuOpenNewTab.IsEnabled = singleDir && TryGetTabTarget(items[0], out _);
+        MenuOpenWith.IsEnabled = physical && singleFile;
+        MenuOpenTerminal.IsEnabled = physical;
+
+        BuildPinMenu(items.Where(i => i.IsDirectory && i.HasPhysicalPath).ToList());
+        MenuCut.IsEnabled = physical && has;
+        MenuCopy.IsEnabled = physical && has;
+        MenuCopyPath.IsEnabled = has && items.All(item => item.HasPhysicalPath);
+        MenuPaste.IsEnabled = physical && ClipboardHasFiles();
+        MenuCreateArchive.IsEnabled = physical && has;
+        // Every bounded ordinary-file selection reaches Worker content detection.
+        // A filename extension is neither required nor trusted as archive authority.
+        MenuExtract.IsEnabled = physicalArchiveSelection;
+        MenuExtractTo.IsEnabled = physicalArchiveSelection;
+        MenuShortcut.IsEnabled = physical && has;
+        MenuPin.IsEnabled = physical && singleDir;
+        MenuRename.IsEnabled = physical && n == 1;
+        MenuDelete.IsEnabled = physical && has;
+        MenuNewFolder.IsEnabled = physical;
+        MenuNewFile.IsEnabled = physical;
+        MenuProperties.IsEnabled = physical && n == 1;
+        MenuShowMore.IsEnabled = physical;
         MenuGit.Visibility = SettingsStore.Instance.Settings.GitIntegrationEnabled
             ? Visibility.Visible
             : Visibility.Collapsed;
+        MenuGit.IsEnabled = physical;
 
         // Native shell items are prepared only if the user opens "Show more options".
         // Shell extensions can do arbitrary work in-process, so loading them for every
@@ -3007,7 +3109,12 @@ public partial class PaneView : UserControl
 
     private void Open_Click(object sender, RoutedEventArgs e)
     {
-        if (FileList.SelectedItem is FileItem item) _vm?.SelectedTab?.Open(item);
+        if (FileList.SelectedItem is FileItem item) OpenItem(item);
+    }
+
+    private void NestedArchiveOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (FileList.SelectedItem is FileItem item) OpenItem(item);
     }
 
     // ---- Cut / Copy / Paste via the real Windows clipboard (interops w/ Explorer) ----
@@ -3016,6 +3123,7 @@ public partial class PaneView : UserControl
 
     private void ClipboardPut(bool cut)
     {
+        if (_tab?.CanUsePhysicalFileCommands != true) return;
         var paths = SelectedPaths();
         if (paths.Count == 0) return;
 
@@ -3033,7 +3141,7 @@ public partial class PaneView : UserControl
 
     private async void PasteFromClipboard()
     {
-        if (_tab is null) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands) return;
         var tab = _tab;
         IDataObject? data;
         try { data = Clipboard.GetDataObject(); } catch { return; }
@@ -3060,7 +3168,7 @@ public partial class PaneView : UserControl
 
     private async void DeleteSelected()
     {
-        if (_tab is null || _fileOperationInProgress) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress) return;
         var tab = _tab;
         var paths = SelectedPaths();
         if (paths.Count == 0) return;
@@ -3149,10 +3257,19 @@ public partial class PaneView : UserControl
             return;
         }
 
-        // Shift+F10 -> native Windows shell menu.
+        // Shift+F10 -> keep archive entries in the WPF menu; physical folders/files
+        // continue using the native Windows shell menu.
         if (e.Key == Key.F10 && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
         {
-            ShowNativeMenu();
+            if (_tab.IsArchiveView || _tab.IsNetworkServer)
+            {
+                if (FileList.ContextMenu is { } menu)
+                    menu.IsOpen = true;
+            }
+            else
+            {
+                ShowNativeMenu();
+            }
             e.Handled = true;
             return;
         }
@@ -3166,13 +3283,36 @@ public partial class PaneView : UserControl
                 case Key.V: PasteFromClipboard(); e.Handled = true; break;
             }
         }
+        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)
+                 && _tab.IsArchiveView)
+        {
+            switch (e.Key)
+            {
+                case Key.I:
+                    ArchiveIntegrity_Click(FileList, new RoutedEventArgs());
+                    e.Handled = true;
+                    break;
+                case Key.E:
+                    ArchiveExtract_Click(FileList, new RoutedEventArgs());
+                    e.Handled = true;
+                    break;
+            }
+        }
         else if (Keyboard.Modifiers == ModifierKeys.None)
         {
             switch (e.Key)
             {
+                case Key.Enter:
+                    if (FileList.SelectedItem is FileItem openItem) OpenItem(openItem);
+                    e.Handled = true;
+                    break;
                 case Key.Delete: DeleteSelected(); e.Handled = true; break;
                 case Key.F2: BeginRename(); e.Handled = true; break;
                 case Key.Back: _tab.UpCommand.Execute(null); e.Handled = true; break;
+                case Key.PageUp when _tab.IsArchiveView:
+                    _tab.MoveArchivePage(-1); e.Handled = true; break;
+                case Key.PageDown when _tab.IsArchiveView:
+                    _tab.MoveArchivePage(1); e.Handled = true; break;
                 case Key.Space:
                     SettingsStore.Instance.Settings.ShowPreviewPane =
                         !SettingsStore.Instance.Settings.ShowPreviewPane;
@@ -3201,9 +3341,11 @@ public partial class PaneView : UserControl
 
     private async void BeginRename()
     {
-        if (_tab is null || _fileOperationInProgress || FileList.SelectedItems.Count != 1) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress
+            || FileList.SelectedItems.Count != 1) return;
         var tab = _tab;
         var item = (FileItem)FileList.SelectedItem;
+        if (!item.HasPhysicalPath) return;
 
         if (SettingsStore.Instance.Settings.RenameMode == RenameMode.Inline)
         {
@@ -3253,7 +3395,7 @@ public partial class PaneView : UserControl
     // ---- New folder (dialog or inline, per Settings) ----
     private async void NewFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is null) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands) return;
 
         if (SettingsStore.Instance.Settings.RenameMode == RenameMode.Inline)
         {
@@ -3291,7 +3433,8 @@ public partial class PaneView : UserControl
 
     private void OpenSelectedProperties()
     {
-        if (FileList.SelectedItem is not FileItem item) return;
+        if (FileList.SelectedItem is not FileItem { HasPhysicalPath: true } item
+            || _tab?.CanUsePhysicalFileCommands != true) return;
         var dlg = new PropertiesDialog(item) { Owner = Window.GetWindow(this) };
         dlg.ShowDialog();
         if (dlg.Changed) _ = _tab?.ReloadAfterOperationAsync();
@@ -3300,7 +3443,8 @@ public partial class PaneView : UserControl
     // ---- First-class Git actions -------------------------------------------
     private async void GitMenu_SubmenuOpened(object sender, RoutedEventArgs e)
     {
-        if (!SettingsStore.Instance.Settings.GitIntegrationEnabled) return;
+        if (_tab?.CanUsePhysicalFileCommands != true
+            || !SettingsStore.Instance.Settings.GitIntegrationEnabled) return;
 
         _gitMenuCts?.Cancel();
         _gitMenuCts?.Dispose();
@@ -3607,6 +3751,7 @@ public partial class PaneView : UserControl
 
     private void PrepareShowMoreOptions(MenuItem? more = null)
     {
+        if (_tab?.CanUsePhysicalFileCommands != true) return;
         more ??= MenuShowMore;
         if (_shellSession is not null || _shellMenuPreparationQueued) return;
 
@@ -3682,9 +3827,10 @@ public partial class PaneView : UserControl
         MenuShowMore.Items.Add(new MenuItem { Header = "Loading…", IsEnabled = false });
     }
 
-    // Shift+F10 still pops the raw OS menu (full fidelity).
+    // Physical Shift+F10 still pops the raw OS menu (full fidelity).
     private void ShowNativeMenu()
     {
+        if (_tab?.CanUsePhysicalFileCommands != true) return;
         var paths = SelectedPaths();
         if (paths.Count == 0 && _tab is not null && Directory.Exists(_tab.CurrentPath))
             paths = new List<string> { _tab.CurrentPath };
@@ -3695,6 +3841,7 @@ public partial class PaneView : UserControl
     // ---- Pin / unpin selected folders to a chosen sidebar list ------------
     private void Pin_Click(object sender, RoutedEventArgs e)
     {
+        if (_tab?.CanUsePhysicalFileCommands != true) return;
         if (sender is not MenuItem { Tag: PinMenuTarget target }) return;
         e.Handled = true;
         var dirs = SelectedItems().Where(i => i.IsDirectory).ToList();
@@ -3711,22 +3858,31 @@ public partial class PaneView : UserControl
     // ---- Open in new tab / open with / terminal ----------------------------
     private void OpenNewTab_Click(object sender, RoutedEventArgs e)
     {
-        if (FileList.SelectedItem is FileItem { IsDirectory: true } dir)
-            _vm?.NewTab(dir.FullPath, activate: true);
+        if (FileList.SelectedItem is FileItem { IsDirectory: true } dir
+            && TryGetTabTarget(dir, out string target))
+            _vm?.NewTab(target, activate: true);
     }
 
     private void OpenWith_Click(object sender, RoutedEventArgs e)
     {
-        if (FileList.SelectedItem is not FileItem item || item.IsDirectory) return;
-        try
+        if (FileList.SelectedItem is not FileItem item || item.IsDirectory || !item.HasPhysicalPath) return;
+        Window? owner = Window.GetWindow(this);
+        if (owner is null)
         {
-            Process.Start(ProcessLauncher.CreateOpenWithStartInfo(item.FullPath));
+            SetStatus("⚠️ Windows could not open the app chooser.");
+            return;
         }
-        catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
+        if (!OpenWithDialogService.TryShow(
+                new WindowInteropHelper(owner).Handle,
+                item.FullPath,
+                out string? error)
+            && error is not null)
+            SetStatus($"⚠️ {error}");
     }
 
     private void OpenTerminal_Click(object sender, RoutedEventArgs e)
     {
+        if (_tab?.CanUsePhysicalFileCommands != true) return;
         string? dir = FileList.SelectedItem is FileItem { IsDirectory: true } d
             ? d.FullPath : _tab?.CurrentPath;
         if (string.IsNullOrEmpty(dir)) return;
@@ -3736,6 +3892,7 @@ public partial class PaneView : UserControl
     // ---- Copy as path (quoted, newline-separated) --------------------------
     private void CopyPath_Click(object sender, RoutedEventArgs e)
     {
+        if (_tab?.IsFolderView != true) return;
         var paths = SelectedPaths();
         if (paths.Count == 0) return;
         try { Clipboard.SetText(string.Join(Environment.NewLine, paths.Select(p => $"\"{p}\""))); }
@@ -3745,7 +3902,7 @@ public partial class PaneView : UserControl
     // ---- Create .lnk shortcut(s) in the current folder ---------------------
     private void CreateShortcut_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is null) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands) return;
         var items = SelectedItems();
         if (items.Count == 0) return;
         try
@@ -3767,68 +3924,77 @@ public partial class PaneView : UserControl
         catch (Exception ex) { SetStatus($"⚠️ {ex.Message}"); }
     }
 
-    // ---- Compress selection to a .zip in the current folder ----------------
-    private async void Compress_Click(object sender, RoutedEventArgs e)
+    // ---- Managed archive creation through the authenticated Worker ---------
+    private async void CreateArchive_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is null || _fileOperationInProgress) return;
-        var tab = _tab;
-        var items = SelectedItems();
-        if (items.Count == 0) return;
-
-        string baseName = items.Count == 1
-            ? Path.GetFileNameWithoutExtension(items[0].Name)
-            : Path.GetFileName(_tab.CurrentPath.TrimEnd(Path.DirectorySeparatorChar));
-        if (string.IsNullOrEmpty(baseName)) baseName = "Archive";
-        string zipPath = FileOperationsService.UniquePath(
-            Path.Combine(_tab.CurrentPath, baseName + ".zip"));
-
-        var act = Activity.Begin("Compress",
-            $"{items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}", "package");
-        using var control = new CompressionControl();
-        Activity.AttachControls(act, control.Cancel, control.TogglePause);
-        tab.BeginKnownFileOperation();
-        _fileOperationInProgress = true;
-        SetStatus($"Compressing… {Path.GetFileName(zipPath)}");
-
-        var progress = new Progress<CompressionProgress>(p =>
+        if (_tab is not { CanUsePhysicalFileCommands: true } tab
+            || _fileOperationInProgress)
+            return;
+        IReadOnlyList<FileItem> selected = SelectedItems();
+        if (!ArchiveWriteValidation.TryBuildSources(
+                selected.Select(item => (item.FullPath, item.IsDirectory)),
+                out IReadOnlyList<ArchiveCreationSource> initialSources)
+            || !ArchiveWriteValidation.TryValidateSourceRoots(initialSources))
         {
-            if (p.IsScanning)
+            SetStatus("⚠️ Select one or more ordinary physical files or folders with distinct names.");
+            return;
+        }
+
+        _fileOperationInProgress = true;
+        try
+        {
+            SetStatus("Checking managed archive formats with the connected Worker…");
+            ArchiveCreationCapabilitySnapshot capabilities =
+                await tab.LoadArchiveCreationCapabilitiesAsync();
+            if (!ReferenceEquals(_tab, tab) || !tab.CanUsePhysicalFileCommands) return;
+            IReadOnlyList<ArchiveCreationFormatOption> formats =
+                CreateArchiveDialog.CompatibleFormats(capabilities, initialSources);
+            if (formats.Count == 0)
             {
-                Activity.ReportProgress(act, null, "Scanning files…");
+                SetStatus(ArchiveWriteCapabilityStatus(capabilities.State, rebuild: false));
                 return;
             }
 
-            int current = p.TotalFiles == 0
-                ? 0
-                : Math.Min(p.CompletedFiles + 1, p.TotalFiles);
-            string detail = p.TotalFiles == 0
-                ? "Creating archive…"
-                : $"Compressing {current}/{p.TotalFiles} · {Path.GetFileName(p.CurrentFile)}";
-            Activity.ReportProgress(act, p.Fraction, detail);
-        });
+            string baseName = initialSources.Count == 1
+                ? Path.GetFileNameWithoutExtension(initialSources[0].ArchivePath)
+                : Path.GetFileName(tab.CurrentPath.TrimEnd(Path.DirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Archive";
+            string suggested = FileOperationsService.UniquePath(Path.Combine(
+                tab.CurrentPath,
+                baseName + formats[0].Extension));
+            var dialog = new CreateArchiveDialog(capabilities, initialSources, suggested)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            if (dialog.ShowDialog() != true || dialog.Selection is not { } request) return;
 
-        try
-        {
-            await Task.Run(() => CompressionService.CreateZip(
-                items.Select(item => item.FullPath), zipPath, control, progress));
-            act.Detail = $"{items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}";
-            Activity.Complete(act, true);
-            UndoService.Instance.Push(new RecycleAction(new[] { zipPath }, "Compress"));
-            SetStatus($"Compressed {items.Count} item{(items.Count == 1 ? "" : "s")} → {Path.GetFileName(zipPath)}");
-            _ = tab.ReloadAfterOperationAsync();
+            // A modal review blocks local selection edits, but re-read the view anyway so
+            // programmatic navigation/replacement cannot dispatch an older physical set.
+            IReadOnlyList<FileItem> newest = SelectedItems();
+            if (!ReferenceEquals(_tab, tab)
+                || !tab.CanUsePhysicalFileCommands
+                || !ArchiveWriteValidation.TryBuildSources(
+                    newest.Select(item => (item.FullPath, item.IsDirectory)),
+                    out IReadOnlyList<ArchiveCreationSource> newestSources)
+                || !ArchiveWriteValidation.TryValidateSourceRoots(newestSources)
+                || !newestSources.SequenceEqual(initialSources)
+                || !request.Sources.SequenceEqual(initialSources))
+            {
+                SetStatus("⚠️ The physical selection changed. Review the newest selection again.");
+                return;
+            }
+
+            tab.BeginKnownFileOperation();
+            SetStatus("Creating archive through the isolated Worker…");
+            ArchiveOperationResult result = await tab.CreateArchiveAsync(request);
+            if (!ReferenceEquals(_tab, tab)) return;
+            SetStatus(ArchiveWriteOperationStatus(result, rebuild: false));
+            if (result.Succeeded) _ = tab.ReloadAfterOperationAsync();
         }
         catch (OperationCanceledException)
         {
-            bool removed = TryDeletePartialArchive(zipPath);
-            Activity.Cancel(act);
-            SetStatus(removed ? "Compression canceled." : "Compression canceled; the partial archive could not be removed.");
-        }
-        catch (Exception ex)
-        {
-            bool removed = TryDeletePartialArchive(zipPath);
-            string message = removed ? ex.Message : $"{ex.Message} The partial archive could not be removed.";
-            Activity.Complete(act, false, message);
-            SetStatus($"⚠️ {message}");
+            if (ReferenceEquals(_tab, tab))
+                SetStatus("Archive creation cancelled; no retry was started.");
         }
         finally
         {
@@ -3836,69 +4002,418 @@ public partial class PaneView : UserControl
         }
     }
 
-    private static bool TryDeletePartialArchive(string path)
+    private async void ArchiveRebuildCopy_Click(object sender, RoutedEventArgs e)
     {
+        if (_tab is not { IsArchiveView: true, CanRebuildArchiveCopy: true } tab
+            || _fileOperationInProgress)
+            return;
+        _fileOperationInProgress = true;
         try
         {
-            if (File.Exists(path)) File.Delete(path);
-            return !File.Exists(path);
-        }
-        catch { return false; }
-    }
-
-    // ---- Extract selected .zip(s) into sibling folders ---------------------
-    private void Extract_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tab is null) return;
-        var zips = SelectedItems()
-            .Where(i => !i.IsDirectory && ArchiveExts.Contains(Path.GetExtension(i.Name)))
-            .ToList();
-        if (zips.Count == 0) return;
-
-        var act = Activity.Begin("Extract", $"{zips.Count} archive{(zips.Count == 1 ? "" : "s")}", "archive");
-        int ok = 0;
-        string? lastErr = null;
-        var extracted = new List<string>();
-        foreach (var z in zips)
-        {
-            try
+            SetStatus("Checking this ZIP session with the connected Worker…");
+            ArchiveRebuildCapabilitySnapshot capabilities =
+                await tab.LoadArchiveRebuildCapabilitiesAsync();
+            if (!ReferenceEquals(_tab, tab) || !tab.IsArchiveView) return;
+            if (!capabilities.IsReady)
             {
-                string dest = FileOperationsService.UniquePath(
-                    Path.Combine(_tab.CurrentPath, Path.GetFileNameWithoutExtension(z.Name)));
-                ExtractArchive(z.FullPath, dest);
-                extracted.Add(dest);
-                ok++;
+                SetStatus(ArchiveWriteCapabilityStatus(capabilities.State, rebuild: true));
+                return;
             }
-            catch (Exception ex) { lastErr = ex.Message; SetStatus($"⚠️ {ex.Message}"); }
+
+            string parent = Path.GetDirectoryName(capabilities.SourcePath) ?? string.Empty;
+            string name = Path.GetFileNameWithoutExtension(capabilities.SourcePath);
+            if (string.IsNullOrWhiteSpace(name)) name = "Archive";
+            string suggested = FileOperationsService.UniquePath(
+                Path.Combine(parent, name + " - rebuilt.zip"));
+            var dialog = new RebuildArchiveDialog(capabilities, suggested)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            if (dialog.ShowDialog() != true || dialog.Selection is not { } request) return;
+            if (!ReferenceEquals(_tab, tab) || !tab.IsArchiveView)
+            {
+                SetStatus("⚠️ The open archive changed. Reopen it and review the rebuild again.");
+                return;
+            }
+
+            SetStatus("Rebuilding a distinct ZIP copy through the isolated Worker…");
+            ArchiveOperationResult result = await tab.RebuildArchiveCopyAsync(request);
+            if (ReferenceEquals(_tab, tab))
+                SetStatus(ArchiveWriteOperationStatus(result, rebuild: true));
         }
-        Activity.Complete(act, ok == zips.Count, lastErr);
-        if (extracted.Count > 0) UndoService.Instance.Push(new RecycleAction(extracted, "Extract"));
-        if (ok > 0)
+        catch (OperationCanceledException)
         {
-            SetStatus($"Extracted {ok} archive{(ok == 1 ? "" : "s")}");
-            _ = _tab.ReloadAfterOperationAsync();
+            if (ReferenceEquals(_tab, tab))
+                SetStatus("ZIP rebuild cancelled; the original remains unchanged.");
+        }
+        finally
+        {
+            _fileOperationInProgress = false;
         }
     }
 
-    // Extract any supported archive into destDir. ZIP uses the built-in extractor;
-    // RAR / 7z / TAR / GZ / BZ2 go through SharpCompress (pure-managed, no external tools).
-    private static void ExtractArchive(string src, string destDir)
-    {
-        if (string.Equals(Path.GetExtension(src), ".zip", StringComparison.OrdinalIgnoreCase))
+    private static string ArchiveWriteCapabilityStatus(
+        ArchiveWriteCapabilityState state,
+        bool rebuild) => state switch
         {
-            ZipFile.ExtractToDirectory(src, destDir);
+            ArchiveWriteCapabilityState.Offline =>
+                "⚠️ The Rain Archives Worker is offline. Reconnect and try again.",
+            ArchiveWriteCapabilityState.Stale => rebuild
+                ? "⚠️ The open ZIP session is stale. Reopen it before rebuilding."
+                : "⚠️ The physical location changed. Review the newest selection again.",
+            ArchiveWriteCapabilityState.Error =>
+                "⚠️ The Worker returned an invalid capability result; nothing was started.",
+            _ => rebuild
+                ? "This open archive is not eligible for a distinct ZIP rebuild copy."
+                : "The connected Worker does not advertise a compatible managed creation format for this selection.",
+        };
+
+    private static string ArchiveWriteOperationStatus(
+        ArchiveOperationResult result,
+        bool rebuild) => !rebuild && result.Outcome == ArchiveOperationOutcome.Failed
+            && ArchiveCreationFailureText.Describe(result.Failure, result.FailureLimit) is { } detail
+            ? detail
+            : result.Outcome switch
+        {
+            ArchiveOperationOutcome.Completed => rebuild
+                ? "ZIP rebuild copy completed. The original remains unchanged."
+                : "Archive creation completed.",
+            ArchiveOperationOutcome.CompletedWithWarnings => rebuild
+                ? "ZIP rebuild copy completed with warnings. The original remains unchanged."
+                : "Archive creation completed with warnings.",
+            ArchiveOperationOutcome.Cancelled => rebuild
+                ? "ZIP rebuild cancelled; the original remains unchanged."
+                : "Archive creation cancelled; no retry was started.",
+            ArchiveOperationOutcome.Busy => "Another archive operation is already active.",
+            ArchiveOperationOutcome.DestinationConflict =>
+                "⚠️ The destination already exists. It was preserved and no retry was started.",
+            ArchiveOperationOutcome.Stale => rebuild
+                ? "⚠️ The ZIP session or source changed. Reopen it before rebuilding."
+                : "⚠️ The selected source changed before the Worker could admit it.",
+            ArchiveOperationOutcome.Offline =>
+                "⚠️ The Rain Archives Worker became unavailable; no retry was started.",
+            ArchiveOperationOutcome.Unsupported =>
+                "⚠️ The current Worker no longer advertises that format, preset, or session capability.",
+            ArchiveOperationOutcome.InvalidDestination =>
+                "⚠️ The destination is not a distinct absent path under an ordinary existing folder.",
+            ArchiveOperationOutcome.InvalidSelection or ArchiveOperationOutcome.InvalidRequest =>
+                "⚠️ The latest managed archive request is no longer valid.",
+            _ => "⚠️ The managed archive operation failed; no retry was started.",
+        };
+
+    private async void ArchiveIntegrity_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not { IsArchiveView: true } tab) return;
+        tab.UpdateArchiveSelection(SelectedItems());
+        if (!tab.CanTestArchiveIntegrity)
+        {
+            SetStatus("Integrity testing is unavailable for the current archive session.");
             return;
         }
 
-        Directory.CreateDirectory(destDir);
-        var opts = new SharpCompress.Common.ExtractionOptions { ExtractFullPath = true, Overwrite = true };
-        SharpCompress.Archives.ArchiveFactory.WriteToDirectory(src, destDir, opts);
+        char[]? password = RequestArchiveOperationPassword(tab);
+        if (tab.RequiresArchiveOperationPassword && password is null) return;
+        try
+        {
+            Task<ArchiveOperationResult> operation = tab.TestArchiveIntegrityAsync(password);
+            FileList.Focus();
+            ArchiveOperationResult result = await operation;
+            if (ReferenceEquals(_tab, tab))
+                SetStatus(ArchiveOperationStatus(result, extraction: false));
+        }
+        finally
+        {
+            if (password is not null) Array.Clear(password);
+        }
+    }
+
+    private async void ArchiveExtract_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not { IsArchiveView: true } tab) return;
+        tab.UpdateArchiveSelection(SelectedItems());
+        if (!tab.CanExtractArchiveSelection)
+        {
+            SetStatus("Select one or more supported archive entries before extracting.");
+            return;
+        }
+
+        Window? owner = Window.GetWindow(this);
+        var parentPicker = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Choose the parent folder for a new extraction folder",
+        };
+        string initial = SettingsStore.Instance.Settings.DefaultFolder;
+        if (!Directory.Exists(initial))
+            initial = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (Directory.Exists(initial)) parentPicker.InitialDirectory = initial;
+        if (parentPicker.ShowDialog(owner) != true) return;
+
+        var nameDialog = new InputDialog(
+            "Extract selected archive entries",
+            "New folder name (the destination must not already exist):",
+            "Extracted files")
+        {
+            Owner = owner,
+        };
+        if (nameDialog.ShowDialog() != true) return;
+        if (!TryBuildNewExtractionDestination(
+                parentPicker.FolderName, nameDialog.Value, out string destination))
+        {
+            SetStatus("Choose one valid new folder name under the selected parent folder.");
+            FileList.Focus();
+            return;
+        }
+        if (Directory.Exists(destination) || File.Exists(destination))
+        {
+            SetStatus("The extraction destination already exists. Nothing was overwritten.");
+            FileList.Focus();
+            return;
+        }
+
+        char[]? password = RequestArchiveOperationPassword(tab);
+        if (tab.RequiresArchiveOperationPassword && password is null) return;
+        try
+        {
+            Task<ArchiveOperationResult> operation =
+                tab.ExtractArchiveSelectionAsync(destination, password);
+            FileList.Focus();
+            ArchiveOperationResult result = await operation;
+            if (ReferenceEquals(_tab, tab))
+                SetStatus(ArchiveOperationStatus(result, extraction: true));
+        }
+        finally
+        {
+            if (password is not null) Array.Clear(password);
+        }
+    }
+
+    private char[]? RequestArchiveOperationPassword(TabViewModel tab)
+    {
+        if (!tab.RequiresArchiveOperationPassword) return null;
+        var dialog = new ArchivePasswordDialog(tab.Title) { Owner = Window.GetWindow(this) };
+        try
+        {
+            return dialog.ShowDialog() == true ? dialog.TakePassword() : null;
+        }
+        finally
+        {
+            dialog.ClearCapturedPassword();
+        }
+    }
+
+    private static bool TryBuildNewExtractionDestination(
+        string parent,
+        string requestedName,
+        out string destination)
+    {
+        destination = string.Empty;
+        if (!Directory.Exists(parent)
+            || string.IsNullOrWhiteSpace(requestedName)
+            || !string.Equals(requestedName, requestedName.Trim(), StringComparison.Ordinal)
+            || requestedName is "." or ".."
+            || requestedName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || requestedName.Contains(Path.DirectorySeparatorChar)
+            || requestedName.Contains(Path.AltDirectorySeparatorChar))
+            return false;
+        try
+        {
+            destination = Path.GetFullPath(Path.Combine(parent, requestedName));
+            return string.Equals(Path.GetDirectoryName(destination),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent)),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                              or NotSupportedException
+                                              or PathTooLongException)
+        {
+            destination = string.Empty;
+            return false;
+        }
+    }
+
+    internal static string ArchiveOperationStatus(
+        ArchiveOperationResult result,
+        bool extraction) => result.Outcome switch
+        {
+            ArchiveOperationOutcome.Completed => extraction
+                ? "Archive extraction completed."
+                : "Archive integrity test completed successfully.",
+            ArchiveOperationOutcome.CompletedWithWarnings => extraction
+                ? "Archive extraction completed with warnings. Review Activity for the fixed outcome."
+                : "Archive integrity test completed with warnings. Review Activity for the fixed outcome.",
+            ArchiveOperationOutcome.Cancelled => "Archive operation cancelled; no retry was started.",
+            ArchiveOperationOutcome.Busy => "Another archive operation already owns this tab.",
+            ArchiveOperationOutcome.InvalidRequest =>
+                "The archive operation request was refused before it started.",
+            ArchiveOperationOutcome.InvalidSelection =>
+                "The current visible archive selection is no longer valid.",
+            ArchiveOperationOutcome.InvalidDestination =>
+                "The extraction destination was refused before the operation started.",
+            ArchiveOperationOutcome.DestinationConflict => extraction
+                ? ArchiveDestinationConflictStatus(result.DestinationConflictReason)
+                : "The extraction destination already exists. Nothing was overwritten.",
+            ArchiveOperationOutcome.Unsupported =>
+                "This operation is unavailable for the current archive session.",
+            ArchiveOperationOutcome.Stale =>
+                "The archive source changed. Reopen it before continuing.",
+            ArchiveOperationOutcome.Offline =>
+                "The Rain Archives Worker is unavailable. Reopen the archive after reconnecting.",
+            _ => "Rain Archives could not complete the operation safely.",
+        };
+
+    // ---- Extract physical archive selections through Rain Archives --------
+    private async void Extract_Click(object sender, RoutedEventArgs e)
+    {
+        await ExtractPhysicalArchivesAsync(chooseDestinationParent: false);
+    }
+
+    private async void ExtractTo_Click(object sender, RoutedEventArgs e)
+    {
+        await ExtractPhysicalArchivesAsync(chooseDestinationParent: true);
+    }
+
+    private async Task ExtractPhysicalArchivesAsync(bool chooseDestinationParent)
+    {
+        if (_tab is not { CanUsePhysicalFileCommands: true } tab
+            || _fileOperationInProgress)
+            return;
+
+        var selected = SelectedItems();
+        if (selected.Count is < 1 or > PhysicalArchiveExtractionService.MaximumArchiveCount
+            || selected.Any(item => item.IsDirectory || !item.HasPhysicalPath))
+        {
+            SetStatus($"⚠️ Select 1–{PhysicalArchiveExtractionService.MaximumArchiveCount} ordinary files to extract.");
+            return;
+        }
+
+        // ListView selection order is not an operation contract. Use the current visible
+        // order so the bounded sequential batch remains deterministic.
+        var selectedSet = selected.ToHashSet();
+        string[] sourcePaths = tab.Items
+            .Where(selectedSet.Contains)
+            .Select(item => item.FullPath)
+            .ToArray();
+        if (sourcePaths.Length != selected.Count)
+        {
+            SetStatus("⚠️ The physical selection changed. Review the newest selection again.");
+            return;
+        }
+
+        string? destinationParent = null;
+        if (chooseDestinationParent)
+        {
+            var picker = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Choose where Rain Explorer should create the extracted folder",
+            };
+            if (Directory.Exists(tab.CurrentPath)) picker.InitialDirectory = tab.CurrentPath;
+            if (picker.ShowDialog(Window.GetWindow(this)) != true)
+            {
+                FileList.Focus();
+                return;
+            }
+            destinationParent = picker.FolderName;
+        }
+
+        _fileOperationInProgress = true;
+        try
+        {
+            SetStatus("Checking selected file contents with the isolated Worker…");
+            PhysicalArchiveExtractionBatchResult result = destinationParent is null
+                ? await tab.ExtractPhysicalArchivesAsync(
+                    sourcePaths,
+                    RequestPhysicalArchivePassword)
+                : await tab.ExtractPhysicalArchivesToAsync(
+                    sourcePaths,
+                    destinationParent,
+                    RequestPhysicalArchivePassword);
+            if (!ReferenceEquals(_tab, tab)) return;
+
+            SetStatus(PhysicalArchiveExtractionStatus(result));
+            if (result.CompletedCount > 0) _ = tab.ReloadAfterOperationAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            if (ReferenceEquals(_tab, tab))
+                SetStatus("Archive extraction cancelled; no retry was started.");
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                              or IOException
+                                              or InvalidDataException
+                                              or NotSupportedException
+                                              or ObjectDisposedException
+                                              or UnauthorizedAccessException)
+        {
+            if (ReferenceEquals(_tab, tab))
+                SetStatus("⚠️ Rain Archives could not complete the extraction safely.");
+        }
+        finally
+        {
+            _fileOperationInProgress = false;
+            FileList.Focus();
+        }
+    }
+
+    private char[]? RequestPhysicalArchivePassword(string archiveName)
+    {
+        var dialog = new ArchivePasswordDialog(archiveName)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        try
+        {
+            return dialog.ShowDialog() == true ? dialog.TakePassword() : null;
+        }
+        finally
+        {
+            dialog.ClearCapturedPassword();
+        }
+    }
+
+    internal static string ArchiveDestinationConflictStatus(
+        ArchiveDestinationConflictReason reason) =>
+        ArchiveDestinationConflictText.Describe(reason);
+
+    internal static string PhysicalArchiveExtractionStatus(
+        PhysicalArchiveExtractionBatchResult result)
+    {
+        if (result.CompletedCount == result.RequestedCount)
+        {
+            return result.WarningCount > 0
+                ? $"Extracted {result.CompletedCount} archive{(result.CompletedCount == 1 ? "" : "s")} with warnings. Review Activity."
+                : $"Extracted {result.CompletedCount} archive{(result.CompletedCount == 1 ? "" : "s")} through the isolated Worker.";
+        }
+        if (result.CompletedCount > 0)
+        {
+            return $"Extracted {result.CompletedCount} of {result.RequestedCount} archives. "
+                + "The remaining files were preserved and no retry was started.";
+        }
+
+        ArchiveOperationResult? lastResult = result.Results.LastOrDefault();
+        return lastResult?.Outcome switch
+        {
+            ArchiveOperationOutcome.Busy => "Another archive operation is already active.",
+            ArchiveOperationOutcome.Cancelled =>
+                "Archive extraction cancelled; no retry was started.",
+            ArchiveOperationOutcome.DestinationConflict =>
+                ArchiveDestinationConflictStatus(lastResult!.DestinationConflictReason),
+            ArchiveOperationOutcome.Unsupported =>
+                "The selected content is not an extractable single-volume archive.",
+            ArchiveOperationOutcome.Stale =>
+                "⚠️ An archive source changed. Nothing was retried.",
+            ArchiveOperationOutcome.Offline =>
+                "⚠️ The Rain Archives Worker became unavailable. Inspect Activity before trying again.",
+            ArchiveOperationOutcome.InvalidSelection or ArchiveOperationOutcome.InvalidDestination
+                or ArchiveOperationOutcome.InvalidRequest =>
+                "⚠️ The newest physical extraction request was refused before it started.",
+            _ => "⚠️ Rain Archives could not extract the selected content safely.",
+        };
     }
 
     // ---- New text file (dialog or inline, per Settings) --------------------
     private async void NewTextFile_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is null) return;
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands) return;
 
         if (SettingsStore.Instance.Settings.RenameMode == RenameMode.Inline)
         {
@@ -3975,7 +4490,8 @@ public partial class PaneView : UserControl
 
     private async void CommitInline(FileItem item)
     {
-        if (_committing || _fileOperationInProgress || !item.IsEditing || _tab is null) return;
+        if (_committing || _fileOperationInProgress || !item.IsEditing || _tab is null
+            || !_tab.CanUsePhysicalFileCommands || !item.HasPhysicalPath) return;
         var tab = _tab;
         _committing = true;
         try

@@ -17,6 +17,9 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
     private sealed record ClosedTab(string Target, bool IsPinned, string? GroupId, string? GroupName);
 
     private readonly FileSystemService _fs;
+    private readonly ArchiveClientRuntime _archiveRuntime;
+    private readonly object _pendingDisposalSync = new();
+    private readonly HashSet<Task> _pendingTabDisposals = [];
     private readonly Stack<ClosedTab> _closedTabs = new();
     private readonly LinkedList<TabViewModel> _selectionHistory = new();
     private bool _loadingProject;
@@ -70,9 +73,10 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
     /// <summary>The pane's restorable tabs, order, or selection changed.</summary>
     public event Action<PaneViewModel>? WorkspaceStateChanged;
 
-    public PaneViewModel(FileSystemService fs)
+    public PaneViewModel(FileSystemService fs, ArchiveClientRuntime? archiveRuntime = null)
     {
         _fs = fs;
+        _archiveRuntime = archiveRuntime ?? ArchiveClientRuntime.Shared;
         NewTabCommand = new RelayCommand(_ => NewTab(activate: true));
         CloseTabCommand = new RelayCommand(p => CloseTab(p as TabViewModel ?? SelectedTab));
         CloseGroupCommand = new RelayCommand(p => CloseGroup(p as TabViewModel ?? SelectedTab));
@@ -173,7 +177,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
     public TabViewModel NewTab(string? path = null, bool activate = true, bool pinned = false,
         string? groupId = null, string? groupName = null)
     {
-        var tab = new TabViewModel(_fs)
+        var tab = new TabViewModel(_fs, _archiveRuntime)
         {
             IsPinned = pinned,
             GroupId = pinned ? null : groupId,
@@ -206,7 +210,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         }
         Tabs.Remove(tab);
         ForgetSelection(tab);
-        tab.Dispose();
+        TrackTabDisposal(tab);
         DissolveOrphanedGroup(formerGroupId);
         RefreshGroupLeaders();
         NotifyProjectStateChanged();
@@ -228,7 +232,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Open a copy of a tab at its current location.</summary>
     public TabViewModel? DuplicateTab(TabViewModel? tab)
     {
-        if (tab is null || !IsRestorableTarget(tab.RestoreTarget)) return null;
+        if (tab is null || !tab.CanDuplicate || !IsRestorableTarget(tab.RestoreTarget)) return null;
         return NewTab(tab.RestoreTarget, activate: true, pinned: tab.IsPinned,
             groupId: tab.GroupId, groupName: tab.GroupName);
     }
@@ -430,7 +434,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
             foreach (var tab in Tabs)
             {
                 tab.PropertyChanged -= OnTabPropertyChanged;
-                tab.Dispose();
+                TrackTabDisposal(tab);
             }
             Tabs.Clear();
             foreach (var tab in projectTabs.Where(t => IsRestorableTarget(t.Target)))
@@ -796,10 +800,46 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         foreach (var tab in Tabs)
         {
             tab.PropertyChanged -= OnTabPropertyChanged;
-            tab.Dispose();
+            TrackTabDisposal(tab);
         }
         Tabs.Clear();
         _selectionHistory.Clear();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        SelectedTab = null;
+        var tabs = Tabs.ToList();
+        Tabs.Clear();
+        _selectionHistory.Clear();
+        foreach (var tab in tabs)
+        {
+            tab.PropertyChanged -= OnTabPropertyChanged;
+            TrackTabDisposal(tab);
+        }
+        await DrainTabDisposalsAsync().ConfigureAwait(false);
+    }
+
+    private void TrackTabDisposal(TabViewModel tab)
+    {
+        Task disposal = tab.DisposeAsync().AsTask();
+        lock (_pendingDisposalSync) _pendingTabDisposals.Add(disposal);
+        _ = disposal.ContinueWith(completed =>
+        {
+            _ = completed.Exception;
+            lock (_pendingDisposalSync) _pendingTabDisposals.Remove(completed);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private async Task DrainTabDisposalsAsync()
+    {
+        while (true)
+        {
+            Task[] pending;
+            lock (_pendingDisposalSync) pending = _pendingTabDisposals.ToArray();
+            if (pending.Length == 0) return;
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Close every non-pinned tab except <paramref name="keep"/>.</summary>
@@ -839,7 +879,9 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
 
     private static bool IsRestorableTarget(string? path) =>
         path is TabViewModel.HomeToken or TabViewModel.DrivesToken
-        || (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path));
+        || NetworkPath.IsNetworkPath(path)
+        || (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+        || ArchiveLocationSerializer.TryDeserialize(path, out _);
 
     public void CycleTab(int dir)
     {

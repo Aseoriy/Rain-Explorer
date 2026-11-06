@@ -557,6 +557,34 @@ public sealed class MainViewModel : ObservableObject
         RightPane?.Dispose();
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _sessionSaveTimer.Stop();
+        _sessionSaveTimer.Tick -= OnSessionSaveTimerTick;
+        _projectSaveTimer.Stop();
+        _projectSaveTimer.Tick -= OnProjectSaveTimerTick;
+        SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
+        if (_syncedTab is not null) _syncedTab.PropertyChanged -= OnActiveTabPropChanged;
+        foreach (SidebarNode node in SidebarNodes)
+            node.TreeChanged -= SyncSidebarSelection;
+        Exception? cleanupFailure = null;
+        try { await LeftPane.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception exception) { cleanupFailure = exception; }
+        if (RightPane is not null)
+        {
+            try { await RightPane.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception exception)
+            {
+                cleanupFailure = cleanupFailure is null
+                    ? exception
+                    : new AggregateException(cleanupFailure, exception);
+            }
+        }
+        if (cleanupFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+    }
+
     public PaneViewModel LeftPane { get; }
 
     private PaneViewModel? _rightPane;
@@ -612,7 +640,10 @@ public sealed class MainViewModel : ObservableObject
         if (LeftPane.Tabs.Count == 0)
         {
             if (App.LaunchFolder is null && RestoreSavedSession()) return ActivePane;
-            string start = App.LaunchFolder is { } f && Directory.Exists(f) ? f : StartTarget;
+            string start = App.LaunchFolder is { } f
+                && (Directory.Exists(f)
+                    || (File.Exists(f) && ArchiveFileTypes.IsSupportedPath(f)))
+                ? f : StartTarget;
             LeftPane.NewTab(start, activate: true);
         }
         return LeftPane;
@@ -677,7 +708,9 @@ public sealed class MainViewModel : ObservableObject
 
     private static bool IsRestorableTarget(string? path) =>
         path is TabViewModel.HomeToken or TabViewModel.DrivesToken
-        || (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path));
+        || NetworkPath.IsNetworkPath(path)
+        || (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+        || ArchiveLocationSerializer.TryDeserialize(path, out _);
 
     /// <summary>Persist the current pane/tab snapshot immediately before the window closes.</summary>
     public void SaveSession()
@@ -772,7 +805,10 @@ public sealed class MainViewModel : ObservableObject
         {
             var right = CreatePane();
             // Open the right pane at the same folder the active pane is showing.
-            string start = ActivePane.SelectedTab?.CurrentPath ?? HomePath;
+            string start = ActivePane.SelectedTab is { } active
+                && IsRestorableTarget(active.RestoreTarget)
+                ? active.RestoreTarget
+                : HomePath;
             right.NewTab(start, activate: true);
             RightPane = right;
             OnPropertyChanged(nameof(IsSplit));

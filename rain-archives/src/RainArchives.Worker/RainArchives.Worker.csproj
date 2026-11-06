@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>RainArchives.Worker</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <ProjectReference Include="../RainArchives.Core/RainArchives.Core.csproj" />
+    <ProjectReference Include="../RainArchives.Security/RainArchives.Security.csproj" />
+    <ProjectReference Include="../RainArchives.Providers.SharpCompress/RainArchives.Providers.SharpCompress.csproj" />
+    <ProjectReference Include="../RainArchives.Providers.WinRar/RainArchives.Providers.WinRar.csproj" />
+    <ProjectReference Include="../RainArchives.Providers.Zip/RainArchives.Providers.Zip.csproj" />
+    <ProjectReference Include="../RainArchives.Providers.SevenZip/RainArchives.Providers.SevenZip.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RainArchives.IntegrationTests" />
+    <InternalsVisibleTo Include="RainArchives.RecoveryCrashProbe" />
+  </ItemGroup>
+</Project>

@@ -14,4 +14,19 @@ public sealed class ShellIconServiceTests
         Assert.True(icon.PixelWidth > 0);
         Assert.True(icon.PixelHeight > 0);
     }
+
+    [Theory]
+    [InlineData("payload.exe", false)]
+    [InlineData("README", false)]
+    [InlineData("folder", true)]
+    public void VirtualArchiveRowsResolveWindowsFileTypeIconsWithoutPhysicalPaths(
+        string fileName,
+        bool isDirectory)
+    {
+        var icon = ShellIconService.ResolveFileTypeIcon(fileName, isDirectory);
+
+        Assert.NotNull(icon);
+        Assert.True(icon.PixelWidth > 0);
+        Assert.True(icon.PixelHeight > 0);
+    }
 }

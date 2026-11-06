@@ -194,6 +194,9 @@ public sealed class ShellContextMenu : IDisposable
     private List<Control> Walk(IntPtr menu, int depth)
     {
         var items = new List<Control>();
+        HashSet<string>? topLevelLabels = depth == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : null;
         if (_disposed || menu == IntPtr.Zero) return items;
         int count = GetMenuItemCount(menu);
         if (count <= 0) return items;
@@ -215,21 +218,36 @@ public sealed class ShellContextMenu : IDisposable
 
             string text = ReadText(menu, pos);
             if (string.IsNullOrWhiteSpace(text)) continue;
+            string cleanText = Clean(text);
 
             bool isLeaf = mii.hSubMenu == IntPtr.Zero;
 
             // At the top level, hide entries Rain Explorer already provides itself
             // (Open/Cut/Copy/Paste/Delete/Rename/Properties/Create shortcut/Open with)
-            // so the menu only shows the genuine *extra* shell items.
-            if (depth == 0 && isLeaf && IsStandardVerb(mii.wID)) continue;
+            // so the menu only shows genuine extras. Some shell providers expose Open
+            // with as a submenu without a canonical verb, so its fixed label is also
+            // recognized. WinRAR can contribute the same top-level submenu twice through
+            // separate registrations; suppress only that observed duplicate label rather
+            // than globally merging unrelated commands that happen to share display text.
+            if (depth == 0
+                && !ShouldIncludeTopLevelItem(
+                    cleanText,
+                    CanonicalVerb(mii.wID),
+                    topLevelLabels!))
+                continue;
 
-            var item = new MenuItem { Header = Clean(text) };
+            var item = new MenuItem { Header = cleanText };
             if ((mii.fState & (MFS_DISABLED | MFS_GRAYED)) != 0) item.IsEnabled = false;
 
             var icon = IconFromHBitmap(mii.hbmpItem);
             if (icon is not null)
-                item.Icon = new Image { Source = icon, Width = 16, Height = 16,
-                                        SnapsToDevicePixels = true };
+                item.Icon = new Image
+                {
+                    Source = icon,
+                    Width = 16,
+                    Height = 16,
+                    SnapsToDevicePixels = true
+                };
 
             if (!isLeaf && depth < 5)
             {
@@ -279,17 +297,31 @@ public sealed class ShellContextMenu : IDisposable
     }
 
     // Canonical verbs of the items we already expose in our own menu.
-    private static readonly HashSet<string> StdVerbs = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> RainOwnedVerbs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "open", "opennew", "edit", "explore", "find", "cut", "copy", "paste",
-        "delete", "rename", "properties", "link", "openas", "cutto", "copyto", "pintohome",
+        "open", "opennew", "cut", "copy", "paste", "delete", "rename", "properties",
+        "link", "openas", "pintohome",
     };
 
-    private bool IsStandardVerb(uint id)
+    internal static bool ShouldIncludeTopLevelItem(
+        string cleanText,
+        string? canonicalVerb,
+        ISet<string> seenLabels)
     {
-        string? verb = CanonicalVerb(id);
-        return verb is not null && StdVerbs.Contains(verb);
+        ArgumentNullException.ThrowIfNull(seenLabels);
+        if (string.IsNullOrWhiteSpace(cleanText)) return false;
+        if (canonicalVerb is not null && RainOwnedVerbs.Contains(canonicalVerb)) return false;
+
+        string identity = NormalizeMenuIdentity(cleanText);
+        if (string.Equals(identity, "Open with", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.Equals(identity, "WinRAR", StringComparison.OrdinalIgnoreCase))
+            return seenLabels.Add(identity);
+        return true;
     }
+
+    private static string NormalizeMenuIdentity(string value) =>
+        value.Replace('…', '.').Trim().TrimEnd('.').TrimEnd();
 
     private string? CanonicalVerb(uint id)
     {
@@ -535,7 +567,8 @@ public sealed class ShellContextMenu : IDisposable
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellFolder
     {
-        [PreserveSig] int ParseDisplayName(IntPtr hwnd, IntPtr pbc,
+        [PreserveSig]
+        int ParseDisplayName(IntPtr hwnd, IntPtr pbc,
             [MarshalAs(UnmanagedType.LPWStr)] string pszDisplayName,
             out uint pchEaten, out IntPtr ppidl, ref uint pdwAttributes);
         [PreserveSig] int EnumObjects(IntPtr hwnd, int grfFlags, out IntPtr ppenumIDList);
@@ -543,13 +576,16 @@ public sealed class ShellContextMenu : IDisposable
         [PreserveSig] int BindToStorage(IntPtr pidl, IntPtr pbc, ref Guid riid, out IntPtr ppv);
         [PreserveSig] int CompareIDs(IntPtr lParam, IntPtr pidl1, IntPtr pidl2);
         [PreserveSig] int CreateViewObject(IntPtr hwndOwner, ref Guid riid, out IntPtr ppv);
-        [PreserveSig] int GetAttributesOf(uint cidl,
+        [PreserveSig]
+        int GetAttributesOf(uint cidl,
             [In, MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl, ref uint rgfInOut);
-        [PreserveSig] int GetUIObjectOf(IntPtr hwndOwner, uint cidl,
+        [PreserveSig]
+        int GetUIObjectOf(IntPtr hwndOwner, uint cidl,
             [In, MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl,
             ref Guid riid, IntPtr rgfReserved, out IntPtr ppv);
         [PreserveSig] int GetDisplayNameOf(IntPtr pidl, uint uFlags, out IntPtr pName);
-        [PreserveSig] int SetNameOf(IntPtr hwnd, IntPtr pidl,
+        [PreserveSig]
+        int SetNameOf(IntPtr hwnd, IntPtr pidl,
             [MarshalAs(UnmanagedType.LPWStr)] string pszName, uint uFlags, out IntPtr ppidlOut);
     }
 
@@ -559,7 +595,8 @@ public sealed class ShellContextMenu : IDisposable
     {
         [PreserveSig] int QueryContextMenu(IntPtr hMenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
         [PreserveSig] int InvokeCommand(ref CMINVOKECOMMANDINFOEX pici);
-        [PreserveSig] int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved,
+        [PreserveSig]
+        int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved,
             [Out] StringBuilder pszName, uint cchMax);
     }
 

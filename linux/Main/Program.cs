@@ -13,6 +13,7 @@ internal static class Program
         if (SingleInstance.TryForwardToRunningInstance(args))
             return 0;
 
+        XwaylandScaling.ApplyIfNeeded();
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

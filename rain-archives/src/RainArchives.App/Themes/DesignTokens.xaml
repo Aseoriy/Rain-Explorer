@@ -1,0 +1,385 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <FontFamily x:Key="UiFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Consolas</FontFamily>
+
+    <CornerRadius x:Key="ControlCornerRadius">7</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <Thickness x:Key="ShellPagePadding">20</Thickness>
+    <Thickness x:Key="ControlPadding">12,6</Thickness>
+
+    <Geometry x:Key="Icon.Archive">M4,5 L20,5 L20,20 L4,20 Z M3,5 L5,2 L19,2 L21,5 M8,10 L16,10 M10,14 L14,14</Geometry>
+    <Geometry x:Key="Icon.Open">M3,7 L9,7 L11,9 L21,9 L18,20 L4,20 Z M4,7 L4,5 L10,5 L12,7</Geometry>
+    <Geometry x:Key="Icon.Create">M4,5 L20,5 L20,20 L4,20 Z M3,5 L5,2 L19,2 L21,5 M12,9 L12,17 M8,13 L16,13</Geometry>
+    <Geometry x:Key="Icon.Recovery">M5,8 A8,8 0 1 1 4,15 M5,8 L5,3 M5,8 L10,8</Geometry>
+    <Geometry x:Key="Icon.Activity">M3,12 L7,12 L9,7 L13,17 L16,10 L18,12 L21,12</Geometry>
+    <Geometry x:Key="Icon.Settings">M12,8 A4,4 0 1 1 11.99,8 M12,2 L12,5 M12,19 L12,22 M2,12 L5,12 M19,12 L22,12 M5,5 L7,7 M17,17 L19,19 M19,5 L17,7 M7,17 L5,19</Geometry>
+    <Geometry x:Key="Icon.Extract">M5,4 L19,4 L19,11 M4,8 L20,8 M12,11 L12,21 M8,17 L12,21 L16,17</Geometry>
+    <Geometry x:Key="Icon.Rebuild">M5,8 A8,8 0 0 1 19,7 M19,7 L19,3 M19,7 L15,7 M19,16 A8,8 0 0 1 5,17 M5,17 L5,21 M5,17 L9,17</Geometry>
+    <Geometry x:Key="Icon.Test">M9,3 L15,3 M10,3 L10,9 L5,18 A2,2 0 0 0 7,21 L17,21 A2,2 0 0 0 19,18 L14,9 L14,3 M8,15 L16,15</Geometry>
+    <Geometry x:Key="Icon.Cancel">M6,6 L18,18 M18,6 L6,18</Geometry>
+    <Geometry x:Key="Icon.Search">M10.5,4 A6.5,6.5 0 1 1 10.49,4 M15.5,15.5 L21,21</Geometry>
+    <Geometry x:Key="Icon.Back">M19,12 L5,12 M11,6 L5,12 L11,18</Geometry>
+    <Geometry x:Key="Icon.Forward">M5,12 L19,12 M13,6 L19,12 L13,18</Geometry>
+    <Geometry x:Key="Icon.Up">M12,19 L12,5 M6,11 L12,5 L18,11</Geometry>
+    <Geometry x:Key="Icon.Root">M3,11 L12,3 L21,11 M5,10 L5,21 L19,21 L19,10 M10,21 L10,14 L14,14 L14,21</Geometry>
+    <Geometry x:Key="Icon.Theme">M12,3 A9,9 0 1 0 21,12 C18,14 16,14 14,13 C12,12 11,10 12,8 C13,6 13,5 12,3</Geometry>
+    <Geometry x:Key="Icon.Folder">M3,6 L9,6 L11,8 L21,8 L21,19 L3,19 Z</Geometry>
+    <Geometry x:Key="Icon.File">M6,3 L15,3 L20,8 L20,21 L6,21 Z M15,3 L15,8 L20,8</Geometry>
+    <Geometry x:Key="Icon.Shield">M12,3 L20,6 L20,12 C20,17 16,20 12,22 C8,20 4,17 4,12 L4,6 Z M8,12 L11,15 L16,9</Geometry>
+    <Geometry x:Key="Icon.Preview">M2,12 C5,7 8,5 12,5 C16,5 19,7 22,12 C19,17 16,19 12,19 C8,19 5,17 2,12 M9,12 A3,3 0 1 1 15,12 A3,3 0 1 1 9,12</Geometry>
+    <Geometry x:Key="Icon.Original">M4,4 L20,4 L20,20 L4,20 Z M8,12 L11,15 L17,8</Geometry>
+    <Geometry x:Key="Icon.ChevronRight">M9,5 L16,12 L9,19</Geometry>
+
+    <Style x:Key="IconPathStyle" TargetType="Path">
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Stroke" Value="{DynamicResource SurfaceForegroundBrush}" />
+        <Setter Property="StrokeThickness" Value="1.7" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="KeyboardFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="-3"
+                            BorderBrush="{DynamicResource FocusBrush}"
+                            BorderThickness="2"
+                            CornerRadius="9" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Window">
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource BackgroundForegroundBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BackgroundBrush}" />
+    </Style>
+
+    <Style x:Key="StandardButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="{StaticResource ControlPadding}" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonBorder"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource ControlCornerRadius}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource AccentWashBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentPressedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentWashForegroundBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}" />
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentPressedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="BrowserButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="UtilityButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+    </Style>
+
+    <Style TargetType="TextBox" BasedOn="{StaticResource SemanticTextBoxStyle}">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+    </Style>
+
+    <Style TargetType="PasswordBox" BasedOn="{StaticResource SemanticPasswordBoxStyle}">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+    </Style>
+
+    <Style TargetType="ComboBox" BasedOn="{StaticResource SemanticComboBoxStyle}">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceRaisedForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+    </Style>
+
+    <Style x:Key="SecondaryWindowTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource BackgroundForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="SecondaryWindowSecondaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource BackgroundSecondaryForegroundBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="SecondaryWindowSectionHeadingStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource BackgroundForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="ShellTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="ShellSectionHeadingStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="ShellSecondaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceSecondaryForegroundBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="ShellTechnicalTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceSecondaryForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="ShellCardStyle" TargetType="Border">
+        <Setter Property="Padding" Value="18" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="SecondaryCardStyle" TargetType="Border" BasedOn="{StaticResource ShellCardStyle}">
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+
+    <Style x:Key="SecondaryMutedCardStyle" TargetType="Border">
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="SecondaryTabControlStyle" TargetType="TabControl" BasedOn="{StaticResource SemanticTabControlStyle}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+
+    <Style x:Key="SecondaryTabItemStyle" TargetType="TabItem" BasedOn="{StaticResource SemanticTabItemStyle}">
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="StatusChipStyle" TargetType="Border">
+        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+
+    <Style x:Key="ArchiveColumnHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource SemanticDataGridColumnHeaderStyle}">
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedSecondaryForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="SecondaryDataGridRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource SemanticDataGridRowStyle}">
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="3,0,0,0" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
+        <Style.Triggers>
+            <Trigger Property="AlternationIndex" Value="1">
+                <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SecondaryDataGridStyle" TargetType="DataGrid" BasedOn="{StaticResource SemanticDataGridStyle}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
+        <Setter Property="RowBackground" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="ColumnHeaderStyle" Value="{StaticResource ArchiveColumnHeaderStyle}" />
+        <Setter Property="CellStyle" Value="{StaticResource SemanticDataGridCellStyle}" />
+        <Setter Property="RowStyle" Value="{StaticResource SecondaryDataGridRowStyle}" />
+        <Setter Property="EnableRowVirtualization" Value="True" />
+        <Setter Property="EnableColumnVirtualization" Value="True" />
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+    </Style>
+
+    <Style x:Key="ArchiveEntryRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource SecondaryDataGridRowStyle}">
+        <Setter Property="AutomationProperties.HelpText" Value="Press Enter to open a folder, Ctrl+P for safe preview, Alt+Enter for properties, or Shift+F10 for available commands." />
+        <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+    </Style>
+
+    <Style x:Key="ArchiveDataGridStyle" TargetType="DataGrid" BasedOn="{StaticResource SecondaryDataGridStyle}">
+        <Setter Property="RowStyle" Value="{StaticResource ArchiveEntryRowStyle}" />
+    </Style>
+
+    <Style x:Key="ArchiveCellTextStyle" TargetType="TextBlock">
+        <Setter Property="Margin" Value="8,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="ArchiveCellTechnicalTextStyle" TargetType="TextBlock" BasedOn="{StaticResource ArchiveCellTextStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="ArchiveFileIconStyle" TargetType="Path" BasedOn="{StaticResource IconPathStyle}">
+        <Setter Property="Stroke" Value="{DynamicResource SurfaceSecondaryForegroundBrush}" />
+        <Setter Property="StrokeThickness" Value="1.6" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AlternationIndex, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="1">
+                <Setter Property="Stroke" Value="{DynamicResource SurfaceMutedSecondaryForegroundBrush}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
+                <Setter Property="Stroke" Value="{DynamicResource SelectionForegroundBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ArchiveFolderIconStyle" TargetType="Path" BasedOn="{StaticResource IconPathStyle}">
+        <Setter Property="Stroke" Value="{DynamicResource SurfaceAccentForegroundBrush}" />
+        <Setter Property="StrokeThickness" Value="1.6" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AlternationIndex, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="1">
+                <Setter Property="Stroke" Value="{DynamicResource SurfaceMutedAccentForegroundBrush}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
+                <Setter Property="Stroke" Value="{DynamicResource SelectionForegroundBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ActivityCardStyle" TargetType="Border" BasedOn="{StaticResource ShellCardStyle}">
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+
+    <Style x:Key="ActivitySectionHeadingStyle" TargetType="TextBlock" BasedOn="{StaticResource ShellSectionHeadingStyle}" />
+
+    <Style x:Key="ActivitySecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource ShellSecondaryTextStyle}" />
+</ResourceDictionary>

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -22,10 +23,12 @@ namespace RainExplorer.Controls;
 public partial class BreadcrumbBar : UserControl
 {
     private sealed record CrumbPinTarget(string Key, string Name, bool Dynamic);
+    private sealed record ArchiveCrumbTarget(int ArchiveDepth, string? NodeId);
     private TabViewModel? _tab;
     private bool _editing;
     private CancellationTokenSource? _childCts;
     private CancellationTokenSource? _acCts;
+    private CancellationTokenSource? _commitCts;
     private Button? _dropTargetButton;
 
     /// <summary>Above this many segments the middle ones collapse into a "…" menu.</summary>
@@ -52,7 +55,8 @@ public partial class BreadcrumbBar : UserControl
 
     private void OnTabPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.Page))
+        if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.Page)
+            or nameof(TabViewModel.ArchiveBreadcrumbs))
         {
             ExitEdit();   // a navigation (ours or external) supersedes any in-progress edit
             Rebuild();
@@ -153,6 +157,12 @@ public partial class BreadcrumbBar : UserControl
 
         var tab = Tab;
         if (tab is null) return;
+
+        if (tab.Page == PageKind.Archive)
+        {
+            AddArchiveCrumbs(tab.ArchiveBreadcrumbs);
+            return;
+        }
 
         // Special dashboard pages aren't a filesystem path — show one labelled pill.
         if (tab.Page != PageKind.Folder)
@@ -260,9 +270,48 @@ public partial class BreadcrumbBar : UserControl
         });
     }
 
+    private void AddArchiveCrumbs(IReadOnlyList<ArchiveBreadcrumb> breadcrumbs)
+    {
+        for (int index = 0; index < breadcrumbs.Count; index++)
+        {
+            var crumb = breadcrumbs[index];
+            var button = new Button
+            {
+                Content = crumb.Label,
+                Style = (Style)FindResource("CrumbButtonStyle"),
+                Tag = new ArchiveCrumbTarget(crumb.ArchiveDepth, crumb.NodeId),
+                ToolTip = "Archive location",
+                FontWeight = index == breadcrumbs.Count - 1
+                    ? FontWeights.SemiBold
+                    : FontWeights.Normal,
+            };
+            AutomationProperties.SetName(button, $"Archive breadcrumb: {crumb.Label}");
+            AutomationProperties.SetHelpText(
+                button, "Navigate to this location in the current nested archive chain.");
+            button.Click += Crumb_Click;
+            CrumbStrip.Children.Add(button);
+            if (index < breadcrumbs.Count - 1)
+                AddArchiveChevron();
+        }
+        Dispatcher.BeginInvoke(() => CrumbScroll.ScrollToRightEnd(), DispatcherPriority.Background);
+    }
+
+    private void AddArchiveChevron()
+    {
+        CrumbStrip.Children.Add(new Button
+        {
+            Style = (Style)FindResource("CrumbChevronStyle"),
+            IsHitTestVisible = false,
+            Focusable = false,
+            IsTabStop = false,
+        });
+    }
+
     private void Crumb_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string p }) _ = Tab?.NavigateAsync(p, true);
+        if (sender is Button { Tag: ArchiveCrumbTarget archive })
+            Tab?.NavigateArchive(archive.ArchiveDepth, archive.NodeId);
+        else if (sender is Button { Tag: string p }) _ = Tab?.NavigateAsync(p, true);
     }
 
     private void Chevron_Click(object sender, RoutedEventArgs e)
@@ -365,7 +414,7 @@ public partial class BreadcrumbBar : UserControl
         if (MenuTargetPath is not { } p || !Directory.Exists(p)) return;
         if (MainViewModel.IsPinnedTo(target.Key, p)) MainViewModel.UnpinFrom(target.Key, p);
         else MainViewModel.PinTo(target.Key, p,
-            System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)));
+            SafeFileName(p));
     }
 
     private void CrumbTerminal_Click(object sender, RoutedEventArgs e)
@@ -379,7 +428,7 @@ public partial class BreadcrumbBar : UserControl
         if (MenuTargetPath is not { } p || !Directory.Exists(p)) return;
         var item = new FileItem
         {
-            Name = System.IO.Path.GetFileName(p.TrimEnd(System.IO.Path.DirectorySeparatorChar)),
+            Name = SafeFileName(p),
             FullPath = p,
             IsDirectory = true,
         };
@@ -427,6 +476,19 @@ public partial class BreadcrumbBar : UserControl
     private static List<Crumb> BuildCrumbs(string path)
     {
         var list = new List<Crumb>();
+        if (NetworkPath.IsNetworkPath(path))
+        {
+            string current = NetworkPath.Normalize(path);
+            while (true)
+            {
+                string label = NetworkPath.GetDisplayName(current);
+                list.Add(new Crumb(label, current));
+                if (NetworkPath.GetParent(current) is not { } parent) break;
+                current = parent;
+            }
+            list.Reverse();
+            return list;
+        }
         DirectoryInfo? dir;
         try { dir = new DirectoryInfo(path); }
         catch { return list; }
@@ -472,11 +534,17 @@ public partial class BreadcrumbBar : UserControl
         List<string> dirs;
         try { dirs = await GetSubdirsAsync(dir, "", 500, cts.Token); }
         catch (OperationCanceledException) { return; }
+        catch (Exception)
+        {
+            if (!cts.IsCancellationRequested)
+                ChildList.ItemsSource = new[] { Suggestion.Placeholder("Couldn't load folders. Open the location to try again.") };
+            return;
+        }
         if (cts.IsCancellationRequested) return;
 
         ChildList.ItemsSource = dirs.Count == 0
             ? new[] { Suggestion.Placeholder("(no subfolders)") }
-            : dirs.Select(d => new Suggestion(System.IO.Path.GetFileName(d), d)).ToList();
+            : dirs.Select(d => new Suggestion(SafeFileName(d), d)).ToList();
     }
 
     private void ShowDropdown(IEnumerable<Suggestion> items, UIElement anchor)
@@ -503,7 +571,7 @@ public partial class BreadcrumbBar : UserControl
     public void BeginEdit()
     {
         var tab = Tab;
-        if (tab is null) return;
+        if (tab is null || tab.IsArchiveView) return;
         _editing = true;
         ChildPopup.IsOpen = false;
         EditBox.Text = tab.Page == PageKind.Folder ? tab.CurrentPath : string.Empty;
@@ -533,6 +601,7 @@ public partial class BreadcrumbBar : UserControl
 
     private void ExitEdit()
     {
+        _commitCts?.Cancel();
         if (!_editing) return;
         _editing = false;
         _acCts?.Cancel();
@@ -581,9 +650,10 @@ public partial class BreadcrumbBar : UserControl
     private async void UpdateAutocomplete()
     {
         if (!_editing) return;
+        _commitCts?.Cancel();
         _acCts?.Cancel();
 
-        string text = EditBox.Text;
+        string text = EditBox.Text.Trim().Replace('/', '\\');
         string dir, partial;
         if (text.EndsWith(System.IO.Path.DirectorySeparatorChar) ||
             text.EndsWith(System.IO.Path.AltDirectorySeparatorChar))
@@ -593,21 +663,36 @@ public partial class BreadcrumbBar : UserControl
         }
         else
         {
-            try { dir = System.IO.Path.GetDirectoryName(text) ?? string.Empty; } catch { dir = string.Empty; }
+            try
+            {
+                dir = NetworkPath.IsNetworkPath(text)
+                    ? NetworkPath.GetParent(text) ?? string.Empty
+                    : System.IO.Path.GetDirectoryName(text) ?? string.Empty;
+            }
+            catch { dir = string.Empty; }
             partial = SafeFileName(text);
         }
 
-        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) { AcPopup.IsOpen = false; return; }
+        if (string.IsNullOrEmpty(dir)) { AcPopup.IsOpen = false; return; }
 
         var cts = new CancellationTokenSource();
         _acCts = cts;
         List<string> dirs;
-        try { dirs = await GetSubdirsAsync(dir, partial, 14, cts.Token); }
+        try
+        {
+            if (NetworkPath.IsNetworkPath(dir)) await Task.Delay(180, cts.Token);
+            dirs = await GetSubdirsAsync(dir, partial, 14, cts.Token);
+        }
         catch (OperationCanceledException) { return; }
+        catch (Exception)
+        {
+            if (!cts.IsCancellationRequested) AcPopup.IsOpen = false;
+            return;
+        }
         if (cts.IsCancellationRequested || !_editing) return;
 
         if (dirs.Count == 0) { AcPopup.IsOpen = false; return; }
-        AcList.ItemsSource = dirs.Select(d => new Suggestion(System.IO.Path.GetFileName(d), d)).ToList();
+        AcList.ItemsSource = dirs.Select(d => new Suggestion(SafeFileName(d), d)).ToList();
         AcList.SelectedIndex = -1;
         AcPopup.Width = EditHost.ActualWidth;
         AcPopup.IsOpen = true;
@@ -695,18 +780,18 @@ public partial class BreadcrumbBar : UserControl
         EditBox.CaretIndex = p.Length;   // TextChanged refreshes suggestions for the new folder
     }
 
-    private void Commit()
+    private async void Commit()
     {
         var tab = Tab;
         if (tab is null) return;
-        string p = EditBox.Text.Trim();
+        string p = NetworkPath.Normalize(EditBox.Text);
         AcPopup.IsOpen = false;
 
         if (p.Length == 0) { ExitEdit(); Rebuild(); return; }
 
         // Browser-style command shortcuts: typing "cmd", "powershell", "wt", etc. in the
         // address bar launches that tool with the current folder as its working directory.
-        if (tab.Page == PageKind.Folder && Directory.Exists(tab.CurrentPath)
+        if (ShellCommands.ContainsKey(p) && tab.CanUsePhysicalFileCommands
             && TryLaunchInFolder(p, tab.CurrentPath))
         {
             ExitEdit();
@@ -714,7 +799,27 @@ public partial class BreadcrumbBar : UserControl
         }
 
         // A file path opens the file; a folder navigates; anything else shows a status warning.
-        if (File.Exists(p))
+        // Network existence checks can wait for SMB; keep typing and other tabs responsive.
+        _commitCts?.Cancel();
+        _commitCts?.Dispose();
+        _commitCts = new CancellationTokenSource();
+        CancellationToken ct = _commitCts.Token;
+        bool isFile;
+        try
+        {
+            isFile = !NetworkPath.TryGetServerRoot(p, out _)
+                && await Task.Run(() => File.Exists(p), ct).WaitAsync(TimeSpan.FromSeconds(20), ct);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (TimeoutException)
+        {
+            if (!ct.IsCancellationRequested)
+                tab.Status = "⚠️ The network location took too long to respond. Check the address and connection, then try again.";
+            return;
+        }
+        if (!_editing || !ReferenceEquals(Tab, tab)
+            || !string.Equals(NetworkPath.Normalize(EditBox.Text), p, StringComparison.Ordinal)) return;
+        if (isFile)
         {
             try { ProcessLauncher.StartShell(Path.GetFullPath(p)); }
             catch (Exception ex) { tab.Status = $"⚠️ {ex.Message}"; }
@@ -795,6 +900,14 @@ public partial class BreadcrumbBar : UserControl
     private static async Task<List<string>> GetSubdirsAsync(
         string dir, string startsWith, int cap, CancellationToken ct)
     {
+        dir = NetworkPath.Normalize(dir);
+        if (NetworkPath.TryGetServerRoot(dir, out _))
+        {
+            var shares = await new FileSystemService().ReadDirectoryAsync(dir, ct);
+            return shares.Where(item => item.Name.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(cap).Select(item => item.FullPath).ToList();
+        }
         bool showHidden = SettingsStore.Instance.Settings.ShowHiddenFiles;
         return await Task.Run(() =>
         {
@@ -820,18 +933,19 @@ public partial class BreadcrumbBar : UserControl
                     if (matches.Count >= 2000) break;
                 }
             }
+            catch (OperationCanceledException) { throw; }
             catch { /* unreadable folder */ }
 
             matches.Sort((a, b) => string.Compare(
                 System.IO.Path.GetFileName(a), System.IO.Path.GetFileName(b), StringComparison.OrdinalIgnoreCase));
             if (matches.Count > cap) matches = matches.GetRange(0, cap);
             return matches;
-        }, ct);
+        }, ct).WaitAsync(TimeSpan.FromSeconds(20), ct);
     }
 
     private static string SafeFileName(string p)
     {
-        try { return System.IO.Path.GetFileName(p) ?? string.Empty; } catch { return string.Empty; }
+        try { return NetworkPath.GetDisplayName(p); } catch { return string.Empty; }
     }
 
     private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject

@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RainArchives.Contracts/RainArchives.Contracts.csproj" />
+    <Project Path="src/RainArchives.Core/RainArchives.Core.csproj" />
+    <Project Path="src/RainArchives.Security/RainArchives.Security.csproj" />
+    <Project Path="src/RainArchives.Providers.SharpCompress/RainArchives.Providers.SharpCompress.csproj" />
+    <Project Path="src/RainArchives.Providers.WinRar/RainArchives.Providers.WinRar.csproj" />
+    <Project Path="src/RainArchives.Providers.Zip/RainArchives.Providers.Zip.csproj" />
+    <Project Path="src/RainArchives.Providers.SevenZip/RainArchives.Providers.SevenZip.csproj" />
+    <Project Path="src/RainArchives.Worker/RainArchives.Worker.csproj" />
+    <Project Path="src/RainArchives.Client/RainArchives.Client.csproj" />
+    <Project Path="src/RainArchives.Cli/RainArchives.Cli.csproj" />
+    <Project Path="src/RainArchives.App/RainArchives.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RainArchives.UnitTests/RainArchives.UnitTests.csproj" />
+    <Project Path="tests/RainArchives.IntegrationTests/RainArchives.IntegrationTests.csproj" />
+    <Project Path="tests/RainArchives.AdversarialTests/RainArchives.AdversarialTests.csproj" />
+    <Project Path="tests/RainArchives.RecoveryCrashProbe/RainArchives.RecoveryCrashProbe.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/RainArchives.Benchmarks/RainArchives.Benchmarks.csproj" />
+  </Folder>
+</Solution>

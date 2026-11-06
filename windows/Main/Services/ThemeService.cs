@@ -5,10 +5,10 @@ using RainExplorer.Models;
 namespace RainExplorer.Services;
 
 /// <summary>
-/// Applies a colour theme + view density at runtime. Themes mutate the shared
-/// palette brushes defined in Themes/Dark.xaml — every control references those
-/// same brush instances via StaticResource, so changing a colour repaints the
-/// whole app instantly.
+/// Applies a colour theme + view density at runtime. Themes update the shared
+/// palette resources defined in Themes/Dark.xaml. Mutable brushes are updated in
+/// place so existing consumers repaint immediately; frozen or missing resources
+/// are replaced so DynamicResource consumers can follow the new selection.
 ///
 /// A theme drives EVERYTHING: the accent family + washes, selection colours,
 /// the ambient orb, AND the base surface palette. For dark themes the near-black
@@ -51,7 +51,7 @@ public static class ThemeService
         ["Light"]    = new("#7C3AED", "#9333EA", "#6D28D9", "#5B21B6", Light: true),
     };
 
-    // ---- Dark (default) surfaces, shared by every non-light theme ----------
+    // ---- Dark fallback surfaces (replaced from the selected theme background) ----
     private static readonly Dictionary<string, string> DarkSurfaces = new()
     {
         ["BgRaised"] = "#0D0D14", ["BgChrome"] = "#12121B",
@@ -59,7 +59,8 @@ public static class ThemeService
         ["Glass1"] = "#06FFFFFF", ["Glass2"] = "#0BFFFFFF", ["Glass3"] = "#14FFFFFF",
         ["Glass4"] = "#1AFFFFFF", ["BgHover"] = "#14FFFFFF",
         ["Line1"] = "#12FFFFFF", ["Line2"] = "#1FFFFFFF", ["Line3"] = "#2EFFFFFF",
-        ["Border"] = "#1FFFFFFF", ["MenuBg"] = "#F2161622",
+        // Menus are intentionally opaque so a popup never reveals the file list below it.
+        ["Border"] = "#1FFFFFFF", ["MenuBg"] = "#FF161622",
         ["Text"] = "#F5F4FB", ["TextDim"] = "#9B9AAC", ["TextMuted"] = "#9B9AAC",
         ["TextFaint"] = "#6C6B7E",
     };
@@ -73,7 +74,8 @@ public static class ThemeService
         ["Glass1"] = "#0A000000", ["Glass2"] = "#12000000", ["Glass3"] = "#1E000000",
         ["Glass4"] = "#2A000000", ["BgHover"] = "#16000000",
         ["Line1"] = "#1A000000", ["Line2"] = "#2C000000", ["Line3"] = "#40000000",
-        ["Border"] = "#2C000000", ["MenuBg"] = "#FAF7F5FB",
+        // Keep the light popup opaque for the same reason as the dark palette.
+        ["Border"] = "#2C000000", ["MenuBg"] = "#FFF7F5FB",
         // Near-black ink + genuinely dark muted tones (the old ones vanished on light).
         ["Text"] = "#0B0A10", ["TextDim"] = "#2E2D38", ["TextMuted"] = "#393843",
         ["TextFaint"] = "#52515D",
@@ -112,8 +114,12 @@ public static class ThemeService
             bgBottom = Mix(ink, deep, 0.16);
         }
 
+        if (!t.Light)
+            ApplyDarkSurfacePalette(res, bgTop, bgBottom);
+
         // Flat base brush (used where a solid is needed) = the top of the gradient.
         SetBrushColor(res, "Bg", bgTop);
+        res["AccentColor"] = accent;
         // Themed window background gradient (DynamicResource on the root border).
         res["AppBackgroundBrush"] = MakeBackground(bgTop, bgBottom);
 
@@ -174,20 +180,60 @@ public static class ThemeService
 
     private static void SetBrush(ResourceDictionary res, string key, string hex)
     {
-        if (res[key] is SolidColorBrush b && !b.IsFrozen) b.Color = Parse(hex);
+        SetBrushColor(res, key, Parse(hex));
     }
 
     private static void SetBrushColor(ResourceDictionary res, string key, Color c)
     {
-        if (res[key] is SolidColorBrush b && !b.IsFrozen) b.Color = c;
+        if (res[key] is SolidColorBrush b && !b.IsFrozen)
+        {
+            b.Color = c;
+            return;
+        }
+
+        // Resource dictionaries may freeze Freezables loaded from XAML. Do not
+        // leave the old palette in place when that happens: replacing the value
+        // also raises the resource change notification used by DynamicResource.
+        res[key] = new SolidColorBrush(c);
     }
 
     private static void SetGradient(ResourceDictionary res, string key, string a, string b, string c)
     {
-        if (res[key] is not LinearGradientBrush g || g.IsFrozen || g.GradientStops.Count < 3) return;
-        g.GradientStops[0].Color = Parse(a);
-        g.GradientStops[1].Color = Parse(b);
-        g.GradientStops[2].Color = Parse(c);
+        if (res[key] is LinearGradientBrush g && !g.IsFrozen && g.GradientStops.Count >= 3)
+        {
+            g.GradientStops[0].Color = Parse(a);
+            g.GradientStops[1].Color = Parse(b);
+            g.GradientStops[2].Color = Parse(c);
+            return;
+        }
+
+        res[key] = MakeGradient(Parse(a), Parse(b), Parse(c));
+    }
+
+    private static void ApplyDarkSurfacePalette(ResourceDictionary res, Color bgTop, Color bgBottom)
+    {
+        // Keep secondary surfaces opaque, but lift them only a little from the
+        // selected background so custom gradients remain visible as a theme.
+        Color neutral = Colors.White;
+        Color midpoint = Mix(bgTop, bgBottom, 0.5);
+        SetBrushColor(res, "BgRaised", Mix(bgTop, neutral, 0.06));
+        SetBrushColor(res, "BgChrome", Mix(bgBottom, neutral, 0.04));
+        SetBrushColor(res, "BgAlt", Mix(midpoint, neutral, 0.05));
+        SetBrushColor(res, "BgSide", Mix(bgBottom, neutral, 0.06));
+        SetBrushColor(res, "MenuBg", Mix(bgBottom, neutral, 0.08));
+    }
+
+    private static LinearGradientBrush MakeGradient(Color a, Color b, Color c)
+    {
+        var gradient = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 1),
+        };
+        gradient.GradientStops.Add(new GradientStop(a, 0));
+        gradient.GradientStops.Add(new GradientStop(b, 0.55));
+        gradient.GradientStops.Add(new GradientStop(c, 1));
+        return gradient;
     }
 
     private static Color Parse(string hex) => (Color)ColorConverter.ConvertFromString(hex)!;

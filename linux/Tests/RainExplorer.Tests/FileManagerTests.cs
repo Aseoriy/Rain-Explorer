@@ -118,6 +118,63 @@ public sealed class FileManagerTests
     }
 
     [Fact]
+    public void AppImageActivationKeepsThePermanentImagePath()
+    {
+        string? oldImage = Environment.GetEnvironmentVariable("APPIMAGE");
+        string? oldDir = Environment.GetEnvironmentVariable("APPDIR");
+        string image = Path.Combine(TestEnvironment.NewFolder("appimage"), "Rain alpha.AppImage");
+        File.WriteAllText(image, "image fixture");
+        try
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", image);
+            Environment.SetEnvironmentVariable("APPDIR", AppContext.BaseDirectory);
+            Assert.Equal(new[] { image }, FileManagerActivation.LaunchCommand());
+            string contents = FileManagerActivation.CreateContents(FileManagerActivation.LaunchCommand());
+            Assert.Contains($"Exec=\"{image}\" --file-manager-service", contents);
+            Assert.DoesNotContain(AppContext.BaseDirectory, contents);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", oldImage);
+            Environment.SetEnvironmentVariable("APPDIR", oldDir);
+        }
+    }
+
+    [Fact]
+    public void NativeActivationIgnoresMissingOrInheritedAppImagePaths()
+    {
+        string? oldImage = Environment.GetEnvironmentVariable("APPIMAGE");
+        string? oldDir = Environment.GetEnvironmentVariable("APPDIR");
+        string folder = TestEnvironment.NewFolder("unrelated-appimage");
+        string image = Path.Combine(folder, "Other.AppImage");
+        File.WriteAllText(image, "image fixture");
+        try
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", null);
+            Environment.SetEnvironmentVariable("APPDIR", null);
+            var native = FileManagerActivation.LaunchCommand();
+            foreach (var (candidate, directory) in new[]
+            {
+                (image + ".missing", AppContext.BaseDirectory),
+                ("relative.AppImage", AppContext.BaseDirectory),
+                (folder, AppContext.BaseDirectory),
+                (image, "relative"),
+                (image, folder),
+            })
+            {
+                Environment.SetEnvironmentVariable("APPIMAGE", candidate);
+                Environment.SetEnvironmentVariable("APPDIR", directory);
+                Assert.Equal(native, FileManagerActivation.LaunchCommand());
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", oldImage);
+            Environment.SetEnvironmentVariable("APPDIR", oldDir);
+        }
+    }
+
+    [Fact]
     public void ActivationIsOptInAtomicAndDoesNotReplaceAnotherUserService()
     {
         Assert.False(new RainExplorer.Models.AppSettings().HandleShowInFolder);
