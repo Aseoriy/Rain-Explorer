@@ -18,7 +18,4 @@
     <Project Path="tests/RainArchives.AdversarialTests/RainArchives.AdversarialTests.csproj" />
     <Project Path="tests/RainArchives.RecoveryCrashProbe/RainArchives.RecoveryCrashProbe.csproj" />
   </Folder>
-  <Folder Name="/benchmarks/">
-    <Project Path="benchmarks/RainArchives.Benchmarks/RainArchives.Benchmarks.csproj" />
-  </Folder>
 </Solution>

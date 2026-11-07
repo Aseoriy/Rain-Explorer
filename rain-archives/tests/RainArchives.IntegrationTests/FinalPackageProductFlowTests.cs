@@ -2338,7 +2338,7 @@ public sealed class FinalPackageProductFlowTests
         var extensions = new HashSet<string>(
             [".cs", ".csproj", ".xaml", ".manifest", ".ico"],
             StringComparer.OrdinalIgnoreCase);
-        foreach (var scope in new[] { "src", "benchmarks" })
+        foreach (var scope in new[] { "src" })
         {
             paths.AddRange(Directory.EnumerateFiles(
                     Path.Combine(repository, scope),

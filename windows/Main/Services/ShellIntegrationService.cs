@@ -62,7 +62,7 @@ public static class ShellIntegrationService
     // All HKCU-only and reversible; it never replaces explorer.exe itself.
     //
     // Directory/Drive alone only cover double-click and Win+E. "Show in folder"
-    // (browser downloads), "Reveal in File Explorer" (VS Code, Claude, other
+    // (browser downloads), "Reveal in File Explorer" (VS Code and other
     // Electron apps) and any other caller of the shell's SHOpenFolderAndSelectItems
     // API resolve the target through the BASE "Folder" class and invoke its open
     // (or explore) verb — so we must override those too, or those actions keep
