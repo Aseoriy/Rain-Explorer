@@ -13,8 +13,19 @@ public readonly record struct OpResult(
     OpOutcome Outcome,
     string? Error,
     IReadOnlyList<string>? CompletedPaths = null,
-    IReadOnlyList<string>? CreatedPaths = null)
+    IReadOnlyList<string>? CreatedPaths = null,
+    IReadOnlyDictionary<string, string>? RenamedDestinationPaths = null)
 {
+    /// <summary>
+    /// Where a completed source landed: its "Keep both" name when it was renamed,
+    /// otherwise its own name inside <paramref name="destDir"/>.
+    /// </summary>
+    public string DestinationFor(string source, string destDir) =>
+        RenamedDestinationPaths is not null
+        && RenamedDestinationPaths.TryGetValue(source, out string? renamed)
+            ? renamed
+            : Path.Combine(destDir, Path.GetFileName(source.TrimEnd(Path.DirectorySeparatorChar)));
+
     public bool Ok => Outcome == OpOutcome.Ok;
     public bool Canceled => Outcome == OpOutcome.Canceled;
     public IReadOnlyList<string> Completed => CompletedPaths ?? Array.Empty<string>();
@@ -33,6 +44,8 @@ public enum TransferConflictChoice
 {
     ReplaceAll,
     SkipAll,
+    /// <summary>Copy or move each conflicting item under a free "name (2)" style name.</summary>
+    KeepBoth,
     Cancel
 }
 
@@ -339,6 +352,7 @@ public sealed class FileOperationsService
             .Select(item => item.Destination)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool transferStarted = false;
+        IReadOnlyDictionary<string, string>? renamedDestinations = null;
         try
         {
             var conflicts = items
@@ -353,6 +367,38 @@ public sealed class FileOperationsService
                 : resolveConflicts(conflicts);
             if (choice == TransferConflictChoice.Cancel)
                 return new OpResult(OpOutcome.Canceled, null, completed, created);
+
+            // Keep both: give each conflicting item a fresh "name (2)" destination up front,
+            // then run as a conflict-free transfer. Anything that appears mid-copy is skipped
+            // rather than overwritten, the same as the no-conflict path.
+            if (choice == TransferConflictChoice.KeepBoth)
+            {
+                var reserved = new HashSet<string>(
+                    items.Select(item => item.Destination), StringComparer.OrdinalIgnoreCase);
+                var renamed = new List<TransferItem>(items.Count);
+                var renames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (TransferItem item in items)
+                {
+                    if (!PathExists(item.Destination))
+                    {
+                        renamed.Add(item);
+                        continue;
+                    }
+
+                    string? unique = ChooseKeepBothDestination(item.Destination, item.IsDirectory, reserved);
+                    if (unique is null)
+                        return new OpResult(OpOutcome.Failed,
+                            $"Could not find a free name for {Path.GetFileName(item.Destination)}.",
+                            completed, created);
+                    reserved.Add(unique);
+                    renames[item.Source] = unique;
+                    renamed.Add(item with { Destination = unique });
+                }
+
+                items = renamed;
+                renamedDestinations = renames;
+                choice = TransferConflictChoice.SkipAll;
+            }
 
             // A same-volume move into unused names is an atomic filesystem rename.
             // Keep that common path instant instead of walking a large folder merely
@@ -376,7 +422,7 @@ public sealed class FileOperationsService
                     progress?.Report(new TransferProgress(index + 1, items.Count, 0, 0,
                         Path.GetFileName(item.Source), false, watch.Elapsed));
                 }
-                return new OpResult(OpOutcome.Ok, null, completed, created);
+                return new OpResult(OpOutcome.Ok, null, completed, created, renamedDestinations);
             }
 
             var tracker = TransferProgressTracker.Scan(items, control, progress);
@@ -412,7 +458,7 @@ public sealed class FileOperationsService
             }
 
             tracker.Finish();
-            return new OpResult(OpOutcome.Ok, null, completed, created);
+            return new OpResult(OpOutcome.Ok, null, completed, created, renamedDestinations);
         }
         catch (OperationCanceledException ex)
         {
@@ -839,6 +885,29 @@ public sealed class FileOperationsService
 
     private readonly record struct TransferItem(
         string Source, string Destination, bool IsDirectory);
+
+    /// <summary>
+    /// Returns "name (2).ext" (or "name (2)" for folders), counting up until the path is
+    /// free on disk and not already planned for another item in this transfer.
+    /// </summary>
+    internal static string? ChooseKeepBothDestination(
+        string destination, bool isDirectory, ISet<string> reserved)
+    {
+        string? parent = Path.GetDirectoryName(destination);
+        if (string.IsNullOrEmpty(parent)) return null;
+        string name = Path.GetFileName(destination);
+        string stem = isDirectory ? name : Path.GetFileNameWithoutExtension(name);
+        string extension = isDirectory ? string.Empty : Path.GetExtension(name);
+        if (stem.Length == 0) { stem = name; extension = string.Empty; }
+
+        for (int suffix = 2; suffix <= 10_000; suffix++)
+        {
+            string candidate = Path.Combine(parent, $"{stem} ({suffix}){extension}");
+            if (!reserved.Contains(candidate) && !PathExists(candidate))
+                return candidate;
+        }
+        return null;
+    }
 
     private static bool PathExists(string path) => File.Exists(path) || Directory.Exists(path);
 
