@@ -514,7 +514,7 @@ public sealed class StagedExtractionWriterTests
     }
 
     [TestMethod]
-    public async Task HardLinkAddedToClosedStagedFileFailsClosed()
+    public async Task HardLinkAddedToClosedStagedFileByAnotherProcessIsTolerated()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -535,7 +535,7 @@ public sealed class StagedExtractionWriterTests
         File.Delete(probeSource);
 
         var destination = Path.Combine(root.Path, "output");
-        var attackerLink = Path.Combine(root.Path, "attacker-link.txt");
+        var syncClientLink = Path.Combine(root.Path, "sync-client-link.txt");
         await using var archive = new FakeArchiveHandle(
         [
             ("safe.txt", "safe"u8.ToArray()),
@@ -546,42 +546,35 @@ public sealed class StagedExtractionWriterTests
                 MinimumDiskReserveBytes: 0,
                 MinimumDiskReserveFraction: 0)));
 
-        var exception = await Assert.ThrowsExactlyAsync<ArchiveProviderException>(async () =>
-            await writer.ExtractAsync(
-                archive,
-                index.Entries.Where(entry => !entry.IsSynthetic).ToArray(),
-                destination,
-                _ => ValueTask.CompletedTask,
-                CancellationToken.None,
-                _ =>
+        await writer.ExtractAsync(
+            archive,
+            index.Entries.Where(entry => !entry.IsSynthetic).ToArray(),
+            destination,
+            _ => ValueTask.CompletedTask,
+            CancellationToken.None,
+            _ =>
+            {
+                var staging = Directory.GetDirectories(
+                    root.Path,
+                    "*.staging",
+                    SearchOption.TopDirectoryOnly).Single();
+                if (!NativeMethods.CreateHardLink(
+                        syncClientLink,
+                        Path.Combine(staging, "safe.txt"),
+                        IntPtr.Zero))
                 {
-                    var staging = Directory.GetDirectories(
-                        root.Path,
-                        "*.staging",
-                        SearchOption.TopDirectoryOnly).Single();
-                    if (!NativeMethods.CreateHardLink(
-                            attackerLink,
-                            Path.Combine(staging, "safe.txt"),
-                            IntPtr.Zero))
-                    {
-                        throw new IOException(
-                            $"Could not create the hard-link race fixture (Win32 {Marshal.GetLastPInvokeError()}).");
-                    }
+                    throw new IOException(
+                        $"Could not create the hard-link race fixture (Win32 {Marshal.GetLastPInvokeError()}).");
+                }
 
-                    return ValueTask.CompletedTask;
-                }));
+                return ValueTask.CompletedTask;
+            });
 
-        Assert.AreEqual(ArchiveErrorCategory.DestinationConflict, exception.Category);
-        Assert.AreEqual("destination.hard_link_appeared", exception.Code);
-        Assert.IsFalse(Directory.Exists(destination));
-        Assert.AreEqual("safe", await File.ReadAllTextAsync(attackerLink));
-        var preservedStaging = Directory.GetDirectories(
-            root.Path,
-            "*.staging",
-            SearchOption.TopDirectoryOnly).Single();
+        Assert.AreEqual("safe", await File.ReadAllTextAsync(Path.Combine(destination, "safe.txt")));
+        Assert.AreEqual("safe", await File.ReadAllTextAsync(syncClientLink));
         Assert.AreEqual(
-            "safe",
-            await File.ReadAllTextAsync(Path.Combine(preservedStaging, "safe.txt")));
+            0,
+            Directory.GetDirectories(root.Path, "*.staging", SearchOption.TopDirectoryOnly).Length);
     }
 
     [TestMethod]

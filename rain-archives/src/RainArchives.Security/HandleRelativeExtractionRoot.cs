@@ -265,12 +265,13 @@ internal sealed partial class HandleRelativeExtractionRoot : IDisposable
                 "an extracted file during final staging validation");
             var information = GetInformation(file);
             ValidateFile(file, pair.Value);
-            if (information.NumberOfLinks != 1)
-            {
-                throw DestinationChanged(
-                    "destination.hard_link_appeared",
-                    "An extracted file acquired an unexpected hard link before commit.");
-            }
+
+            // Extra hard links are tolerated here. Every staged file was created new by this
+            // operation and ValidateFile has just proven it is still that exact file, so a link
+            // added afterwards cannot redirect the write to some other file. Sync clients such
+            // as Google Drive for desktop routinely add short-lived links (for example under
+            // ".tmp.driveupload") to files that appear inside a synced folder, and rejecting
+            // them made extraction into synced folders fail.
 
             try
             {

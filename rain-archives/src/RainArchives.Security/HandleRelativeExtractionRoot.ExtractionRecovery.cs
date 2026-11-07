@@ -42,7 +42,8 @@ internal sealed partial class HandleRelativeExtractionRoot
                 expectedDirectories,
                 expectedFiles,
                 expectedProvenance,
-                cancellationToken);
+                cancellationToken,
+                tolerateExtraLinks: true);
         }
         catch (ExtractionTreeObservationException exception)
         {
@@ -270,8 +271,12 @@ internal sealed partial class HandleRelativeExtractionRoot
         IReadOnlyDictionary<string, string>? expectedDirectories,
         IReadOnlyDictionary<string, string>? expectedFiles,
         IReadOnlyDictionary<string, bool>? expectedProvenance,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool tolerateExtraLinks = false)
     {
+        // tolerateExtraLinks is only set for the live pre-commit check of files this operation
+        // just created and identity-validated. Sync clients (Google Drive, OneDrive) can add
+        // temporary hard links to them; recovery inspection after a crash stays strict.
         ArgumentNullException.ThrowIfNull(root);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedRootIdentity);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumObjects);
@@ -449,7 +454,7 @@ internal sealed partial class HandleRelativeExtractionRoot
                 }
 
                 ValidateFile(handle, identity);
-                if (information.NumberOfLinks != 1)
+                if (information.NumberOfLinks != 1 && !tolerateExtraLinks)
                 {
                     throw new ExtractionTreeObservationException(
                         ExtractionRecoveryArtifactState.UnexpectedHardLinks,
@@ -495,7 +500,8 @@ internal sealed partial class HandleRelativeExtractionRoot
                         child.Name,
                         identity,
                         zoneIdentifierLength,
-                        cancellationToken);
+                        cancellationToken,
+                        tolerateExtraLinks);
                 }
 
                 var contentHash = ComputeExtractionContentHash(
@@ -504,7 +510,7 @@ internal sealed partial class HandleRelativeExtractionRoot
                     cancellationToken);
                 var revalidated = GetInformation(handle);
                 ValidateFile(handle, identity);
-                if (revalidated.NumberOfLinks != 1
+                if ((revalidated.NumberOfLinks != 1 && !tolerateExtraLinks)
                     || GetBoundedRecoveryLength(revalidated) != length)
                 {
                     throw new ExtractionTreeObservationException(
@@ -558,7 +564,8 @@ internal sealed partial class HandleRelativeExtractionRoot
         string fileName,
         string expectedIdentity,
         long expectedLength,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool tolerateExtraLinks = false)
     {
         SafeFileHandle? stream = null;
         try
@@ -577,7 +584,7 @@ internal sealed partial class HandleRelativeExtractionRoot
             RequireStableExtractionRecoveryIdentity(
                 information,
                 "An extraction recovery provenance stream has no stable filesystem identity.");
-            if (information.NumberOfLinks != 1
+            if ((information.NumberOfLinks != 1 && !tolerateExtraLinks)
                 || GetBoundedRecoveryLength(information) != expectedLength)
             {
                 throw UnexpectedStreams(
