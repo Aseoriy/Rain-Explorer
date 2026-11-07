@@ -51,6 +51,11 @@
       <_RainArchivesWorkerProject>$(RainArchivesRoot)\src\RainArchives.Worker\RainArchives.Worker.csproj</_RainArchivesWorkerProject>
       <_RainArchivesWorkerOutput>$(RainArchivesRoot)\src\RainArchives.Worker\bin\$(Configuration)\net10.0-windows</_RainArchivesWorkerOutput>
     </PropertyGroup>
+    <!-- The Worker is not a ProjectReference, so a plain restore of this project never
+         restores it. Restore it here (with a distinct global property so MSBuild
+         re-evaluates it afterwards) before building, so fresh clones and CI work. -->
+    <MSBuild Projects="$(_RainArchivesWorkerProject)" Targets="Restore" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);_RainArchivesWorkerRestore=true" />
     <MSBuild Projects="$(_RainArchivesWorkerProject)" Targets="Build" BuildInParallel="false"
              Properties="Configuration=$(Configuration)" />
     <ItemGroup>
@@ -70,6 +75,9 @@
     </PropertyGroup>
     <Error Condition="'$(PublishSingleFile)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'"
            Text="Rain Explorer has not validated single-file, trimmed, or AOT packaging for the isolated Rain Archives Worker." />
+    <MSBuild Projects="$(RainArchivesRoot)\src\RainArchives.Worker\RainArchives.Worker.csproj"
+             Targets="Restore" BuildInParallel="false"
+             Properties="$(_RainArchivesWorkerPublishProperties);_RainArchivesWorkerRestore=true" />
     <MSBuild Projects="$(RainArchivesRoot)\src\RainArchives.Worker\RainArchives.Worker.csproj"
              Targets="Publish" BuildInParallel="false"
              Properties="$(_RainArchivesWorkerPublishProperties)" />
