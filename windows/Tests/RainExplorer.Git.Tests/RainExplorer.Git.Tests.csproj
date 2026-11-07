@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <RainArchivesRoot Condition="'$(RainArchivesRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\Rain Archives</RainArchivesRoot>
+    <RainArchivesRoot Condition="'$(RainArchivesRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\rain-archives</RainArchivesRoot>
   </PropertyGroup>
 
   <ItemGroup>
