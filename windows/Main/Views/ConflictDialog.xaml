@@ -2,7 +2,7 @@
     x:Class="RainExplorer.Views.ConflictDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Width="500" SizeToContent="Height"
+    Width="560" SizeToContent="Height"
     WindowStyle="None" AllowsTransparency="True" Background="Transparent"
     ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
     FontFamily="{DynamicResource AppFont}" FontSize="13" Foreground="{StaticResource Text}">
@@ -31,6 +31,8 @@
                         IsCancel="True" Click="Cancel_Click" Margin="0,0,8,0" />
                 <Button Content="Skip all" Style="{StaticResource DialogButton}"
                         Click="SkipAll_Click" Margin="0,0,8,0" />
+                <Button Content="Keep both" Style="{StaticResource DialogButton}"
+                        Click="KeepBoth_Click" Margin="0,0,8,0" />
                 <Button x:Name="ReplaceAllButton" Content="Replace all"
                         Style="{StaticResource PrimaryButton}" IsDefault="True"
                         Click="ReplaceAll_Click" />

@@ -104,6 +104,54 @@ public sealed class FileOperationsServiceTests
     }
 
     [Fact]
+    public void CopyConflictKeepBothAddsNumberedCopies()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        string file = Path.Combine(source, "notes.txt");
+        string folder = Directory.CreateDirectory(Path.Combine(source, "photos")).FullName;
+        File.WriteAllText(file, "new");
+        File.WriteAllText(Path.Combine(folder, "a.png"), "new photo");
+        File.WriteAllText(Path.Combine(destination, "notes.txt"), "old");
+        File.WriteAllText(Path.Combine(destination, "notes (2).txt"), "older copy");
+        Directory.CreateDirectory(Path.Combine(destination, "photos"));
+        File.WriteAllText(Path.Combine(destination, "photos", "a.png"), "old photo");
+
+        OpResult result = new FileOperationsService().CopyIntoResult([file, folder], destination,
+            _ => TransferConflictChoice.KeepBoth);
+
+        Assert.Equal(OpOutcome.Ok, result.Outcome);
+        Assert.Equal("old", File.ReadAllText(Path.Combine(destination, "notes.txt")));
+        Assert.Equal("older copy", File.ReadAllText(Path.Combine(destination, "notes (2).txt")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(destination, "notes (3).txt")));
+        Assert.Equal("old photo", File.ReadAllText(Path.Combine(destination, "photos", "a.png")));
+        Assert.Equal("new photo", File.ReadAllText(Path.Combine(destination, "photos (2)", "a.png")));
+        Assert.Contains(Path.Combine(destination, "notes (3).txt"), result.Created);
+        Assert.Contains(Path.Combine(destination, "photos (2)"), result.Created);
+    }
+
+    [Fact]
+    public void MoveConflictKeepBothLeavesExistingItemAlone()
+    {
+        using var temp = new TemporaryDirectory();
+        string source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        string destination = Directory.CreateDirectory(Path.Combine(temp.Path, "destination")).FullName;
+        string file = Path.Combine(source, "report.docx");
+        File.WriteAllText(file, "new");
+        File.WriteAllText(Path.Combine(destination, "report.docx"), "old");
+
+        OpResult result = new FileOperationsService().MoveIntoResult([file], destination,
+            _ => TransferConflictChoice.KeepBoth);
+
+        Assert.Equal(OpOutcome.Ok, result.Outcome);
+        Assert.False(File.Exists(file));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(destination, "report.docx")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(destination, "report (2).docx")));
+        Assert.Equal(Path.Combine(destination, "report (2).docx"), result.DestinationFor(file, destination));
+    }
+
+    [Fact]
     public void MoveConflictReplaceAllMergesFoldersWithoutShellPrompts()
     {
         using var temp = new TemporaryDirectory();

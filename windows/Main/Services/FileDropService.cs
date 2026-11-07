@@ -189,7 +189,7 @@ public static class FileDropService
         }
 
         var outputs = result.Completed
-            .Select(s => (Src: s, Dst: Path.Combine(destDir, Path.GetFileName(s.TrimEnd(Path.DirectorySeparatorChar)))))
+            .Select(s => (Src: s, Dst: result.DestinationFor(s, destDir)))
             // Never move back a destination that pre-dated this drop. It may contain
             // unrelated content, and undoing it wholesale would destroy that content.
             .Where(o => created.Contains(o.Dst))

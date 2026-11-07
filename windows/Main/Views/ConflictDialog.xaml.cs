@@ -34,7 +34,7 @@ public partial class ConflictDialog : Window
         if (count > 3) sample += ", …";
 
         var dialog = new ConflictDialog(
-            $"Replace items while you {operation}",
+            $"Items already exist where you {operation}",
             $"The destination already contains {itemLabel}.",
             $"Choose once for this transfer to {destination}. Conflicts include {sample}.",
             moving)
@@ -57,6 +57,12 @@ public partial class ConflictDialog : Window
     private void SkipAll_Click(object sender, RoutedEventArgs e)
     {
         Choice = TransferConflictChoice.SkipAll;
+        DialogResult = true;
+    }
+
+    private void KeepBoth_Click(object sender, RoutedEventArgs e)
+    {
+        Choice = TransferConflictChoice.KeepBoth;
         DialogResult = true;
     }
 
