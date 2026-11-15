@@ -55,7 +55,7 @@
                            VerticalAlignment="Center"
                            FontWeight="SemiBold"
                            Text="Archive contents" />
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
                     <Button x:Name="AddFilesButton"
                             TabIndex="0"
                             AutomationProperties.HelpText="Choose one or more files to place at the root of the new archive."

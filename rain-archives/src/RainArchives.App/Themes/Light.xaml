@@ -1,26 +1,26 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Color x:Key="ThemePaletteMarker">#00000000</Color>
-    <Color x:Key="BackgroundColor">#FFF7F5FA</Color>
+    <Color x:Key="BackgroundColor">#FFF3F2EE</Color>
     <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
-    <Color x:Key="SurfaceMutedColor">#FFF1EDF5</Color>
+    <Color x:Key="SurfaceMutedColor">#FFEAE8E2</Color>
     <Color x:Key="SurfaceRaisedColor">#FFFFFFFF</Color>
-    <Color x:Key="BorderColor">#FFE2DBE8</Color>
-    <Color x:Key="BorderStrongColor">#FFC8BCD2</Color>
-    <Color x:Key="TextColor">#FF211A28</Color>
-    <Color x:Key="MutedTextColor">#FF665C70</Color>
-    <Color x:Key="SubtleTextColor">#FF82778C</Color>
-    <Color x:Key="AccentColor">#FF7C3AED</Color>
-    <Color x:Key="AccentHoverColor">#FF6D28D9</Color>
-    <Color x:Key="AccentPressedColor">#FF5B21B6</Color>
+    <Color x:Key="BorderColor">#FFD8D5CD</Color>
+    <Color x:Key="BorderStrongColor">#FFBDB9AF</Color>
+    <Color x:Key="TextColor">#FF1C1B19</Color>
+    <Color x:Key="MutedTextColor">#FF5C5953</Color>
+    <Color x:Key="SubtleTextColor">#FF6B6861</Color>
+    <Color x:Key="AccentColor">#FF1F6E8C</Color>
+    <Color x:Key="AccentHoverColor">#FF195C75</Color>
+    <Color x:Key="AccentPressedColor">#FF134C61</Color>
     <Color x:Key="AccentForegroundColor">#FFFFFFFF</Color>
-    <Color x:Key="AccentWashColor">#FFEFE5FC</Color>
-    <Color x:Key="FocusColor">#FF7C3AED</Color>
-    <Color x:Key="SuccessColor">#FF147A55</Color>
-    <Color x:Key="WarningColor">#FF8A5A00</Color>
-    <Color x:Key="DangerColor">#FFB4233A</Color>
-    <Color x:Key="SelectionColor">#FFEADDFC</Color>
-    <Color x:Key="DisabledTextColor">#FF8A8290</Color>
+    <Color x:Key="AccentWashColor">#FFDCEBF1</Color>
+    <Color x:Key="FocusColor">#FF1F6E8C</Color>
+    <Color x:Key="SuccessColor">#FF2A7A4B</Color>
+    <Color x:Key="WarningColor">#FFA3620B</Color>
+    <Color x:Key="DangerColor">#FFB3261E</Color>
+    <Color x:Key="SelectionColor">#FFDCEBF1</Color>
+    <Color x:Key="DisabledTextColor">#FF8D8A83</Color>
 
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />

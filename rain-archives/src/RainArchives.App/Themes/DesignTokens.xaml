@@ -3,8 +3,8 @@
     <FontFamily x:Key="UiFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Consolas</FontFamily>
 
-    <CornerRadius x:Key="ControlCornerRadius">7</CornerRadius>
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <Thickness x:Key="ShellPagePadding">20</Thickness>
     <Thickness x:Key="ControlPadding">12,6</Thickness>
 
@@ -131,7 +131,21 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="BrowserButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+    <!-- Open archive is the one accent button only while nothing is open; once an archive is open, Extract takes over. -->
+    <Style x:Key="OpenArchiveButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Browser.HasSession}" Value="False">
+                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Dialog buttons keep a resting fill and border so actions never read as plain text. -->
+    <Style x:Key="DialogButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
         <Setter Property="MinWidth" Value="34" />
         <Setter Property="MinHeight" Value="30" />
         <Setter Property="Padding" Value="9,4" />
@@ -140,12 +154,38 @@
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
-    <Style x:Key="UtilityButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+    <!-- Toolbar buttons are flat: no resting fill or border, a quiet hover, and disabled labels that simply dim. -->
+    <Style x:Key="BrowserButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="MinWidth" Value="32" />
         <Setter Property="MinHeight" Value="30" />
-        <Setter Property="Padding" Value="9,4" />
-        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Margin" Value="0,0,2,0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="UtilityButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource StandardButtonStyle}">
@@ -282,26 +322,22 @@
     </Style>
 
     <Style x:Key="ArchiveColumnHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource SemanticDataGridColumnHeaderStyle}">
-        <Setter Property="MinHeight" Value="34" />
-        <Setter Property="Padding" Value="10,6" />
-        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedSecondaryForegroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="Normal" />
     </Style>
 
     <Style x:Key="SecondaryDataGridRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource SemanticDataGridRowStyle}">
-        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="MinHeight" Value="26" />
         <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="3,0,0,0" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
         <Setter Property="Foreground" Value="{DynamicResource SurfaceForegroundBrush}" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisualStyle}" />
         <Style.Triggers>
-            <Trigger Property="AlternationIndex" Value="1">
-                <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource SurfaceMutedForegroundBrush}" />
-            </Trigger>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
@@ -317,7 +353,7 @@
         <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
         <Setter Property="RowBackground" Value="{DynamicResource SurfaceBrush}" />
-        <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceMutedBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="ColumnHeaderStyle" Value="{StaticResource ArchiveColumnHeaderStyle}" />
         <Setter Property="CellStyle" Value="{StaticResource SemanticDataGridCellStyle}" />
         <Setter Property="RowStyle" Value="{StaticResource SecondaryDataGridRowStyle}" />
@@ -352,9 +388,6 @@
         <Setter Property="Stroke" Value="{DynamicResource SurfaceSecondaryForegroundBrush}" />
         <Setter Property="StrokeThickness" Value="1.6" />
         <Style.Triggers>
-            <DataTrigger Binding="{Binding AlternationIndex, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="1">
-                <Setter Property="Stroke" Value="{DynamicResource SurfaceMutedSecondaryForegroundBrush}" />
-            </DataTrigger>
             <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
                 <Setter Property="Stroke" Value="{DynamicResource SelectionForegroundBrush}" />
             </DataTrigger>
@@ -365,9 +398,6 @@
         <Setter Property="Stroke" Value="{DynamicResource SurfaceAccentForegroundBrush}" />
         <Setter Property="StrokeThickness" Value="1.6" />
         <Style.Triggers>
-            <DataTrigger Binding="{Binding AlternationIndex, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="1">
-                <Setter Property="Stroke" Value="{DynamicResource SurfaceMutedAccentForegroundBrush}" />
-            </DataTrigger>
             <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
                 <Setter Property="Stroke" Value="{DynamicResource SelectionForegroundBrush}" />
             </DataTrigger>

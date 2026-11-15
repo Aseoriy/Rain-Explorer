@@ -14,7 +14,7 @@
         SnapsToDevicePixels="True"
         AutomationProperties.Name="Archive recovery center">
     <Window.Resources>
-        <Style TargetType="Button" BasedOn="{StaticResource BrowserButtonStyle}" />
+        <Style TargetType="Button" BasedOn="{StaticResource DialogButtonStyle}" />
         <Style TargetType="DataGrid" BasedOn="{StaticResource SecondaryDataGridStyle}" />
         <Style TargetType="TabItem" BasedOn="{StaticResource SecondaryTabItemStyle}" />
         <Style x:Key="RecoverySelectedStatusStyle" TargetType="TextBlock">
@@ -143,7 +143,7 @@
                                 Command="{Binding InspectCommand}"
                                 Content="_Inspect"
                                 IsDefault="True"
-                                Style="{StaticResource BrowserButtonStyle}" />
+                                Style="{StaticResource DialogButtonStyle}" />
                     </StackPanel>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -218,7 +218,7 @@
                                         AutomationProperties.Name="Publish recovered archive"
                                         Command="{Binding CommitCommand}"
                                         Content="_Publish staged archive"
-                                        Style="{StaticResource BrowserButtonStyle}" />
+                                        Style="{StaticResource DialogButtonStyle}" />
                                 <Button TabIndex="6"
                                         AutomationProperties.HelpText="Permanently delete only the revalidated Rain-owned staging artifact after confirmation."
                                         AutomationProperties.Name="Discard recovered staging artifact"
@@ -381,7 +381,7 @@
                                         Command="{Binding InspectCommand}"
                                         Content="_Inspect"
                                         IsDefault="True"
-                                        Style="{StaticResource BrowserButtonStyle}" />
+                                        Style="{StaticResource DialogButtonStyle}" />
                             </StackPanel>
 
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -511,7 +511,7 @@
                                                 AutomationProperties.Name="Open recovered archive independently"
                                                 Command="{Binding ReopenCommand}"
                                                 Content="_Open independently"
-                                                Style="{StaticResource BrowserButtonStyle}" />
+                                                Style="{StaticResource DialogButtonStyle}" />
                                         <Button x:Name="DiscardNestedRecoveryButton"
                                                 TabIndex="8"
                                                 AutomationProperties.HelpText="Permanently delete only the freshly revalidated exact inactive temporary workspace after a separate confirmation."
@@ -659,7 +659,7 @@
                                         Command="{Binding InspectCommand}"
                                         Content="_Inspect"
                                         IsDefault="True"
-                                        Style="{StaticResource BrowserButtonStyle}" />
+                                        Style="{StaticResource DialogButtonStyle}" />
                             </StackPanel>
 
                             <ScrollViewer VerticalScrollBarVisibility="Auto"

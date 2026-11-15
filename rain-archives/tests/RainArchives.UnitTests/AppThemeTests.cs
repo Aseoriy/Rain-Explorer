@@ -290,7 +290,9 @@ public sealed class AppThemeTests
                 "{DynamicResource AccentWashBrush}",
                 StringComparison.Ordinal))
             .ToArray();
-        Assert.IsTrue(accentWashConsumers.Length > 0, "No AccentWash surface consumers were found.");
+        // The 2026-11 visual redesign removed the decorative accent tiles from the main shell, so the
+        // main window may have no AccentWash surface at all. Any surface that does use it must still
+        // declare the paired border and icon roles.
         foreach (var consumer in accentWashConsumers)
         {
             Assert.AreEqual(
@@ -400,15 +402,20 @@ public sealed class AppThemeTests
                 var alternatingIcon = FindVisualDescendant<System.Windows.Shapes.Path>(alternatingRow);
                 Assert.IsNotNull(alternatingIcon);
 
-                AssertBrushColor(browserButton.Background, surfaceMuted, "BrowserButton background");
+                // Toolbar buttons are flat in the 2026-11 design: no resting fill, but their text still resolves the paired muted foreground.
+                AssertBrushColor(browserButton.Background, Colors.Transparent, "BrowserButton background");
                 AssertBrushColor(browserButton.Foreground, surfaceMutedForeground, "BrowserButton foreground");
-                AssertBrushColor(columnHeader.Background, surfaceMuted, "column-header background");
+                AssertBrushColor(columnHeader.Background, surface, "column-header background");
                 AssertBrushColor(columnHeader.Foreground, surfaceMutedSecondary, "column-header foreground");
                 AssertBrushColor(statusChip.Background, surfaceMuted, "muted shell background");
                 AssertBrushColor(statusText.Foreground, surfaceMutedForeground, "muted shell foreground");
-                AssertBrushColor(alternatingRow.Background, surfaceMuted, "alternating-row background");
-                AssertBrushColor(alternatingRow.Foreground, surfaceMutedForeground, "alternating-row foreground");
-                AssertBrushColor(alternatingIcon.Stroke, surfaceMutedAccent, "alternating-row icon");
+                // The archive list no longer zebra-stripes, so every unselected row uses the plain surface pair.
+                AssertBrushColor(alternatingRow.Background, surface, "unselected-row background");
+                AssertBrushColor(alternatingRow.Foreground, surfaceForeground, "unselected-row foreground");
+                AssertBrushColor(
+                    alternatingIcon.Stroke,
+                    Assert.IsInstanceOfType<SolidColorBrush>(palette["SurfaceAccentForegroundBrush"]).Color,
+                    "unselected-row icon");
                 AssertBrushColor(selectedRow.Background, selection, "selected-row background");
                 AssertBrushColor(selectedRow.Foreground, selectionForeground, "selected-row foreground");
                 AssertBrushColor(selectedIcon.Stroke, selectionForeground, "selected-row icon");

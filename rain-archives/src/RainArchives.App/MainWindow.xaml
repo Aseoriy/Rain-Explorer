@@ -37,117 +37,24 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
-                Padding="20,12,20,11"
+                Padding="14,8,14,8"
                 Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="0,0,0,1"
                 TextElement.Foreground="{DynamicResource SurfaceForegroundBrush}">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="270" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0"
-                                Margin="0,0,24,0"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                        <Border Width="40"
-                                Height="40"
-                                Background="{DynamicResource AccentWashBrush}"
-                                BorderBrush="{DynamicResource AccentWashForegroundBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10">
-                            <Path Width="23"
-                                  Height="23"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  Data="{StaticResource Icon.Archive}"
-                                  Stroke="{DynamicResource AccentWashForegroundBrush}"
-                                  StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round"
-                                  StrokeStartLineCap="Round"
-                                  StrokeThickness="1.8"
-                                  Stretch="Uniform" />
-                        </Border>
-                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                            <TextBlock FontSize="17"
-                                       FontWeight="SemiBold"
-                                       Text="Rain Archives" />
-                            <TextBlock Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
-                                       Text="Private archive workspace" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1"
-                                Margin="0,0,18,0"
-                                VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource ShellTitleStyle}"
-                                   Text="{Binding ArchiveTitle}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Margin="0,2,0,0"
-                                   Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
-                                   Text="{Binding ArchiveDetails}"
-                                   TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-
-                    <Grid Grid.Column="2" VerticalAlignment="Center">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Label Grid.ColumnSpan="2"
-                               Padding="0,0,0,3"
-                               Foreground="{DynamicResource SurfaceSecondaryForegroundBrush}"
-                               Target="{Binding ElementName=SearchInput}"
-                               Content="_Search current folder" />
-                        <Path Grid.Row="1"
-                              Grid.Column="0"
-                              Width="16"
-                              Height="16"
-                              Margin="10,0,0,0"
-                              Panel.ZIndex="1"
-                              VerticalAlignment="Center"
-                              Data="{StaticResource Icon.Search}"
-                              IsHitTestVisible="False"
-                              Stroke="{DynamicResource SurfaceSecondaryForegroundBrush}"
-                              StrokeEndLineCap="Round"
-                              StrokeLineJoin="Round"
-                              StrokeStartLineCap="Round"
-                              StrokeThickness="1.7"
-                              Stretch="Uniform" />
-                        <TextBox x:Name="SearchInput"
-                                 Grid.Row="1"
-                                 Grid.ColumnSpan="2"
-                                 Padding="34,5,10,5"
-                                 AutomationProperties.HelpText="Filter only the current archive folder using Unicode-aware case-insensitive matching. Ctrl+F focuses this field."
-                                 AutomationProperties.Name="Search archive entries"
-                                 IsEnabled="{Binding Browser.CanSearch}"
-                                 KeyboardNavigation.TabIndex="0"
-                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Search the current archive folder (Ctrl+F)" />
-                    </Grid>
-                </Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
                 <WrapPanel x:Name="CommandBar"
-                           Grid.Row="1"
-                           Margin="0,11,0,0"
+                           Grid.Column="0"
                            Orientation="Horizontal">
                     <Button x:Name="OpenArchiveButton"
                             AutomationProperties.Name="Open archive"
                             KeyboardNavigation.TabIndex="1"
-                            Style="{StaticResource PrimaryButtonStyle}"
+                            Style="{StaticResource OpenArchiveButtonStyle}"
                             Command="{Binding OpenCommand}">
                         <StackPanel Orientation="Horizontal">
                             <Path Data="{StaticResource Icon.Open}"
@@ -178,7 +85,7 @@
                             AutomationProperties.Name="Extract archive contents"
                             KeyboardNavigation.TabIndex="3"
                             IsEnabled="{Binding CanExtract}"
-                            Style="{StaticResource BrowserButtonStyle}"
+                            Style="{StaticResource PrimaryButtonStyle}"
                             Click="Extract_Click">
                         <StackPanel Orientation="Horizontal">
                             <Path Data="{StaticResource Icon.Extract}"
@@ -262,6 +169,7 @@
                     <Button x:Name="ThemeButton"
                             AutomationProperties.HelpText="Choose System, Light, or Dark. Windows High Contrast always takes priority."
                             AutomationProperties.Name="Choose application theme"
+                            ToolTip="Theme: system, light, or dark"
                             KeyboardNavigation.TabIndex="9"
                             Style="{StaticResource UtilityButtonStyle}"
                             Click="ThemeButton_Click">
@@ -288,7 +196,6 @@
                             <Path Data="{StaticResource Icon.Theme}"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   Style="{StaticResource IconPathStyle}" />
-                            <AccessText Margin="7,0,0,0" Text="T_heme" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="CancelButton"
@@ -307,6 +214,34 @@
                         </StackPanel>
                     </Button>
                 </WrapPanel>
+
+                <Grid Grid.Column="1"
+                      Width="210"
+                      Margin="14,0,0,0"
+                      VerticalAlignment="Center">
+                    <Path Width="16"
+                          Height="16"
+                          Margin="10,0,0,0"
+                          Panel.ZIndex="1"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          Data="{StaticResource Icon.Search}"
+                          IsHitTestVisible="False"
+                          Stroke="{DynamicResource SurfaceSecondaryForegroundBrush}"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"
+                          StrokeStartLineCap="Round"
+                          StrokeThickness="1.7"
+                          Stretch="Uniform" />
+                    <TextBox x:Name="SearchInput"
+                             Padding="34,5,10,5"
+                             AutomationProperties.HelpText="Filter only the current archive folder using Unicode-aware case-insensitive matching. Ctrl+F focuses this field."
+                             AutomationProperties.Name="Search archive entries"
+                             IsEnabled="{Binding Browser.CanSearch}"
+                             KeyboardNavigation.TabIndex="0"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Search the current archive folder (Ctrl+F)" />
+                </Grid>
             </Grid>
         </Border>
 
@@ -378,6 +313,13 @@
                         <AccessText Margin="6,0,0,0" Text="_Root" />
                     </StackPanel>
                 </Button>
+                <TextBlock Margin="12,0,0,0"
+                           MaxWidth="420"
+                           VerticalAlignment="Center"
+                           DockPanel.Dock="Right"
+                           Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
+                           Text="{Binding ArchiveDetails}"
+                           TextTrimming="CharacterEllipsis" />
                 <Border Margin="4,0,0,0"
                         Background="{DynamicResource SurfaceRaisedBrush}"
                         BorderBrush="{DynamicResource BorderBrush}"
@@ -444,29 +386,10 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <Border Width="56"
-                                Height="56"
-                                HorizontalAlignment="Left"
-                                Background="{DynamicResource AccentWashBrush}"
-                                BorderBrush="{DynamicResource AccentWashForegroundBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10">
-                            <Path Width="30"
-                                  Height="30"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  Data="{StaticResource Icon.Archive}"
-                                  Stroke="{DynamicResource AccentWashForegroundBrush}"
-                                  StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round"
-                                  StrokeStartLineCap="Round"
-                                  StrokeThickness="1.7"
-                                  Stretch="Uniform" />
-                        </Border>
-                        <TextBlock Margin="0,16,0,0"
-                                   FontSize="25"
+                        <TextBlock Margin="0,0,0,0"
+                                   FontSize="19"
                                    FontWeight="SemiBold"
-                                   LineHeight="31"
+                                   LineHeight="26"
                                    Text="Open an archive.&#x0a;Keep the original untouched." />
                         <TextBlock Margin="0,9,0,0"
                                    MaxWidth="430"
@@ -943,7 +866,7 @@
                     </Border>
 
                     <Border Grid.Row="1"
-                             Padding="12,7"
+                             Padding="12,5"
                              Background="{DynamicResource SurfaceMutedBrush}"
                              BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="0,1,0,0"
@@ -954,21 +877,22 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
+                            <WrapPanel VerticalAlignment="Center" Orientation="Horizontal">
                                  <TextBlock x:Name="BrowserStatusText"
+                                           Margin="0,0,18,0"
                                             AutomationProperties.Name="Archive browser status"
                                            Text="{Binding Browser.StatusAnnouncement}"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Margin="0,2,0,0"
+                                <TextBlock Margin="0,0,18,0"
                                             Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
                                            Text="{Binding Browser.PageSummary}" />
                                 <TextBlock x:Name="ContextCommandStatusText"
-                                           Margin="0,2,0,0"
+                                           Margin="0,0,18,0"
                                             AutomationProperties.Name="Available archive commands"
                                             Foreground="{DynamicResource SurfaceMutedSecondaryForegroundBrush}"
                                            Text="{Binding CommandContext.StatusAnnouncement}"
                                            TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                            </WrapPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <Button x:Name="PreviousPageButton"
                                         AutomationProperties.HelpText="Show the previous bounded page. Alt+Page Up."
