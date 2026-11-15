@@ -545,7 +545,7 @@ public partial class MainWindow : Window
         await FileDropService.WaitForActiveTransfersAsync();
         _waitingForTransfers = false;
         _closingAfterTransfers = true;
-        Close();
+        CloseAfterClosingReturns(this);
     }
 
     private async Task CloseArchiveSessionsAndWindowAsync(bool isLastWindow)
@@ -560,9 +560,17 @@ public partial class MainWindow : Window
         {
             _waitingForArchiveCleanup = false;
             _closingAfterArchiveCleanup = true;
-            Close();
+            CloseAfterClosingReturns(this);
         }
     }
+
+    // OnClosing cancels the first close, cleans up, then closes again. With no archive
+    // sessions open the cleanup finishes synchronously, still inside OnClosing, and WPF
+    // ignores a Close() made while the window is already closing. The window then stayed
+    // open with its tabs disposed (showing Home) until the user clicked X a second time.
+    // Queueing the re-close runs it after the current OnClosing has returned.
+    internal static void CloseAfterClosingReturns(Window window) =>
+        window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(window.Close));
 
     internal static async Task DisposeWithFinalCleanupAsync(
         Func<Task> disposeWindow,
