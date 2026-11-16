@@ -87,11 +87,111 @@ public sealed class SidebarNode : ObservableObject
     public static SidebarNode SpecialNode(string name, string token, string iconKey, string groupKey = "") =>
         new() { Name = name, Path = token, IconKey = iconKey, Kind = NodeKind.Special, GroupKey = groupKey };
 
+    // ---- "Always smooth animations": subfolders read ahead so the first expand animates ----------
+
+    private static readonly SemaphoreSlim PrefetchGate = new(2);
+    private static readonly TimeSpan PrefetchLifetime = TimeSpan.FromMinutes(2);
+    private const int PrefetchChildLimit = 150;
+    private List<(string Name, string FullName)>? _prefetched;
+    private DateTime _prefetchedAt;
+    private int _prefetching;
+
+    /// <summary>Read this folder's subfolders in the background so expanding it can show them at once.
+    /// Network and optical drives are skipped: reading them can be slow or wake a disc.</summary>
+    public void Prefetch()
+    {
+        if (!CanExpand || _loaded || _prefetched is not null || !CanPrefetch(Path)
+            || Interlocked.Exchange(ref _prefetching, 1) == 1)
+        {
+            return;
+        }
+        bool showHidden = SettingsStore.Instance.Settings.ShowHiddenFiles;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        _ = Task.Run(async () =>
+        {
+            await PrefetchGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var list = ReadDirectories(Path, showHidden, CancellationToken.None);
+                void Store()
+                {
+                    _prefetched = list;
+                    _prefetchedAt = DateTime.UtcNow;
+                }
+                if (dispatcher is null) Store();
+                else _ = dispatcher.BeginInvoke(Store);
+            }
+            catch { /* unreadable: the normal load will report nothing either */ }
+            finally
+            {
+                PrefetchGate.Release();
+                Interlocked.Exchange(ref _prefetching, 0);
+            }
+        });
+    }
+
+    internal static bool CanPrefetch(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathFullyQualified(path)
+            || NetworkPath.IsNetworkPath(path))
+            return false;
+        try
+        {
+            string? root = System.IO.Path.GetPathRoot(path);
+            if (string.IsNullOrEmpty(root)) return false;
+            return new DriveInfo(root).DriveType is not (DriveType.Network or DriveType.CDRom or DriveType.NoRootDirectory);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static List<(string Name, string FullName)> ReadDirectories(string path, bool showHidden, CancellationToken token)
+    {
+        var result = new List<(string Name, string FullName)>();
+        foreach (var dir in Directory.EnumerateDirectories(path))
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var di = new DirectoryInfo(dir);
+                if (!showHidden &&
+                    (di.Attributes.HasFlag(FileAttributes.Hidden) ||
+                     di.Attributes.HasFlag(FileAttributes.System)))
+                    continue;
+                result.Add((di.Name, di.FullName));
+            }
+            catch { /* entry vanished — skip */ }
+        }
+
+        result.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
+        return result;
+    }
+
+    private void AddLoadedChildren(List<(string Name, string FullName)> directories)
+    {
+        foreach (var directory in directories)
+            AddChild(Folder(directory.Name, directory.FullName, "folder", NodeKind.Folder, GroupKey));
+        TreeChanged?.Invoke();
+        if (SettingsStore.Instance.Settings.AlwaysSmoothAnimations)
+            foreach (SidebarNode child in Children.Take(PrefetchChildLimit)) child.Prefetch();
+    }
+
     private async void LoadChildren()
     {
         if (_loaded || !CanExpand) return;
         _loaded = true;
         ClearChildren();   // drop the placeholder
+
+        // Read ahead recently: show them now, synchronously, so the expand animation measures real rows.
+        if (_prefetched is { } ready && DateTime.UtcNow - _prefetchedAt < PrefetchLifetime)
+        {
+            _prefetched = null;
+            AddLoadedChildren(ready);
+            return;
+        }
+        _prefetched = null;
 
         _loadCts?.Cancel();
         _loadCts?.Dispose();
@@ -104,27 +204,7 @@ public sealed class SidebarNode : ObservableObject
         List<(string Name, string FullName)> directories = [];
         try
         {
-            directories = await Task.Run(() =>
-            {
-                var result = new List<(string Name, string FullName)>();
-                foreach (var dir in Directory.EnumerateDirectories(Path))
-                {
-                    token.ThrowIfCancellationRequested();
-                    try
-                    {
-                        var di = new DirectoryInfo(dir);
-                        if (!showHidden &&
-                            (di.Attributes.HasFlag(FileAttributes.Hidden) ||
-                             di.Attributes.HasFlag(FileAttributes.System)))
-                            continue;
-                        result.Add((di.Name, di.FullName));
-                    }
-                    catch { /* entry vanished — skip */ }
-                }
-
-                result.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
-                return result;
-            }, token);
+            directories = await Task.Run(() => ReadDirectories(Path, showHidden, token), token);
         }
         catch (OperationCanceledException) { return; }
         catch { /* unreadable folder — leave empty */ }
@@ -135,9 +215,7 @@ public sealed class SidebarNode : ObservableObject
         }
 
         if (version != _loadVersion) return;
-        foreach (var directory in directories)
-            AddChild(Folder(directory.Name, directory.FullName, "folder", NodeKind.Folder, GroupKey));
-        TreeChanged?.Invoke();
+        AddLoadedChildren(directories);
     }
 
     /// <summary>Re-enumerate this folder's children (used by the Refresh menu item).</summary>
@@ -148,6 +226,7 @@ public sealed class SidebarNode : ObservableObject
         _loadCts?.Dispose();
         _loadCts = null;
         _loaded = false;
+        _prefetched = null;
         ClearChildren();
         Children.Add(NewPlaceholder());
         TreeChanged?.Invoke();

@@ -81,6 +81,11 @@ public sealed class AppSettings : INotifyPropertyChanged
     private ScrollSpeed _scrollSpeed = ScrollSpeed.Normal;
     public ScrollSpeed ScrollSpeed { get => _scrollSpeed; set => Set(ref _scrollSpeed, value); }
 
+    private bool _alwaysSmoothAnimations;
+    /// <summary>Read sidebar subfolders ahead and wait one layout pass before animating,
+    /// so expand animations are smooth even the first time.</summary>
+    public bool AlwaysSmoothAnimations { get => _alwaysSmoothAnimations; set => Set(ref _alwaysSmoothAnimations, value); }
+
     private bool _showStatusBar = true;
     public bool ShowStatusBar { get => _showStatusBar; set => Set(ref _showStatusBar, value); }
 

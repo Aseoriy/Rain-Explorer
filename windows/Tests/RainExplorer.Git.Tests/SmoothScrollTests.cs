@@ -26,6 +26,17 @@ public sealed class SmoothScrollTests
     [InlineData(0, false)]
     public void OnlyWholeNotchesGlide(int delta, bool notch) => Assert.Equal(notch, SmoothScroll.IsNotch(delta));
 
+    [Theory]
+    [InlineData(@"C:\Windows", true)]
+    [InlineData(@"\\server\share\folder", false)]
+    [InlineData("", false)]
+    [InlineData("relative\\path", false)]
+    public void SidebarReadAheadSkipsNetworkAndUnknownLocations(string path, bool allowed) =>
+        Assert.Equal(allowed, SidebarNode.CanPrefetch(path));
+
+    [Fact]
+    public void AlwaysSmoothAnimationsIsOffByDefault() => Assert.False(new AppSettings().AlwaysSmoothAnimations);
+
     [Fact]
     public void SettingsKeepTheirValuesAndDefaults()
     {

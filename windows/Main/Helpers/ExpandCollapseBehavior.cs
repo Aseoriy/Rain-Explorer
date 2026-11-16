@@ -30,6 +30,24 @@ public static class ExpandCollapseBehavior
             if (!expanded) element.Visibility = Visibility.Collapsed;
             return;
         }
+        if (expanded && Services.SettingsStore.Instance.Settings.AlwaysSmoothAnimations)
+        {
+            // "Always smooth animations": hold the panel closed for one layout pass so freshly
+            // added rows (a folder's first expand) exist before the target height is measured.
+            element.BeginAnimation(FrameworkElement.HeightProperty, null);
+            element.BeginAnimation(UIElement.OpacityProperty, null);
+            if (element.Visibility != Visibility.Visible)
+            {
+                element.Height = 0;
+                element.Opacity = 0;
+                element.Visibility = Visibility.Visible;
+            }
+            element.Dispatcher.BeginInvoke(() =>
+            {
+                if (GetIsExpanded(element) && element.IsLoaded) Animate(element, expanded: true);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
+        }
         Animate(element, expanded);
     }
 

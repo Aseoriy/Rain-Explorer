@@ -225,34 +225,46 @@
                             <TextBlock Text="DISPLAY" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="File list layout" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Details rows, a compact list, tiles, or a large-icon grid."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="LayoutBox" Width="180" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="LayoutBox" Width="180" HorizontalAlignment="Right"
                                               SelectedItem="{Binding ViewLayout, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Row density" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Comfortable spacing, or compact to fit more rows."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="DensityBox" Width="180" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="DensityBox" Width="180" HorizontalAlignment="Right"
                                               SelectedItem="{Binding Density, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Ambient background glow" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="The soft themed orb behind the window."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowAmbientBackground, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -260,27 +272,51 @@
                             <TextBlock Text="MOTION" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Smooth scrolling" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Mouse-wheel scrolling glides instead of jumping. Touchpads are already smooth."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               AutomationProperties.Name="Smooth scrolling"
                                               IsChecked="{Binding SmoothScrolling, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Scroll speed" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="How far one wheel notch scrolls with smooth scrolling on."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="ScrollSpeedBox" Width="180" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="ScrollSpeedBox" Width="180" HorizontalAlignment="Right"
                                               AutomationProperties.Name="Scroll speed"
                                               IsEnabled="{Binding SmoothScrolling}"
                                               SelectedItem="{Binding ScrollSpeed, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Always smooth animations" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Reads sidebar folders ahead of time so expanding them animates smoothly even the first time. Uses a little more disk and memory."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Always smooth animations"
+                                              IsChecked="{Binding AlwaysSmoothAnimations, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
@@ -335,12 +371,16 @@
                             <TextBlock Text="STARTUP" Style="{StaticResource SectionLabel}" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="300" HorizontalAlignment="Left">
                                         <TextBlock Text="Default starting folder" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Where new tabs open. Leave blank for Home."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <DockPanel HorizontalAlignment="Right" Width="330" LastChildFill="True">
+                                    <DockPanel Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" Width="330" LastChildFill="True">
                                         <Button DockPanel.Dock="Right" Content="Browse…" Style="{StaticResource DialogButton}"
                                                 MinWidth="0" Padding="14,7" Margin="8,0,0,0" Click="Browse_Click" />
                                         <TextBox Style="{StaticResource FieldBox}" Height="32"
@@ -351,23 +391,31 @@
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Preserve open tabs on close" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Restore all open tabs and split panes after reopening Rain Explorer or restarting your PC."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding PreserveOpenTabsOnClose, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Automatically refresh folders" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Update open folder views when files change outside Rain Explorer."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding AutoRefreshFolders, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -375,45 +423,61 @@
                             <TextBlock Text="EDITING" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Rename &amp; new folder input" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Use a pop-up dialog, or edit inline in the list."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="RenameBox" Width="180" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="RenameBox" Width="180" HorizontalAlignment="Right"
                                               SelectedItem="{Binding RenameMode, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Keep file extensions unselected when renaming" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Select only the name before .ext so typing keeps the existing extension."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding SelectFileNameWithoutExtensionOnRename, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Open folders in a new tab" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Double-clicking a folder opens it in a new tab."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding OpenFoldersInNewTab, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Open items with a single click" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="A single click opens files and folders instead of a double-click."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -421,12 +485,16 @@
                             <TextBlock Text="TERMINAL" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Open in Terminal" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Which shell opens for &quot;Open in Terminal&quot; and address-bar commands."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="TerminalAppBox" Width="160" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="TerminalAppBox" Width="160" HorizontalAlignment="Right"
                                               SelectedItem="{Binding TerminalApp, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -440,78 +508,106 @@
                             <TextBlock Text="VISIBILITY" Style="{StaticResource SectionLabel}" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Show hidden &amp; system files" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Display items the system normally keeps out of view."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Show file extensions" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Display the trailing .ext on file names."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Show item checkboxes" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Add a selection checkbox to each row in Details view."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowCheckboxes, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Only show checkboxes after selecting" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Keeps the list clean until a row is selected. Requires item checkboxes above."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowCheckboxesOnSelectionOnly, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Show Quick access in sidebar" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show the built-in Quick access section in the sidebar list."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowQuickAccessInSidebar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Show drives in sidebar" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show the Drives section in the sidebar list."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Custom sidebar lists" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Create another collapsible list. Rename, delete, or drag its header directly in the sidebar."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <Button Content="New list…" Style="{StaticResource DialogButton}"
+                                    <Button Grid.Column="1" Margin="16,0,0,0" Content="New list…" Style="{StaticResource DialogButton}"
                                             HorizontalAlignment="Right" Padding="14,7" MinWidth="0"
                                             Click="NewSidebarList_Click" />
                                 </Grid>
@@ -520,35 +616,47 @@
                             <TextBlock Text="BEHAVIOR" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="When deleting items" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Prompt = choose Recycle Bin or permanent. Recycle skips confirmation; permanent uses one final Rain confirmation."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="DeleteBehaviorBox" Width="160" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="DeleteBehaviorBox" Width="160" HorizontalAlignment="Right"
                                               VerticalAlignment="Center"
                                               SelectedItem="{Binding DeleteBehavior, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Remember activity" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Keep the activity center log across restarts. When off, it resets each launch."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding RememberActivity, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Detailed activity history" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Keep a full record of what Rain does: complete error messages, a plain-English explanation of what went wrong, and exact times. Adds a View details button to each activity and also logs folders that fail to open. Uses more storage and memory than the basic log, and is always saved between launches."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               AutomationProperties.Name="Detailed activity history"
                                               IsChecked="{Binding DetailedActivityHistory, Mode=TwoWay}" />
                                 </Grid>
@@ -556,12 +664,16 @@
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0"
                                     IsEnabled="{Binding DetailedActivityHistory}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="300" HorizontalAlignment="Left">
                                         <TextBlock Text="Keep detailed history for" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Older finished activities are removed automatically."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="RetentionBox" Width="160" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="RetentionBox" Width="160" HorizontalAlignment="Right"
                                               VerticalAlignment="Center"
                                               AutomationProperties.Name="Keep detailed history for"
                                               SelectionChanged="RetentionBox_SelectionChanged" />
@@ -569,47 +681,63 @@
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Show the activity center when something fails" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Opens the activity center as soon as an action fails, so errors aren't missed."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               AutomationProperties.Name="Show the activity center when something fails"
                                               IsChecked="{Binding OpenActivityOnFailure, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="400" HorizontalAlignment="Left">
                                         <TextBlock Text="Export activity history" Style="{StaticResource RowTitle}" />
                                         <TextBlock x:Name="ExportActivityStatus" Style="{StaticResource RowHint}"
                                                    Text="Save everything in the activity center as a text file, handy when asking for help." />
                                     </StackPanel>
-                                    <Button Content="Export…" Style="{StaticResource DialogButton}"
+                                    <Button Grid.Column="1" Margin="16,0,0,0" Content="Export…" Style="{StaticResource DialogButton}"
                                             HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Click="ExportActivity_Click" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Warn when changing a file extension" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show a warning if a rename changes the .ext."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding WarnOnExtensionChange, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Calculate folder sizes" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show the total size of folders in the list. Computed in the background; can be slow on big folders."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding CalculateFolderSizes, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -617,12 +745,16 @@
                             <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Show folders first" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Keep folders grouped above files in every sort."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding FoldersFirst, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -630,23 +762,31 @@
                             <TextBlock Text="UNITS" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="File size units" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Binary = 1024-based (like Windows); Decimal = 1000-based."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <ComboBox x:Name="SizeFormatBox" Width="160" HorizontalAlignment="Right"
+                                    <ComboBox Grid.Column="1" Margin="16,0,0,0" x:Name="SizeFormatBox" Width="160" HorizontalAlignment="Right"
                                               SelectedItem="{Binding SizeFormat, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Count files on the Drives page" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Shows a recursive file count per drive. Resource-intensive on big disks."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowDriveItemCounts, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -660,12 +800,16 @@
                             <TextBlock Text="INTERFACE" Style="{StaticResource SectionLabel}" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Show status bar" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="The item-count strip at the bottom of each pane."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -673,12 +817,16 @@
                             <TextBlock Text="GIT" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Git &amp; GitHub integration" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show local repository status, stage files, create local commits, and push with your installed Git for Windows."
                                                    Style="{StaticResource RowHint}" TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding GitIntegrationEnabled, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -705,24 +853,32 @@
                             <TextBlock Text="SYSTEM" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Windows shell integration" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Adds “Open in Rain Explorer” to the right-click menu of folders and drives. Current user only; fully reversible."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding RegisterShellIntegration, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Rain Archives in the right-click menu" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Adds one “Rain Archives” submenu: Open, Extract files, Extract to new folder and Test for archives, and Add to archive for any file or folder. On Windows 11 it appears under “Show more options”. Current user only; fully reversible."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               AutomationProperties.Name="Rain Archives in the right-click menu"
                                               IsChecked="{Binding ArchiveContextMenu, Mode=TwoWay}" />
                                 </Grid>
@@ -760,12 +916,16 @@
 
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Set as default file manager" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Opens folders, drives and Win+E in Rain instead of File Explorer. Windows can't fully replace Explorer, so some places still use it. Current user only; reversible by turning this off."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding SetAsDefaultExplorer, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
@@ -773,12 +933,16 @@
                             <TextBlock Text="CONFIGURATION" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="420" HorizontalAlignment="Left">
                                         <TextBlock Text="Settings file" Style="{StaticResource RowTitle}" />
                                         <TextBlock x:Name="ConfigPathText" Style="{StaticResource RowHint}"
                                                    FontFamily="{StaticResource MonoFont}" />
                                     </StackPanel>
-                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <Button Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Content="Open folder" Style="{StaticResource DialogButton}"
                                             MinWidth="0" Padding="14,7" Click="OpenConfigFolder_Click" />
                                 </Grid>
@@ -814,12 +978,16 @@
                             <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="420" HorizontalAlignment="Left">
                                         <TextBlock Text="Check for updates" Style="{StaticResource RowTitle}" />
                                         <TextBlock x:Name="UpdateStatusText" Style="{StaticResource RowHint}"
                                                    Text="Fetches the latest release from GitHub." />
                                     </StackPanel>
-                                    <Button x:Name="CheckUpdatesButton" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <Button Grid.Column="1" Margin="16,0,0,0" x:Name="CheckUpdatesButton" HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Content="Check now" Style="{StaticResource PrimaryButton}"
                                             MinWidth="0" Padding="16,7" Click="CheckUpdates_Click" />
                                 </Grid>
@@ -827,24 +995,32 @@
 
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="420" HorizontalAlignment="Left">
                                         <TextBlock Text="Automatic updates" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Check for a newer release on launch and offer to install it."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding AutoUpdate, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <StackPanel MaxWidth="420" HorizontalAlignment="Left">
                                         <TextBlock Text="Beta updates" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Also receive pre-release (beta) builds. Earlier features, but less tested."
                                                    Style="{StaticResource RowHint}" />
                                     </StackPanel>
-                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               IsChecked="{Binding BetaUpdates, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
