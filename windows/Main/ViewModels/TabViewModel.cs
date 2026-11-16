@@ -125,7 +125,8 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         _physicalArchiveExtraction = new PhysicalArchiveExtractionService(archiveRuntime);
         _archive.Changed += OnArchiveChanged;
         SettingsStore.Instance.Settings.PropertyChanged += OnSettingsChanged;
-        BackCommand = new RelayCommand(_ => GoBack(), _ => CanGoBack);
+        FileOperationsService.ReleasingHandles += OnReleasingHandles;
+        BackCommand =new RelayCommand(_ => GoBack(), _ => CanGoBack);
         ForwardCommand = new RelayCommand(_ => GoForward(), _ => CanGoForward);
         UpCommand = new RelayCommand(_ => GoUp(), _ => CanGoUp);
         RefreshCommand = new RelayCommand(_ => Refresh());
@@ -1030,6 +1031,31 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         return timer;
     }
 
+    // Windows refuses to move a folder while this tab's watcher holds it (or a folder
+    // inside it) open. Drop the watcher when Rain is about to move one of those.
+    private void OnReleasingHandles(IReadOnlyList<string> movingPaths)
+    {
+        void Release()
+        {
+            if (_disposed || _folderWatcher is not { } watcher) return;
+            if (movingPaths.Any(moving => IsSameOrInside(watcher.Path, moving)))
+                StopWatchingFolder();
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) Release();
+        else dispatcher.Invoke(Release, System.Windows.Threading.DispatcherPriority.Send,
+            CancellationToken.None, TimeSpan.FromSeconds(2));
+    }
+
+    internal static bool IsSameOrInside(string path, string ancestor)
+    {
+        string p = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        string a = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ancestor));
+        return p.Equals(a, StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith(a + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void StopWatchingFolder()
     {
         unchecked { _watchSetupVersion++; }
@@ -1053,6 +1079,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         _navigationCts?.Dispose();
         _navigationCts = null;
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingsChanged;
+        FileOperationsService.ReleasingHandles -= OnReleasingHandles;
         StopWatchingFolder();
         _watchRefreshTimer?.Stop();
         _statusClearTimer?.Stop();

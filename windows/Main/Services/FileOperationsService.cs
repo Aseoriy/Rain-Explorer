@@ -138,6 +138,10 @@ public sealed class TransferControl : IDisposable
 /// </summary>
 public sealed class FileOperationsService
 {
+    /// <summary>Raised before Rain moves these paths so open tabs can drop handles
+    /// (folder watchers) that would make Windows refuse the move.</summary>
+    public static event Action<IReadOnlyList<string>>? ReleasingHandles;
+
     /// <summary>Send paths to the Recycle Bin without Windows asking once per item.
     /// Windows still owns genuine error dialogs.</summary>
     public OpResult Delete(IEnumerable<string> paths)
@@ -266,6 +270,10 @@ public sealed class FileOperationsService
 
         if (items.Count == 0) return OpResult.Fail("No source items were provided.");
 
+        // A tab showing a folder inside a moved source keeps a change watcher (an open
+        // handle) on it, which makes Windows refuse the move as "in use". Let go first.
+        if (move) ReleasingHandles?.Invoke(items.Select(item => item.Source).ToList());
+
         // The drag/drop surface supplies a resolver so it can show one themed Rain
         // dialog for the whole operation. Keep the shell-backed path below for the
         // older non-UI helpers (notably undo) that do not supply one.
@@ -314,9 +322,10 @@ public sealed class FileOperationsService
             {
                 bool leftOutput = CaptureInterruptedOutput(
                     item, destinationExisted, move, completed, created);
+                string message = FileLockDiagnostics.Describe(ex, item.Source);
                 string error = leftOutput
-                    ? $"{ex.Message} The destination may contain partial changes."
-                    : ex.Message;
+                    ? $"{message} The destination may contain partial changes."
+                    : message;
                 return new OpResult(OpOutcome.Failed, error, completed, created);
             }
 
@@ -352,6 +361,7 @@ public sealed class FileOperationsService
             .Select(item => item.Destination)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool transferStarted = false;
+        string? currentSource = null;
         IReadOnlyDictionary<string, string>? renamedDestinations = null;
         try
         {
@@ -412,6 +422,7 @@ public sealed class FileOperationsService
                 {
                     control.WaitIfPaused();
                     TransferItem item = items[index];
+                    currentSource = item.Source;
                     if (!PathExists(item.Source))
                         return new OpResult(OpOutcome.Failed,
                             $"Source item no longer exists: {Path.GetFileName(item.Source)}", completed, created);
@@ -430,6 +441,7 @@ public sealed class FileOperationsService
             foreach (TransferItem item in items)
             {
                 control.WaitIfPaused();
+                currentSource = item.Source;
                 if (!PathExists(item.Source))
                     return new OpResult(OpOutcome.Failed,
                         $"Source item no longer exists: {Path.GetFileName(item.Source)}", completed, created);
@@ -475,9 +487,10 @@ public sealed class FileOperationsService
         {
             bool leftOutput = CaptureManagedInterruptedOutputs(
                 items, destinationsThatExisted, move, completed, created);
+            string message = FileLockDiagnostics.Describe(ex, currentSource);
             string error = leftOutput
-                ? $"{ex.Message} The destination may contain partial changes."
-                : ex.Message;
+                ? $"{message} The destination may contain partial changes."
+                : message;
             if (ex.Data[TransferCleanupWarningKey] is string cleanupWarning)
                 error += $" {cleanupWarning}";
             return new OpResult(OpOutcome.Failed, error, completed, created);
