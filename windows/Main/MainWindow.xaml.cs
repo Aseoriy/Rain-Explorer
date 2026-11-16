@@ -637,6 +637,13 @@ public partial class MainWindow : Window
         ActivityService.Instance.MarkSeen();
     }
 
+    private void ActivityDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ActivityEntry activity) return;
+        ActivityPopup.IsOpen = false;
+        ActivityDetailsDialog.ShowFor(this, activity);
+    }
+
     private void ActivityCancel_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)

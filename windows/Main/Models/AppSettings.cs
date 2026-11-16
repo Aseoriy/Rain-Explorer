@@ -222,6 +222,19 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// in-memory only and resets every launch.</summary>
     public bool RememberActivity { get => _rememberActivity; set => Set(ref _rememberActivity, value); }
 
+    private bool _detailedActivityHistory;
+    /// <summary>Keep full error text, timestamps and plain-language explanations, with a
+    /// "View details" button in the activity center. Always saved between launches.</summary>
+    public bool DetailedActivityHistory { get => _detailedActivityHistory; set => Set(ref _detailedActivityHistory, value); }
+
+    private int _activityRetentionDays = 7;
+    /// <summary>How long detailed history is kept; 0 means until it's cleared.</summary>
+    public int ActivityRetentionDays { get => _activityRetentionDays; set => Set(ref _activityRetentionDays, value); }
+
+    private bool _openActivityOnFailure;
+    /// <summary>Open the activity center when an action fails.</summary>
+    public bool OpenActivityOnFailure { get => _openActivityOnFailure; set => Set(ref _openActivityOnFailure, value); }
+
     private double _previewPaneWidth = 340;
     /// <summary>Remembered width of the preview pane (px), restored across restarts.</summary>
     public double PreviewPaneWidth { get => _previewPaneWidth; set => Set(ref _previewPaneWidth, value); }

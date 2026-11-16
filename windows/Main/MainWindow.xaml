@@ -272,6 +272,12 @@
                                                                         MinWidth="0" Height="23" Padding="8,1" FontSize="10"
                                                                         Margin="5,0,0,0" Click="ActivityCancel_Click"
                                                                         Visibility="{Binding CanCancel, Converter={StaticResource BoolToVis}}" />
+                                                                <Button Content="View details" Style="{StaticResource GhostButton}"
+                                                                        MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                                        Margin="5,0,0,0" Click="ActivityDetails_Click"
+                                                                        AutomationProperties.Name="View activity details"
+                                                                        Visibility="{Binding DetailedHistory, Source={x:Static svc:ActivityService.Instance},
+                                                                            Converter={StaticResource BoolToVis}}" />
                                                             </StackPanel>
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">

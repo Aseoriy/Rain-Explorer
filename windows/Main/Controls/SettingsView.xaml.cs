@@ -69,6 +69,54 @@ public partial class SettingsView : UserControl
         DataContext = SettingsStore.Instance.Settings;
         FontBox.SelectedItem = SettingsStore.Instance.Settings.FontFamily;
         RefreshArchiveDefaultsStatus();
+        BindRetention();
+    }
+
+    // ---- Detailed activity history ---------------------------------------------------------------
+
+    internal static readonly (int Days, string Label)[] RetentionChoices =
+    [
+        (1, "1 day"), (3, "3 days"), (7, "7 days"), (30, "30 days"), (90, "90 days"), (0, "Until I clear it"),
+    ];
+
+    private bool _syncingRetention;
+
+    private void BindRetention()
+    {
+        _syncingRetention = true;
+        RetentionBox.ItemsSource = RetentionChoices.Select(c => c.Label).ToList();
+        int index = Array.FindIndex(RetentionChoices,
+            c => c.Days == SettingsStore.Instance.Settings.ActivityRetentionDays);
+        RetentionBox.SelectedIndex = index >= 0 ? index : 2;
+        _syncingRetention = false;
+    }
+
+    private void RetentionBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingRetention || RetentionBox.SelectedIndex < 0) return;
+        SettingsStore.Instance.Settings.ActivityRetentionDays = RetentionChoices[RetentionBox.SelectedIndex].Days;
+    }
+
+    private void ExportActivity_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export activity history",
+            FileName = $"Rain Explorer activity {DateTime.Now:yyyy-MM-dd HHmm}.txt",
+            Filter = "Text file (*.txt)|*.txt",
+            DefaultExt = ".txt",
+        };
+        if (dialog.ShowDialog(System.Windows.Window.GetWindow(this)) != true) return;
+        try
+        {
+            File.WriteAllText(dialog.FileName, ActivityService.Instance.ExportText(),
+                new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            ExportActivityStatus.Text = $"Saved {ActivityService.Instance.Items.Count} activities to {dialog.FileName}.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ExportActivityStatus.Text = $"⚠️ Couldn't save the file: {ex.Message}";
+        }
     }
 
     private void FontSearchBox_TextChanged(object sender, TextChangedEventArgs e)

@@ -12,6 +12,21 @@ public sealed class ActivityEntry : ObservableObject
     public required string IconKey { get; init; }
     public DateTime StartedAt { get; init; }
 
+    /// <summary>When the action ended. Null for running or older entries.</summary>
+    public DateTime? FinishedAt { get; set; }
+
+    /// <summary>What the action was about when it started ("3 items", "a.txt → b.txt").</summary>
+    public string? BeginDetail { get; set; }
+
+    /// <summary>The full, unshortened system message (detailed history only).</summary>
+    public string? FullDetail { get; set; }
+
+    [JsonIgnore]
+    public bool IsFailed => _status == ActivityStatus.Failed;
+
+    [JsonIgnore]
+    public bool IsSuccess => _status == ActivityStatus.Success;
+
     private string _detail = string.Empty;
     public string Detail { get => _detail; set => Set(ref _detail, value); }
 
@@ -23,6 +38,8 @@ public sealed class ActivityEntry : ObservableObject
         {
             if (!Set(ref _status, value)) return;
             OnPropertyChanged(nameof(StatusText));
+            OnPropertyChanged(nameof(IsFailed));
+            OnPropertyChanged(nameof(IsSuccess));
             OnPropertyChanged(nameof(IsActive));
             OnPropertyChanged(nameof(IsPinned));
             OnPropertyChanged(nameof(CanCancel));

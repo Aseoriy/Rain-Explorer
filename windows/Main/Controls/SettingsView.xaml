@@ -522,6 +522,56 @@
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
                                     <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Detailed activity history" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Keep a full record of what Rain does: complete error messages, a plain-English explanation of what went wrong, and exact times. Adds a View details button to each activity and also logs folders that fail to open. Uses more storage and memory than the basic log, and is always saved between launches."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Detailed activity history"
+                                              IsChecked="{Binding DetailedActivityHistory, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0"
+                                    IsEnabled="{Binding DetailedActivityHistory}">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="300" HorizontalAlignment="Left">
+                                        <TextBlock Text="Keep detailed history for" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Older finished activities are removed automatically."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="RetentionBox" Width="160" HorizontalAlignment="Right"
+                                              VerticalAlignment="Center"
+                                              AutomationProperties.Name="Keep detailed history for"
+                                              SelectionChanged="RetentionBox_SelectionChanged" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Show the activity center when something fails" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Opens the activity center as soon as an action fails, so errors aren't missed."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Show the activity center when something fails"
+                                              IsChecked="{Binding OpenActivityOnFailure, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,12">
+                                    <StackPanel MaxWidth="400" HorizontalAlignment="Left">
+                                        <TextBlock Text="Export activity history" Style="{StaticResource RowTitle}" />
+                                        <TextBlock x:Name="ExportActivityStatus" Style="{StaticResource RowHint}"
+                                                   Text="Save everything in the activity center as a text file, handy when asking for help." />
+                                    </StackPanel>
+                                    <Button Content="Export…" Style="{StaticResource DialogButton}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            Click="ExportActivity_Click" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
                                         <TextBlock Text="Warn when changing a file extension" Style="{StaticResource RowTitle}" />
                                         <TextBlock Text="Show a warning if a rename changes the .ext."
                                                    Style="{StaticResource RowHint}" />

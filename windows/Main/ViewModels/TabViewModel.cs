@@ -424,6 +424,9 @@ public sealed class TabViewModel : ObservableObject, IDisposable
                 Status = ex is TimeoutException
                     ? "⚠️ The network location took too long to respond. Check the address and connection, then try again."
                     : $"⚠️ {ex.Message}";
+                // Kept only with detailed activity history on.
+                ActivityService.Instance.LogFailure("Open folder", path,
+                    FileLockDiagnostics.Describe(ex, path), "folder-open");
             }
         }
         finally
