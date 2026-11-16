@@ -55,7 +55,26 @@ public sealed class GitChangesViewModel : ObservableObject, IDisposable
     public string TrackingText { get => _trackingText; private set => Set(ref _trackingText, value); }
 
     private string _message = "Loading repository status…";
-    public string Message { get => _message; private set => Set(ref _message, value); }
+    public string Message
+    {
+        get => _message;
+        private set
+        {
+            if (!Set(ref _message, value)) return;
+            Help = GitErrorExplainer.Explain(value);
+            OnPropertyChanged(nameof(Help));
+            OnPropertyChanged(nameof(HasHelp));
+            OnPropertyChanged(nameof(HasPlainMessage));
+        }
+    }
+
+    /// <summary>Plain-language explanation of the last Git error, or null.</summary>
+    public GitErrorHelp? Help { get; private set; }
+    public bool HasHelp => Help is not null;
+    public bool HasPlainMessage => Help is null;
+
+    /// <summary>Show text after a command run from the window (identity setup, the command box).</summary>
+    public void ShowMessage(string message) => Message = message;
 
     private bool _busy;
     public bool Busy

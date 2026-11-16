@@ -119,6 +119,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" BorderBrush="{StaticResource Line1}" BorderThickness="0,0,0,1"
@@ -132,6 +133,12 @@
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="CommandToggle" Content="Command box" Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" Click="CommandToggle_Click"
+                                ToolTip="Run commands in this repository without leaving Rain" />
+                        <Button Content="Open terminal" Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" Click="OpenTerminal_Click"
+                                ToolTip="Open your terminal (Settings → terminal app) in the repository folder" />
                         <Button Content="Refresh" Style="{StaticResource GhostButton}"
                                 Margin="0,0,8,0" Click="Refresh_Click" />
                         <Button Content="Cancel operation" Style="{StaticResource GhostButton}"
@@ -349,8 +356,72 @@
             <Border Grid.Row="3" Background="{StaticResource Glass2}"
                     BorderBrush="{StaticResource Line1}" BorderThickness="0,1,0,0"
                     Padding="16,9">
-                <TextBlock Text="{Binding Message}" Foreground="{StaticResource TextMuted}"
-                           TextWrapping="Wrap" />
+                <Grid>
+                    <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding HasPlainMessage, Converter={StaticResource BoolToVis}}">
+                        <TextBox Text="{Binding Message, Mode=OneWay}" IsReadOnly="True"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" />
+                    </ScrollViewer>
+                    <StackPanel Margin="0,3"
+                                Visibility="{Binding HasHelp, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconPath}" Data="{StaticResource Ic.info}"
+                                  Stroke="{StaticResource Danger}" Width="16" Height="16" Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding Help.Title}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Text}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Help.Explanation}" Foreground="{StaticResource TextDim}"
+                                   TextWrapping="Wrap" Margin="24,5,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="24,9,0,0">
+                            <Button x:Name="SetIdentityButton" Content="Set name and email…"
+                                    Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                                    Click="SetIdentity_Click" />
+                            <Button x:Name="HelpTerminalButton" Content="Open terminal here"
+                                    Style="{StaticResource DialogButton}" Margin="0,0,8,0"
+                                    Click="OpenTerminal_Click" />
+                            <Button x:Name="HelpCommandButton" Content="Use command box"
+                                    Style="{StaticResource DialogButton}" Margin="0,0,8,0"
+                                    Click="CommandToggle_Click" />
+                            <Button x:Name="DetailsToggle" Content="Show Git's message"
+                                    Style="{StaticResource GhostButton}" Click="DetailsToggle_Click" />
+                        </StackPanel>
+                        <ScrollViewer x:Name="DetailsScroll" Visibility="Collapsed" MaxHeight="120"
+                                      Margin="24,8,0,0" VerticalScrollBarVisibility="Auto">
+                            <TextBox Text="{Binding Help.Details, Mode=OneWay}" IsReadOnly="True"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Command box: runs one command at a time in the repository folder -->
+            <Border x:Name="CommandPanel" Grid.Row="4" Visibility="Collapsed" Padding="16,10"
+                    BorderBrush="{StaticResource Line1}" BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <ScrollViewer x:Name="CommandScroll" Height="120" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto" Background="{StaticResource Glass1}"
+                                  Padding="10,8">
+                        <TextBox x:Name="CommandOutput" IsReadOnly="True" Background="Transparent"
+                                 BorderThickness="0" Padding="0" FontFamily="{StaticResource MonoFont}"
+                                 FontSize="11.5" Foreground="{StaticResource TextDim}" />
+                    </ScrollViewer>
+                    <DockPanel Margin="0,8,0,0">
+                        <Button x:Name="CommandRunButton" DockPanel.Dock="Right" Content="Run"
+                                Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"
+                                Click="RunCommand_Click" />
+                        <TextBlock x:Name="CommandPrompt" DockPanel.Dock="Left" Text="&gt;"
+                                   FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center"
+                                   Foreground="{StaticResource AccentBright}" Margin="2,0,8,0" />
+                        <TextBox x:Name="CommandBox" Style="{StaticResource FieldBox}" Height="32"
+                                 FontFamily="{StaticResource MonoFont}" PreviewKeyDown="CommandBox_KeyDown"
+                                 AutomationProperties.Name="Command to run in the repository" />
+                    </DockPanel>
+                    <TextBlock x:Name="CommandHint" Foreground="{StaticResource TextFaint}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
             </Border>
         </Grid>
     </Border>
