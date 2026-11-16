@@ -251,11 +251,11 @@ public sealed class ArchiveFileAssociationServiceTests
     }
 
     [Fact]
-    public void ProductVersionSurfacesAreTwoDotZeroBetaOne()
+    public void ProductVersionSurfacesAreTwoDotZeroBetaTwo()
     {
         string root = FindRepositoryRoot();
         Assert.Contains(
-            "<Version>2.0.0-beta-1</Version>",
+            "<Version>2.0.0-beta-2</Version>",
             File.ReadAllText(Path.Combine(root, "Main", "RainExplorer.csproj")),
             StringComparison.Ordinal);
         Assert.Contains(
@@ -271,15 +271,15 @@ public sealed class ArchiveFileAssociationServiceTests
             File.ReadAllText(Path.Combine(root, "Main", "app.manifest")),
             StringComparison.Ordinal);
         Assert.Contains(
-            "#define MyAppVersion \"2.0.0-beta-1\"",
+            "#define MyAppVersion \"2.0.0-beta-2\"",
             File.ReadAllText(Path.Combine(root, "Installer", "RainExplorer.iss")),
             StringComparison.Ordinal);
         Assert.Contains(
-            "v is null ? \"v2.0.0-beta-1\"",
+            "v is null ? \"v2.0.0-beta-2\"",
             File.ReadAllText(Path.Combine(root, "Main", "Controls", "SettingsView.xaml.cs")),
             StringComparison.Ordinal);
         Assert.Contains(
-            "v is null ? \"2.0.0-beta-1\"",
+            "v is null ? \"2.0.0-beta-2\"",
             File.ReadAllText(Path.Combine(root, "Main", "Services", "UpdateService.cs")),
             StringComparison.Ordinal);
     }

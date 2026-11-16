@@ -56,7 +56,7 @@ public partial class SettingsView : UserControl
         else
         {
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            VersionText.Text = v is null ? "v2.0.0-beta-1" : $"v{v.Major}.{v.Minor}.{v.Build}";
+            VersionText.Text = v is null ? "v2.0.0-beta-2" : $"v{v.Major}.{v.Minor}.{v.Build}";
         }
 
         ConfigPathText.Text = Path.Combine(
