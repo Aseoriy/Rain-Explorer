@@ -145,6 +145,11 @@ public partial class MainWindow : Window
         // The activity popup owns its own dismiss logic (see ActivityButton_Click) — any
         // click elsewhere in the window closes it.
         AddHandler(PreviewMouseDownEvent, (MouseButtonEventHandler)Window_PreviewMouseDown, true);
+
+        // StaysOpen="True" also means the popup ignores clicks in other apps, and a WPF
+        // popup is its own topmost window, so it would float over whatever app the user
+        // switched to. Close it whenever this window stops being the active one.
+        Deactivated += (_, _) => ActivityPopup.IsOpen = false;
     }
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
