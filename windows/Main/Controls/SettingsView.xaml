@@ -618,6 +618,19 @@
 
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <Grid Margin="0,14">
+                                    <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                                        <TextBlock Text="Rain Archives in the right-click menu" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Adds one “Rain Archives” submenu: Open, Extract files, Extract to new folder and Test for archives, and Add to archive for any file or folder. On Windows 11 it appears under “Show more options”. Current user only; fully reversible."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Rain Archives in the right-click menu"
+                                              IsChecked="{Binding ArchiveContextMenu, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,14">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />

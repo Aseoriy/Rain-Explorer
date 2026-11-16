@@ -93,6 +93,9 @@ public sealed class TabViewModel : ObservableObject, IDisposable
     public bool IsArchiveView => _page == PageKind.Archive;
     public bool IsNetworkServer => IsFolderView && NetworkPath.TryGetServerRoot(CurrentPath, out _);
     public bool CanUsePhysicalFileCommands => IsFolderView && !IsNetworkServer;
+
+    /// <summary>The navigation this tab was created with, so callers can wait for it to load.</summary>
+    internal Task InitialNavigation { get; set; } = Task.CompletedTask;
     public bool RequiresArchiveOperationPassword => IsArchiveView
         && _archive.RequiresOperationPassword;
     public bool CanTestArchiveIntegrity => IsArchiveView && _archive.CanTestIntegrity;

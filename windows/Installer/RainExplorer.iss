@@ -53,6 +53,11 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
+[UninstallRun]
+; Remove the optional "Rain Archives" right-click entry (HKCU keys the app wrote and
+; marked as its own). The app exits right away without opening a window.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-archive-menu"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterArchiveMenu"
+
 [Messages]
 FinishedLabel=Setup has finished installing [name] on your computer.%n%nOpen Rain Explorer from the Start menu or desktop shortcut.
 

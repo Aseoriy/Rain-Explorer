@@ -32,6 +32,15 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // The uninstaller runs this to take the "Rain Archives" right-click entry away.
+        if (e.Args.Any(arg => string.Equals(arg, ArchiveContextMenuService.UnregisterSwitch,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            ArchiveContextMenuService.Apply(false);
+            Shutdown();
+            return;
+        }
+
         // If another instance already holds the mutex, hand it our launch target (so it
         // opens in a new tab) and bow out — never run a second process against the same
         // settings file.
@@ -77,6 +86,7 @@ public partial class App : Application
         // Re-register the default-handler keys on launch so they always point at the
         // current exe location (e.g. after the app is moved or updated).
         if (settings.SetAsDefaultExplorer) ShellIntegrationService.ApplyDefaultHandler(true);
+        if (settings.ArchiveContextMenu) ArchiveContextMenuService.Apply(true);
 
         // Re-apply theme/density/font whenever they change in the settings panel.
         settings.PropertyChanged += OnSettingsChanged;
@@ -84,6 +94,7 @@ public partial class App : Application
         // Create the main window explicitly (no StartupUri) — see App.xaml.
         var window = new MainWindow();
         window.Show();
+        if (_launchMenuCommand is { } command) QueueArchiveMenuCommand(command.Verb, command.Path);
 
         // Quietly check GitHub for a newer release shortly after launch (if enabled).
         if (settings.AutoUpdate) _ = CheckForUpdatesOnStartupAsync(window);
@@ -118,6 +129,69 @@ public partial class App : Application
                 $"{DateTime.Now:u}  {ex}{Environment.NewLine}{Environment.NewLine}");
         }
         catch { /* logging must never throw */ }
+    }
+
+    // ---- "Rain Archives" right-click entries --------------------------------
+    // Explorer starts one process per selected file for a classic menu entry. Every one of
+    // them reaches this instance (directly or through the forward pipe), so collect them for
+    // a moment and run each verb once with the whole selection.
+
+    private static (ArchiveMenuVerb Verb, string Path)? _launchMenuCommand;
+    private readonly List<(ArchiveMenuVerb Verb, string Path)> _menuQueue = new();
+    private System.Windows.Threading.DispatcherTimer? _menuTimer;
+
+    private void QueueArchiveMenuCommand(ArchiveMenuVerb verb, string path)
+    {
+        _menuQueue.Add((verb, path));
+        _menuTimer ??= CreateMenuTimer();
+        _menuTimer.Stop();
+        _menuTimer.Start();
+    }
+
+    private System.Windows.Threading.DispatcherTimer CreateMenuTimer()
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(400),
+        };
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            var batches = ArchiveMenuBatches(_menuQueue);
+            _menuQueue.Clear();
+
+            MainWindow window = BringMainWindowForward();
+            foreach (var (verb, paths) in batches)
+                await window.RunArchiveMenuCommandAsync(verb, paths);
+        };
+        return timer;
+    }
+
+    /// <summary>Group queued requests by verb, in arrival order, without duplicate paths.</summary>
+    internal static IReadOnlyList<(ArchiveMenuVerb Verb, IReadOnlyList<string> Paths)> ArchiveMenuBatches(
+        IEnumerable<(ArchiveMenuVerb Verb, string Path)> queued) =>
+        queued.GroupBy(item => item.Verb)
+            .Select(group => (group.Key, (IReadOnlyList<string>)group
+                .Select(item => item.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()))
+            .ToList();
+
+    private MainWindow BringMainWindowForward()
+    {
+        var window = Current.Windows.OfType<MainWindow>().FirstOrDefault(candidate => candidate.IsActive)
+            ?? Current.Windows.OfType<MainWindow>().FirstOrDefault(candidate => candidate.IsVisible);
+        if (window is null)
+        {
+            window = new MainWindow();
+            window.Show();
+        }
+        Current.MainWindow = window;
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+        window.Topmost = true;
+        window.Topmost = false;
+        return window;
     }
 
     // ---- Single instance: forward a second launch to the running window --------
@@ -169,6 +243,12 @@ public partial class App : Application
     /// supported archive, or file to reveal, open it in a new tab. Runs on the UI thread.</summary>
     private void OpenForwardedTarget(string[] args)
     {
+        if (ArchiveContextMenuService.TryParseCommandLine(args, out ArchiveMenuVerb verb, out string menuPath))
+        {
+            QueueArchiveMenuCommand(verb, menuPath);
+            return;
+        }
+
         string? target = null, select = null;
         foreach (string raw in args)
         {
@@ -213,6 +293,8 @@ public partial class App : Application
                 ShellIntegrationService.Apply(settings.RegisterShellIntegration); break;
             case nameof(AppSettings.SetAsDefaultExplorer):
                 ShellIntegrationService.ApplyDefaultHandler(settings.SetAsDefaultExplorer); break;
+            case nameof(AppSettings.ArchiveContextMenu):
+                ArchiveContextMenuService.Apply(settings.ArchiveContextMenu); break;
         }
     }
 
@@ -226,6 +308,12 @@ public partial class App : Application
     /// </summary>
     private static bool ResolveLaunchTarget(string[] args)
     {
+        if (ArchiveContextMenuService.TryParseCommandLine(args, out ArchiveMenuVerb verb, out string menuPath))
+        {
+            _launchMenuCommand = (verb, menuPath);
+            return true;
+        }
+
         foreach (string raw in args)
         {
             string p = StripSelectSwitch(raw).Trim().Trim('"');

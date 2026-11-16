@@ -187,6 +187,7 @@ public sealed class PaneViewModel : ObservableObject, IDisposable
         Tabs.Add(tab);
         RefreshGroupLeaders();
         var navigation = tab.NavigateAsync(path ?? MainViewModel.StartTarget, true);
+        tab.InitialNavigation = navigation;
         if (activate) SelectedTab = tab;
         _ = navigation;
         return tab;

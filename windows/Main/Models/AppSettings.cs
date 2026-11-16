@@ -145,6 +145,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// <summary>Intercept the folder/drive open verb + Win+E so they launch Rain (HKCU, reversible).</summary>
     public bool SetAsDefaultExplorer { get => _setAsDefaultExplorer; set => Set(ref _setAsDefaultExplorer, value); }
 
+    private bool _archiveContextMenu;
+    /// <summary>One cascading "Rain Archives" entry in the classic right-click menu (HKCU, reversible).</summary>
+    public bool ArchiveContextMenu { get => _archiveContextMenu; set => Set(ref _archiveContextMenu, value); }
+
     private bool _showDriveItemCounts;
     /// <summary>Compute (recursive) file counts on the Drives page. Resource-intensive; off by default.</summary>
     public bool ShowDriveItemCounts { get => _showDriveItemCounts; set => Set(ref _showDriveItemCounts, value); }

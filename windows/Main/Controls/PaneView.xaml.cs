@@ -4052,7 +4052,7 @@ public partial class PaneView : UserControl
         }
     }
 
-    private static string ArchiveWriteCapabilityStatus(
+    internal static string ArchiveWriteCapabilityStatus(
         ArchiveWriteCapabilityState state,
         bool rebuild) => state switch
         {
@@ -4068,7 +4068,7 @@ public partial class PaneView : UserControl
                 : "The connected Worker does not advertise a compatible managed creation format for this selection.",
         };
 
-    private static string ArchiveWriteOperationStatus(
+    internal static string ArchiveWriteOperationStatus(
         ArchiveOperationResult result,
         bool rebuild) => !rebuild && result.Outcome == ArchiveOperationOutcome.Failed
             && ArchiveCreationFailureText.Describe(result.Failure, result.FailureLimit) is { } detail
