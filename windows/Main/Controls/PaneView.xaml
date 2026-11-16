@@ -837,7 +837,8 @@
                   Drop="FileList_Drop"
                   KeyDown="FileList_KeyDown"
                   VirtualizingPanel.IsVirtualizing="True"
-                  VirtualizingPanel.VirtualizationMode="Recycling">
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.ScrollUnit="Pixel">
             <ListView.RenderTransform>
                 <TranslateTransform x:Name="ListTransform" Y="0" />
             </ListView.RenderTransform>

@@ -257,6 +257,33 @@
                                 </Grid>
                             </Border>
 
+                            <TextBlock Text="MOTION" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
+                            <Border Style="{StaticResource Card}">
+                                <Grid Margin="0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Smooth scrolling" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="Mouse-wheel scrolling glides instead of jumping. Touchpads are already smooth."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Smooth scrolling"
+                                              IsChecked="{Binding SmoothScrolling, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <Grid Margin="0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Scroll speed" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Text="How far one wheel notch scrolls with smooth scrolling on."
+                                                   Style="{StaticResource RowHint}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="ScrollSpeedBox" Width="180" HorizontalAlignment="Right"
+                                              AutomationProperties.Name="Scroll speed"
+                                              IsEnabled="{Binding SmoothScrolling}"
+                                              SelectedItem="{Binding ScrollSpeed, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
                             <TextBlock Text="FONT" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
                             <Border Style="{StaticResource Card}">
                                 <Grid Margin="0,12">

@@ -79,6 +79,7 @@ public partial class App : Application
         if (!ThemeService.Names.Contains(settings.Theme))
             settings.Theme = "Violet";
 
+        RainExplorer.Helpers.SmoothScroll.Install();
         ThemeService.ApplyTheme(settings.Theme);
         ThemeService.ApplyDensity(settings.Density);
         ThemeService.ApplyFont(settings.FontFamily);

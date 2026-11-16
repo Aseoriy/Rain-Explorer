@@ -37,6 +37,10 @@ public enum ViewLayout { Details, List, Tiles, Grid }
 [JsonConverter(typeof(JsonStringEnumConverter<TerminalApp>))]
 public enum TerminalApp { Cmd, PowerShell }
 
+/// <summary>How far one mouse-wheel notch scrolls with smooth scrolling on.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ScrollSpeed>))]
+public enum ScrollSpeed { Slow, Normal, Fast }
+
 /// <summary>
 /// User preferences, persisted as JSON. Observable so the settings panel and
 /// the rest of the app react live to changes.
@@ -69,6 +73,13 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool _showAmbientBackground = true;
     /// <summary>Whether the themed ambient orb/background glow is drawn.</summary>
     public bool ShowAmbientBackground { get => _showAmbientBackground; set => Set(ref _showAmbientBackground, value); }
+
+    private bool _smoothScrolling = true;
+    /// <summary>Mouse-wheel notches glide instead of jumping (touchpads are already smooth).</summary>
+    public bool SmoothScrolling { get => _smoothScrolling; set => Set(ref _smoothScrolling, value); }
+
+    private ScrollSpeed _scrollSpeed = ScrollSpeed.Normal;
+    public ScrollSpeed ScrollSpeed { get => _scrollSpeed; set => Set(ref _scrollSpeed, value); }
 
     private bool _showStatusBar = true;
     public bool ShowStatusBar { get => _showStatusBar; set => Set(ref _showStatusBar, value); }

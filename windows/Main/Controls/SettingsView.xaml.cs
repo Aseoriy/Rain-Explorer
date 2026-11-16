@@ -37,6 +37,7 @@ public partial class SettingsView : UserControl
         LayoutBox.ItemsSource = Enum.GetValues(typeof(ViewLayout));
         DeleteBehaviorBox.ItemsSource = Enum.GetValues(typeof(DeleteBehavior));
         TerminalAppBox.ItemsSource = Enum.GetValues(typeof(TerminalApp));
+        ScrollSpeedBox.ItemsSource = Enum.GetValues(typeof(ScrollSpeed));
 
         // Installed UI fonts, alphabetised.
         _installedFonts = System.Windows.Media.Fonts.SystemFontFamilies
