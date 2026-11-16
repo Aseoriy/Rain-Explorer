@@ -7,7 +7,7 @@
     ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
     FontFamily="{DynamicResource AppFont}" FontSize="13" Foreground="{StaticResource Text}">
 
-    <Border Background="#F216161F" BorderBrush="{StaticResource Line2}"
+    <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}"
             BorderThickness="1" CornerRadius="14" Padding="22">
         <Border.Effect>
             <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="34" ShadowDepth="6" />

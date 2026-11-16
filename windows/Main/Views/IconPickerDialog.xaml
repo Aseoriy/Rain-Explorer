@@ -38,7 +38,7 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="#F216161F" BorderBrush="{StaticResource Line2}"
+    <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}"
             BorderThickness="1" CornerRadius="12" Padding="18">
         <Border.Effect>
             <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="32" ShadowDepth="5" />
