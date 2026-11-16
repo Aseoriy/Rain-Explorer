@@ -285,23 +285,45 @@
                             </Border>
 
                             <TextBlock Text="FONT" Style="{StaticResource SectionLabel}" Margin="4,18,0,8" />
-                            <Border Style="{StaticResource Card}">
-                                <Grid Margin="0,12">
-                                    <StackPanel>
-                                        <TextBlock Text="Interface font" Style="{StaticResource RowTitle}" />
-                                        <TextBlock Text="Applied across the app. Paths and sizes keep a mono font."
-                                                   Style="{StaticResource RowHint}" />
-                                    </StackPanel>
-                                    <StackPanel Width="240" HorizontalAlignment="Right">
-                                        <TextBox x:Name="FontSearchBox" Height="32"
-                                                 Style="{StaticResource FieldBox}"
-                                                 Tag="Search fonts…"
-                                                 TextChanged="FontSearchBox_TextChanged" />
-                                        <ComboBox x:Name="FontBox" Margin="0,7,0,0"
-                                                  IsTextSearchEnabled="True"
-                                                  SelectionChanged="FontBox_SelectionChanged" />
-                                    </StackPanel>
-                                </Grid>
+                            <Border Style="{StaticResource Card}" AllowDrop="True"
+                                    DragOver="FontCard_DragOver" DragEnter="FontCard_DragOver" Drop="FontCard_Drop">
+                                <StackPanel Margin="0,12">
+                                    <Grid>
+                                        <StackPanel Margin="0,0,256,0">
+                                            <TextBlock Text="Interface font" Style="{StaticResource RowTitle}" />
+                                            <TextBlock Text="Applied across the app. Paths and sizes keep a mono font."
+                                                       Style="{StaticResource RowHint}" />
+                                        </StackPanel>
+                                        <StackPanel Width="240" HorizontalAlignment="Right">
+                                            <TextBox x:Name="FontSearchBox" Height="32"
+                                                     Style="{StaticResource FieldBox}"
+                                                     Tag="Search fonts…"
+                                                     AutomationProperties.Name="Search fonts"
+                                                     TextChanged="FontSearchBox_TextChanged" />
+                                            <ComboBox x:Name="FontBox" Margin="0,7,0,0"
+                                                      IsTextSearchEnabled="True"
+                                                      AutomationProperties.Name="Interface font"
+                                                      SelectionChanged="FontBox_SelectionChanged" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,12,0,0">
+                                        <TextBlock x:Name="FontImportStatus" Style="{StaticResource RowHint}"
+                                                   Margin="0,0,140,0" VerticalAlignment="Center"
+                                                   Text="Import a font from a file, a zip or a direct link, or drop font files here." />
+                                        <Button x:Name="ImportFontButton" Content="Import font…"
+                                                Style="{StaticResource DialogButton}" HorizontalAlignment="Right"
+                                                Click="ImportFont_Click">
+                                            <Button.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="From a file…" Click="ImportFontFromFile_Click" />
+                                                    <MenuItem Header="From a link…" Click="ImportFontFromLink_Click" />
+                                                    <Separator />
+                                                    <MenuItem Header="Open fonts folder" Click="OpenFontsFolder_Click" />
+                                                </ContextMenu>
+                                            </Button.ContextMenu>
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>

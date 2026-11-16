@@ -164,7 +164,17 @@ public static class ThemeService
     public static void ApplyFont(string family)
     {
         if (string.IsNullOrWhiteSpace(family)) family = "Segoe UI";
-        try { Application.Current.Resources["AppFont"] = new FontFamily(family); }
+        try
+        {
+            // WPF silently substitutes a default font for an unknown name, so a font imported this
+            // session (or installed "for me" and missing from WPF's system list) is loaded from its file.
+            bool system = Fonts.SystemFontFamilies.Any(f =>
+                string.Equals(f.Source, family, StringComparison.OrdinalIgnoreCase));
+            Application.Current.Resources["AppFont"] =
+                !system && ImportedFontCatalog.TryGet(family, out FontFamily? imported)
+                    ? imported
+                    : new FontFamily(family);
+        }
         catch { Application.Current.Resources["AppFont"] = new FontFamily("Segoe UI"); }
     }
 

@@ -39,12 +39,7 @@ public partial class SettingsView : UserControl
         TerminalAppBox.ItemsSource = Enum.GetValues(typeof(TerminalApp));
         ScrollSpeedBox.ItemsSource = Enum.GetValues(typeof(ScrollSpeed));
 
-        // Installed UI fonts, alphabetised.
-        _installedFonts = System.Windows.Media.Fonts.SystemFontFamilies
-            .Select(f => f.Source)
-            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        FontBox.ItemsSource = _installedFonts;
+        LoadFontList();
 
         // Prefer the informational version (e.g. "1.2.0-PreRelease"); fall back to the numeric one.
         var info = Assembly.GetExecutingAssembly()
@@ -116,6 +111,115 @@ public partial class SettingsView : UserControl
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ExportActivityStatus.Text = $"⚠️ Couldn't save the file: {ex.Message}";
+        }
+    }
+
+    /// <summary>Installed UI fonts plus fonts imported "for me", alphabetised.</summary>
+    private void LoadFontList()
+    {
+        _installedFonts = System.Windows.Media.Fonts.SystemFontFamilies
+            .Select(f => f.Source)
+            .Concat(ImportedFontCatalog.Families.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        FontBox.ItemsSource = _installedFonts;
+    }
+
+    // ---- Import font (ported from the Linux build) -------------------------------------------------
+
+    private void ImportFont_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { ContextMenu: { } menu } button)
+        {
+            menu.PlacementTarget = button;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+    }
+
+    private async void ImportFontFromFile_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import fonts",
+            Multiselect = true,
+            Filter = "Fonts and zip files (*.ttf;*.otf;*.ttc;*.otc;*.zip)|*.ttf;*.otf;*.ttc;*.otc;*.zip",
+        };
+        if (dialog.ShowDialog(System.Windows.Window.GetWindow(this)) != true) return;
+        await RunFontImport(FontImportService.ImportFilesAsync(dialog.FileNames));
+    }
+
+    private async void ImportFontFromLink_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var dialog = new InputDialog("Import font from a link",
+            "Direct link to a .ttf, .otf or .zip file:", "https://")
+        {
+            Owner = System.Windows.Window.GetWindow(this),
+        };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Value)) return;
+        await RunFontImport(FontImportService.ImportFromUrlAsync(dialog.Value));
+    }
+
+    private void OpenFontsFolder_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(FontImportService.ImportFolder);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{FontImportService.ImportFolder}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) { FontImportStatus.Text = $"⚠️ {ex.Message}"; }
+    }
+
+    private void FontCard_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        bool fonts = e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] files
+                     && files.Any(FontImportService.IsImportable);
+        e.Effects = fonts ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void FontCard_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] files) return;
+        var importable = files.Where(FontImportService.IsImportable).ToList();
+        e.Handled = true;
+        if (importable.Count == 0)
+        {
+            FontImportStatus.Text = "Drop .ttf, .otf, .ttc or .zip files to import them.";
+            return;
+        }
+        await RunFontImport(FontImportService.ImportFilesAsync(importable));
+    }
+
+    private async Task RunFontImport(Task<FontImportResult> import)
+    {
+        ImportFontButton.IsEnabled = false;
+        FontImportStatus.Text = "Importing…";
+        try
+        {
+            FontImportResult result = await import;
+            if (!result.Succeeded)
+            {
+                FontImportStatus.Text = $"⚠️ {result.Error}";
+                return;
+            }
+            LoadFontList();
+            FontSearchBox.Text = string.Empty;
+            string first = result.Families[0];
+            string names = result.Families.Count == 1 ? first : $"{first} and {result.Families.Count - 1} more";
+            string skipped = result.Skipped.Count > 0 ? $" Skipped {result.Skipped.Count} file(s) that weren't fonts." : "";
+            FontImportStatus.Text = $"Imported {names}. It's selected now and other apps can use it too.{skipped}";
+            SettingsStore.Instance.Settings.FontFamily = first;
+            FontBox.SelectedItem = _installedFonts.FirstOrDefault(f => string.Equals(f, first, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            FontImportStatus.Text = $"⚠️ {ex.Message}";
+        }
+        finally
+        {
+            ImportFontButton.IsEnabled = true;
         }
     }
 
