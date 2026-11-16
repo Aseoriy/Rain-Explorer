@@ -66,7 +66,18 @@ public class DialogWindow : Window
     {
         Title = title;
         Width = width;
+        // MinWidth is passed to the window manager as a size hint. Without it, X11 window managers (KWin)
+        // could map a fixed-size dialog before layout and keep it too narrow, clipping text and buttons.
+        MinWidth = width;
         SizeToContent = SizeToContent.Height;
+        Opened += (_, _) =>
+        {
+            if (ClientSize.Width < width - 1)
+            {
+                Width = width;
+                InvalidateMeasure();
+            }
+        };
 
         var header = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Transparent };
         if (iconKey is not null)

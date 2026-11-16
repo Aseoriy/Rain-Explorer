@@ -21,6 +21,8 @@ public static class TrashService
         try { return getuid(); } catch { return 0; }
     });
 
+    internal static uint CurrentUid => Uid.Value;
+
     public static string HomeTrash => Path.Combine(XdgDirs.DataHome, "Trash");
 
     /// <summary>Move one item to the trash. Returns an error message, or null on success.</summary>

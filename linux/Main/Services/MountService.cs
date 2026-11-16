@@ -15,14 +15,17 @@ public sealed record MountEntry(
     public string? UDisksPath { get; init; }
     public string? DrivePath { get; init; }
     public string Identity { get; init; } = "";
+    /// <summary>A GVfs network location (smb://, sftp://…) under /run/user/UID/gvfs; disconnected with gio.</summary>
+    public bool IsGvfs { get; init; }
     public bool CanPowerOff { get; init; }
     public bool CanEject { get; init; }
     public bool IsMounted => MountPoint.Length > 0;
     public bool CanMount => UDisksPath is not null && !IsMounted;
-    public bool CanUnmount => UDisksPath is not null && IsMounted && IsRemovable && !IsRoot;
+    public bool CanUnmount => (UDisksPath is not null && IsMounted && IsRemovable && !IsRoot) || IsGvfs;
     public bool CanSafelyRemove => UDisksPath is not null && IsRemovable && (CanPowerOff || CanEject);
     public bool HasAction => CanMount || CanUnmount || CanSafelyRemove;
-    public string ActionText => CanMount ? "Mount" : CanSafelyRemove ? (CanEject ? "Eject" : "Safely remove") : "Unmount";
+    public string ActionText => IsGvfs ? "Disconnect"
+        : CanMount ? "Mount" : CanSafelyRemove ? (CanEject ? "Eject" : "Safely remove") : "Unmount";
     public DriveAction DefaultAction => CanMount ? DriveAction.Mount : CanSafelyRemove ? DriveAction.SafelyRemove : DriveAction.Unmount;
 }
 
@@ -55,6 +58,7 @@ public static class MountService
         }
         foreach (var device in devices)
             if (!result.Any(d => PathUtil.Same(d.Device, device.Device))) result.Add(device);
+        result.AddRange(NetworkLocationService.GvfsMounts());
         return result.OrderBy(d => d.IsRoot ? 0 : d.MountPoint == "/home" ? 1 : d.IsNetwork ? 3 : 2)
             .ThenBy(d => d.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
@@ -107,6 +111,18 @@ public static class MountService
             .OrderBy(m => m.IsRoot ? 0 : m.MountPoint == "/home" ? 1 : m.IsNetwork ? 3 : 2)
             .ThenBy(m => m.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
+
+    private static (DateTime At, IReadOnlyList<MountEntry> Drives) _networkCache;
+
+    /// <summary>True for paths on network shares (cifs, nfs, sshfs, GVfs…), which background work avoids.</summary>
+    public static bool IsOnNetworkMount(string path)
+    {
+        if (PathUtil.IsSameOrInside(NetworkLocationService.GvfsRoot, path)) return true;
+        var cache = _networkCache;
+        if (DateTime.UtcNow - cache.At > TimeSpan.FromSeconds(10))
+            _networkCache = cache = (DateTime.UtcNow, GetDrives());
+        return cache.Drives.Any(d => d.IsNetwork && PathUtil.IsSameOrInside(d.MountPoint, path));
     }
 
     /// <summary>The longest mount point containing <paramref name="path"/> ("/" as a fallback).</summary>

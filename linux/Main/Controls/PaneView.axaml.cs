@@ -331,7 +331,9 @@ public partial class PaneView : UserControl
     {
         if (e.Source is not Visual source
             || source.FindAncestorOfType<ScrollBar>(includeSelf: true) is not null
-            || source.FindAncestorOfType<TextBox>(includeSelf: true) is not null) return;
+            || source.FindAncestorOfType<TextBox>(includeSelf: true) is not null
+            // The preview shows the selection; clicking it (PDF page arrows, Play) must not clear it.
+            || source.FindAncestorOfType<PreviewPane>(includeSelf: true) is not null) return;
         var clickedItem = FileList.IsVisualAncestorOf(source) ? ItemUnder(source) : null;
         if (_tab?.Items.FirstOrDefault(item => item.IsEditing) is { } editing
             && !ReferenceEquals(editing, clickedItem)) _ = FinishInlineEdit(editing);
@@ -1126,6 +1128,7 @@ public partial class PaneView : UserControl
     private void BuildFileContextMenu()
     {
         BuildArchiveMenu();
+        BuildGitMenu();
         _menuRestore = MenuFactory.Item("Restore", "undo", () => _ = RunTrashViewOperation(SelectedPaths(), restore: true),
             iconBrush: "AccentBright");
         _restoreSeparator = new Separator();
@@ -1173,6 +1176,7 @@ public partial class PaneView : UserControl
                      _menuNewFolder, _menuNewFile,
                      new Separator(),
                      _menuProperties,
+                     _gitSeparator, _menuGit,
                      new Separator(),
                      _menuShowMore,
                  })
@@ -1200,6 +1204,7 @@ public partial class PaneView : UserControl
         _menuOpenWith.IsEnabled = physical && singleFile && !trash;
         _menuOpenTerminal.IsEnabled = physical && !trash;
         UpdateArchiveMenu(items, physical, trash);
+        UpdateGitMenu(physical, trash);
 
         BuildPinMenu(items.Where(i => i.IsDirectory && i.HasPhysicalPath).ToList());
         _menuCut.IsEnabled = physical && has && !trash;

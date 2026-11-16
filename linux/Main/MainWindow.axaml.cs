@@ -593,6 +593,13 @@ public partial class MainWindow : Window
         if (sender is Control { DataContext: ActivityEntry entry }) ActivityService.Instance.RequestPauseToggle(entry);
     }
 
+    private void ActivityDetails_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: ActivityEntry entry }) return;
+        ActivityPopup.IsOpen = false;
+        _ = Views.ActivityDetailsDialog.ShowFor(this, entry);
+    }
+
     private void ActivityCancel_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: ActivityEntry entry }) ActivityService.Instance.RequestCancel(entry);

@@ -58,7 +58,11 @@ public partial class BreadcrumbBar : UserControl
         }, DispatcherPriority.Input);
         ChildList.AddHandler(PointerReleasedEvent, ChildList_PointerReleased, RoutingStrategies.Tunnel);
         AcList.AddHandler(PointerReleasedEvent, AcList_PointerReleased, RoutingStrategies.Tunnel);
-        CrumbScroll.SizeChanged += (_, _) => ScrollToEnd();
+        CrumbScroll.SizeChanged += (_, e) =>
+        {
+            if (!IsEditing && Math.Abs(e.NewSize.Width - e.PreviousSize.Width) > 0.5) Rebuild();
+            else ScrollToEnd();
+        };
     }
 
     public bool IsEditing => EditHost.IsVisible;
@@ -118,6 +122,20 @@ public partial class BreadcrumbBar : UserControl
 
     private void Rebuild()
     {
+        // Fold more of the middle into "…" until the crumbs fit, so the first one is never cut off.
+        double available = CrumbScroll.Bounds.Width;
+        for (int max = MaxCrumbs; ; max--)
+        {
+            Build(max);
+            if (max <= 2 || available <= 0) break;
+            CrumbStrip.Measure(Size.Infinity);
+            if (CrumbStrip.DesiredSize.Width <= available) break;
+        }
+        ScrollToEnd();
+    }
+
+    private void Build(int maxCrumbs)
+    {
         CrumbStrip.Children.Clear();
         var tab = _tab;
         if (tab is null) return;
@@ -134,12 +152,12 @@ public partial class BreadcrumbBar : UserControl
         var crumbs = BuildCrumbs(path);
         if (crumbs.Count == 0) return;
 
-        if (crumbs.Count > MaxCrumbs)
+        if (crumbs.Count > maxCrumbs)
         {
             // root  ›  …  ›  (last few)
             AddCrumb(crumbs[0], current: false);
             AddChevron(crumbs[0].Path);
-            int tail = MaxCrumbs - 1;
+            int tail = maxCrumbs - 1;
             int start = crumbs.Count - tail;
             AddOverflow(crumbs.GetRange(1, start - 1));
             for (int i = start; i < crumbs.Count; i++)
@@ -156,8 +174,6 @@ public partial class BreadcrumbBar : UserControl
                 AddChevron(crumbs[i].Path);   // trailing chevron lists that folder's children
             }
         }
-
-        ScrollToEnd();
     }
 
     private void ScrollToEnd() =>
@@ -167,8 +183,9 @@ public partial class BreadcrumbBar : UserControl
     private static List<Crumb> BuildCrumbs(string path)
     {
         var crumbs = new List<Crumb>();
-        string mount = MountService.GetMountPoint(path);
-        var drive = MountService.GetDrives().FirstOrDefault(d => PathUtil.Same(d.MountPoint, mount));
+        var network = NetworkLocationService.FindGvfsMount(path);
+        string mount = network?.MountPoint ?? MountService.GetMountPoint(path);
+        var drive = network ?? MountService.GetDrives().FirstOrDefault(d => PathUtil.Same(d.MountPoint, mount));
         string rootLabel = drive?.Label ?? (mount == "/" ? "File System" : PathUtil.DisplayName(mount));
         crumbs.Add(new Crumb(rootLabel, mount));
 
@@ -401,6 +418,14 @@ public partial class BreadcrumbBar : UserControl
         }
     }
 
+    /// <summary>smb://, sftp://… typed in the address bar: mount through GVfs, then open the local folder.</summary>
+    private async Task OpenNetworkLocation(TabViewModel tab, string uri)
+    {
+        string? local = await Views.NetworkConnectFlow.OpenAsync(TopLevel.GetTopLevel(this) as Window, uri,
+            message => tab.Status = message);
+        if (local is not null) await tab.NavigateAsync(local, true);
+    }
+
     private void Commit(string text)
     {
         ExitEdit();
@@ -411,6 +436,12 @@ public partial class BreadcrumbBar : UserControl
         {
             string dir = _tab.IsFolderView ? _tab.CurrentPath : XdgDirs.Home;
             if (!TerminalLauncher.TryOpen(dir, out string? error)) _tab.Status = $"⚠️ {error}";
+            return;
+        }
+
+        if (NetworkLocationService.IsNetworkUri(text))
+        {
+            _ = OpenNetworkLocation(_tab, text);
             return;
         }
 

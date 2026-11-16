@@ -1,0 +1,17 @@
+# Build and publish output.
+bin/
+obj/
+dist/
+TestResults/
+
+# IDE and local files.
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.log
+
+# Operating-system files.
+.DS_Store
+Thumbs.db

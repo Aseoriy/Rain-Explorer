@@ -90,6 +90,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(AppSettings.AlwaysSmoothAnimations)) PrefetchSidebar();
         if (e.PropertyName is nameof(AppSettings.ShowHiddenFiles)
             or nameof(AppSettings.FoldersFirst) or nameof(AppSettings.SizeFormat)
             or nameof(AppSettings.ShowFileExtensions) or nameof(AppSettings.CalculateFolderSizes))
@@ -210,6 +211,15 @@ public sealed class MainViewModel : ObservableObject
             SidebarNodes.Add(s);
         }
         SyncSidebarSelection();   // a rebuild drops selection state — restore it for the active tab
+        PrefetchSidebar();
+    }
+
+    /// <summary>"Always smooth animations": read the top-level sidebar folders' subfolders ahead of time.</summary>
+    private void PrefetchSidebar()
+    {
+        if (!SettingsStore.Instance.Settings.AlwaysSmoothAnimations) return;
+        foreach (SidebarNode node in SidebarNodes)
+            if (node.CanExpand && !node.IsExpanded) node.Prefetch();
     }
 
     // ===================== Sidebar selection sync =====================

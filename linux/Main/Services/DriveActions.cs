@@ -68,6 +68,13 @@ public static class DriveActions
 
     public static async Task<DriveActionResult> RunAsync(MountEntry entry, DriveAction action)
     {
+        if (entry.IsGvfs)
+        {
+            if (action != DriveAction.Unmount) return new(Error: "Open network locations from the address bar (smb://server/share).");
+            string? error = await NetworkLocationService.DisconnectAsync(entry.MountPoint).ConfigureAwait(false);
+            return error is null ? new() : new(Error: error);
+        }
+
         // Serialize across every window, including mount versus remove on sibling partitions.
         if (!await Operations.WaitAsync(0).ConfigureAwait(false))
             return new(Error: "Another drive operation is still running.");

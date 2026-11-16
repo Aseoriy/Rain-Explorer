@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RID="${RID:-linux-x64}"
 VERSION="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$ROOT/Main/RainExplorer.csproj" | head -n1)"
 PUBLISH="${1:-$ROOT/dist/rain-explorer-${VERSION}-${RID}}"
-DEB_VERSION="${VERSION/-linux-/~linux.}"
+DEB_VERSION="${VERSION/-linux-/~linux.}"; DEB_VERSION="${DEB_VERSION/-beta-/~beta.}"
 
 case "$RID" in
     linux-x64) ARCH=amd64 ;;
@@ -45,7 +45,8 @@ Section: utils
 Priority: optional
 Installed-Size: $(du -sk "$STAGE/opt" "$STAGE/usr" | awk '{total += $1} END {print total}')
 Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, libfontconfig1, libfreetype6, libx11-6, libxcb1, libice6, libsm6, libxi6, libxrandr2, libxcursor1, zlib1g, libicu78 | libicu77 | libicu76 | libicu75 | libicu74 | libicu72 | libicu70, libssl3t64 | libssl3, xdg-utils, shared-mime-info
-Recommends: libglib2.0-bin, fonts-dejavu-core, libgl1, libegl1
+Recommends: libglib2.0-bin, fonts-dejavu-core, libgl1, libegl1, poppler-utils, gvfs-backends
+Suggests: git, ffmpeg
 Homepage: https://rain-explorer.sailhub.fyi/
 Description: Rain Explorer file manager for Linux
  Browse folders with tabs, split panes, Quick Access, previews and themes.

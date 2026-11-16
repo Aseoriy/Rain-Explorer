@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RainExplorer.Services;
 
 namespace RainExplorer.Helpers;
 
@@ -24,9 +26,30 @@ public static class ExpandCollapseBehavior
         control.DetachedFromVisualTree += Detached;
         if (control.GetVisualRoot() is null) { SetInitial(control); return; }
         bool expanded = GetIsExpanded(control);
-        double currentHeight = control.Bounds.Height;
+        double currentHeight = control.IsVisible ? control.Bounds.Height : 0;
         double currentOpacity = control.IsVisible ? control.Opacity : 0;
-        bool wasVisible = control.IsVisible;
+        Motion.Cancel(control);
+
+        if (expanded && SettingsStore.Instance.Settings.AlwaysSmoothAnimations)
+        {
+            // "Always smooth animations": hold the panel closed for one layout pass so freshly added
+            // rows (first expand) exist before the target height is measured.
+            control.ClipToBounds = true;
+            control.Height = currentHeight;
+            control.Opacity = currentOpacity;
+            control.IsVisible = true;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (GetIsExpanded(control) && control.GetVisualRoot() is not null)
+                    Animate(control, true, currentHeight, currentOpacity);
+            }, DispatcherPriority.Loaded);
+            return;
+        }
+        Animate(control, expanded, currentHeight, currentOpacity);
+    }
+
+    private static void Animate(Control control, bool expanded, double fromHeight, double fromOpacity)
+    {
         Motion.Cancel(control);
         control.ClipToBounds = true;
         control.IsVisible = true;
@@ -37,8 +60,7 @@ public static class ExpandCollapseBehavior
         _ = Motion.Play(control, expanded ? 150 : 125,
             expanded ? new CubicEaseOut() : new CubicEaseIn(),
         [
-            Motion.Frame(0, (Control.HeightProperty, wasVisible ? currentHeight : 0),
-                (Visual.OpacityProperty, currentOpacity)),
+            Motion.Frame(0, (Control.HeightProperty, fromHeight), (Visual.OpacityProperty, fromOpacity)),
             Motion.Frame(1, (Control.HeightProperty, target), (Visual.OpacityProperty, expanded ? 1 : 0)),
         ], () => SetInitial(control));
     }

@@ -51,6 +51,55 @@ public sealed partial class UiTests
     }
 
     [AvaloniaFact]
+    public async Task SettingsRowTextNeverRunsUnderItsControl()
+    {
+        var (window, vm, _) = Boot();
+        try
+        {
+            vm.IsSettingsOpen = true;
+            var settings = window.FindControl<SettingsView>("SettingsOverlay")!;
+            var nav = settings.FindControl<ListBox>("SectionList")!;
+            int checkedRows = 0;
+            foreach (var size in new[] { new Size(1400, 780), new Size(760, 480) })
+            {
+                window.Width = size.Width; window.Height = size.Height;
+                for (int i = 0; i < SettingsSections.Length; i++)
+                {
+                    nav.SelectedIndex = i;
+                    await RenderFor(250);
+                    var pane = settings.FindControl<ScrollViewer>(SettingsSections[i])!;
+                    foreach (var row in pane.GetVisualDescendants().OfType<Grid>().Where(g => g.Classes.Contains("row") && g.IsEffectivelyVisible))
+                    {
+                        var text = row.Children[0];
+                        var control = row.Children[1];
+                        if (!control.IsVisible) continue;
+                        double textRight = text.TranslatePoint(new Point(text.Bounds.Width, 0), row)!.Value.X;
+                        double controlLeft = control.TranslatePoint(default, row)!.Value.X;
+                        string title = text.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault()?.Text ?? "?";
+                        Assert.True(textRight <= controlLeft + 0.5,
+                            $"{SettingsSections[i]} at {size}: “{title}” text ends at {textRight}, its control starts at {controlLeft}.");
+                        checkedRows++;
+                    }
+                    if (size.Width < 1000)
+                    {
+                        Snapshot(window, $"70-settings-{i}-narrow");
+                        var scroll = pane;
+                        scroll.Offset = new Vector(0, scroll.Extent.Height / 2);
+                        await RenderFor(60);
+                        Snapshot(window, $"70-settings-{i}-narrow-mid");
+                        scroll.Offset = new Vector(0, double.MaxValue);
+                        await RenderFor(60);
+                        Snapshot(window, $"70-settings-{i}-narrow-end");
+                        scroll.Offset = default;
+                    }
+                }
+            }
+            Assert.True(checkedRows > 60, $"only {checkedRows} rows checked");
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task SettingsAnimateOpeningAndSectionsAndPreserveScrollInBothPerformanceModes()
     {
         var preferences = SettingsStore.Instance.Settings;

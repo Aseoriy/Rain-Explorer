@@ -1,7 +1,11 @@
+// Avalonia 11.3 marks the IDataObject drag API obsolete in favour of DataTransfer; it is still the
+// documented 11.x path and works on X11 (same as PaneView and ClipboardService).
+#pragma warning disable CS0618
 using System.ComponentModel;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -69,24 +73,36 @@ public partial class SettingsView : UserControl
             [DeleteBehavior.Prompt] = "Prompt", [DeleteBehavior.Recycle] = "Trash",
             [DeleteBehavior.Permanent] = "Permanent",
         });
+        BindEnum(ScrollSpeedBox, nameof(AppSettings.ScrollSpeed), new Dictionary<ScrollSpeed, string>
+        {
+            [ScrollSpeed.Slow] = "Slow", [ScrollSpeed.Normal] = "Normal", [ScrollSpeed.Fast] = "Fast",
+        });
+        BindRetention();
         BindEnum(SizeFormatBox, nameof(AppSettings.SizeFormat), new Dictionary<SizeFormat, string>
         {
             [SizeFormat.Binary] = "Binary (KiB)", [SizeFormat.Decimal] = "Decimal (KB)",
         });
 
-        var fonts = new List<string> { AppSettings.DefaultFontFamily };
-        try
+        BuildFontList();
+        FontSearch.TextChanged += (_, _) => FilterFonts();
+        FontSearch.KeyDown += (_, e) =>
         {
-            fonts.AddRange(FontManager.Current.SystemFonts.Select(f => f.Name)
-                .Where(n => !string.IsNullOrWhiteSpace(n) && n != AppSettings.DefaultFontFamily)
-                .Distinct().OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase));
-        }
-        catch { }
-        FontBox.ItemsSource = fonts;
-        FontBox.SelectionChanged += (_, _) =>
-        {
-            if (!_syncing && FontBox.SelectedItem is string font) S.FontFamily = font;
+            if (e.Key == Avalonia.Input.Key.Down && FontList.ItemCount > 0)
+            {
+                e.Handled = true;
+                FontList.SelectedIndex = Math.Max(0, FontList.SelectedIndex);
+                FontList.ContainerFromIndex(FontList.SelectedIndex)?.Focus();
+            }
         };
+        FontList.SelectionChanged += (_, _) =>
+        {
+            if (!_syncing && FontList.SelectedItem is FontChoice font) S.FontFamily = font.Name;
+            UpdateFontStatus();
+        };
+        // The font list grows with the window but never makes its card taller than the visible page.
+        PaneAppearance.SizeChanged += (_, e) => FontList.Height = Math.Clamp(e.NewSize.Height - 215, 130, 260);
+        FontCard.AddHandler(Avalonia.Input.DragDrop.DragOverEvent, FontCard_DragOver);
+        FontCard.AddHandler(Avalonia.Input.DragDrop.DropEvent, FontCard_Drop);
 
         TerminalAppBox.SelectionChanged += (_, _) =>
         {
@@ -117,7 +133,7 @@ public partial class SettingsView : UserControl
         try
         {
             ThemeList.SelectedItem = ThemeList.Items.OfType<ThemeSwatch>().FirstOrDefault(t => t.Name == S.Theme);
-            FontBox.SelectedItem = FontBox.Items.OfType<string>().FirstOrDefault(f => f == S.FontFamily) ?? FontBox.Items.FirstOrDefault();
+            SelectCurrentFont();
             var terminals = new List<Choice<string>> { new("", "Automatic") };
             terminals.AddRange(TerminalLauncher.Installed().Select(t => new Choice<string>(t.Exe, t.Label)));
             if (!string.IsNullOrEmpty(S.TerminalCommand) && terminals.All(c => c.Value != S.TerminalCommand))
@@ -201,6 +217,201 @@ public partial class SettingsView : UserControl
         surface.RenderTransform = null;
     }
 
+    // ---- Interface font: search, preview, import --------------------------------------------------
+
+    private List<FontChoice> _allFonts = [];
+
+    private void BuildFontList()
+    {
+        var imported = ImportedFontCollection.Instance.FamilyNames;
+        var names = new SortedSet<string>(StringComparer.CurrentCultureIgnoreCase) { AppSettings.DefaultFontFamily };
+        try
+        {
+            foreach (var family in FontManager.Current.SystemFonts)
+                if (!string.IsNullOrWhiteSpace(family.Name)) names.Add(family.Name);
+        }
+        catch { }
+        foreach (string name in imported) names.Add(name);
+        _allFonts = names
+            .Select(name => new FontChoice(name, imported.Contains(name, StringComparer.OrdinalIgnoreCase)))
+            .OrderBy(f => f.Name == AppSettings.DefaultFontFamily ? 0 : 1)
+            .ThenBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        FilterFonts();
+    }
+
+    private void FilterFonts()
+    {
+        string query = FontSearch.Text?.Trim() ?? string.Empty;
+        var shown = query.Length == 0
+            ? _allFonts
+            : _allFonts.Where(f => f.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        _syncing = true;
+        FontList.ItemsSource = shown;
+        SelectCurrentFont();
+        _syncing = false;
+        UpdateFontStatus(shown.Count == 0 ? $"No fonts match “{query}”." : null);
+    }
+
+    private void SelectCurrentFont()
+    {
+        bool wasSyncing = _syncing;
+        _syncing = true;
+        var current = FontList.Items.OfType<FontChoice>().FirstOrDefault(f => f.Name == S.FontFamily);
+        FontList.SelectedItem = current;
+        if (current is not null) FontList.ScrollIntoView(current);
+        _syncing = wasSyncing;
+    }
+
+    private void UpdateFontStatus(string? message = null)
+    {
+        FontStatus.Text = message
+            ?? $"Using {S.FontFamily}. Drop .ttf, .otf or .zip font files here to import them.";
+    }
+
+    private void ImportFont_Click(object? sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                MenuFactory.Item("From a file…", "file-plus", () => _ = ImportFontFromFile()),
+                MenuFactory.Item("From a link…", "link", () => _ = ImportFontFromLink()),
+                new Separator(),
+                MenuFactory.Item("Open fonts folder", "folder-open", OpenFontsFolder),
+            },
+        };
+        menu.Open(ImportFontButton);
+    }
+
+    private async Task ImportFontFromFile()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import fonts",
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Fonts and font archives") { Patterns = ["*.ttf", "*.otf", "*.ttc", "*.otc", "*.zip", "*.TTF", "*.OTF", "*.ZIP"] },
+                FilePickerFileTypes.All,
+            ],
+        });
+        var paths = files.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
+        if (paths.Count > 0) await RunFontImport(FontImportService.ImportFilesAsync(paths));
+    }
+
+    private async Task ImportFontFromLink()
+    {
+        string? url = await Views.InputDialog.Ask(TopLevel.GetTopLevel(this) as Window, "Import font from a link",
+            "Paste a direct link to a .ttf, .otf or .zip file (for example, a font's Download button):", "https://");
+        if (string.IsNullOrWhiteSpace(url) || url.Trim() == "https://") return;
+        await RunFontImport(FontImportService.ImportFromUrlAsync(url));
+    }
+
+    private void OpenFontsFolder()
+    {
+        Directory.CreateDirectory(FontImportService.ImportFolder);
+        if (TopLevel.GetTopLevel(this)?.DataContext is MainViewModel vm)
+        {
+            vm.IsSettingsOpen = false;
+            vm.ActivePane.NewTab(FontImportService.ImportFolder, activate: true);
+        }
+    }
+
+    private void FontCard_DragOver(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        bool fonts = e.Data.GetFiles()?.Any(f => f.TryGetLocalPath() is { } p && FontImportService.IsImportable(p)) == true;
+        e.DragEffects = fonts ? Avalonia.Input.DragDropEffects.Copy : Avalonia.Input.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void FontCard_Drop(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        e.Handled = true;
+        var paths = e.Data.GetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>()
+            .Where(FontImportService.IsImportable).ToList() ?? [];
+        if (paths.Count > 0) await RunFontImport(FontImportService.ImportFilesAsync(paths));
+    }
+
+    private async Task RunFontImport(Task<FontImportResult> import)
+    {
+        ImportFontButton.IsEnabled = false;
+        UpdateFontStatus("Importing…");
+        FontImportResult result;
+        try { result = await import; }
+        catch (Exception ex) { result = new FontImportResult([], 0, ex.Message); }
+        finally { ImportFontButton.IsEnabled = true; }
+
+        if (!result.Succeeded)
+        {
+            UpdateFontStatus($"⚠️ {result.Error}");
+            return;
+        }
+        ImportedFontCollection.Instance.Reload();
+        FontSearch.Text = string.Empty;
+        BuildFontList();
+        if (result.Families.Count == 1)
+        {
+            S.FontFamily = result.Families[0];
+            SelectCurrentFont();
+            UpdateFontStatus($"Imported {result.Families[0]} and switched to it. It's installed for your account, so other apps can use it too.");
+        }
+        else
+        {
+            UpdateFontStatus($"Imported {result.Families.Count} fonts: {string.Join(", ", result.Families.Take(4))}"
+                             + $"{(result.Families.Count > 4 ? "…" : "")}. Pick one below.");
+            FontSearch.Text = result.Families[0];
+        }
+    }
+
+    private static readonly (int Days, string Label)[] RetentionChoices =
+    [
+        (1, "1 day"), (3, "3 days"), (7, "7 days"), (30, "30 days"), (90, "90 days"), (0, "Until I clear it"),
+    ];
+
+    private void BindRetention()
+    {
+        RetentionBox.ItemsSource = RetentionChoices.Select(c => c.Label).ToList();
+        void Sync()
+        {
+            _syncing = true;
+            int index = Array.FindIndex(RetentionChoices, c => c.Days == S.ActivityRetentionDays);
+            RetentionBox.SelectedIndex = index >= 0 ? index : 2;
+            _syncing = false;
+        }
+        Sync();
+        RetentionBox.SelectionChanged += (_, _) =>
+        {
+            if (!_syncing && RetentionBox.SelectedIndex >= 0)
+                S.ActivityRetentionDays = RetentionChoices[RetentionBox.SelectedIndex].Days;
+        };
+        _enumSyncs[nameof(AppSettings.ActivityRetentionDays)] = Sync;
+    }
+
+    private async void ExportActivity_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanSave: true } storage) return;
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export activity history",
+            SuggestedFileName = $"rain-explorer-activity-{DateTime.Now:yyyy-MM-dd}.txt",
+            DefaultExtension = "txt",
+        });
+        if (file is null) return;
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+            await writer.WriteAsync(ActivityService.Instance.ExportText());
+            ExportActivityStatus.Text = $"Saved to {file.TryGetLocalPath() ?? file.Name}.";
+        }
+        catch (Exception ex)
+        {
+            ExportActivityStatus.Text = $"⚠️ Couldn't save the file: {ex.Message}";
+        }
+    }
+
     private void BindEnum<T>(ComboBox box, string property, IReadOnlyDictionary<T, string> labels) where T : struct, Enum
     {
         var options = labels.Select(p => new Choice<T>(p.Key, p.Value)).ToList();
@@ -281,6 +492,45 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private async void CheckUpdates_Click(object? sender, RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        UpdateStatusText.Text = "Checking for updates…";
+        try
+        {
+            var info = await UpdateService.CheckAsync(SettingsStore.Instance.Settings.BetaUpdates);
+            if (info is null)
+            {
+                UpdateStatusText.Text = $"You're on the latest version (v{UpdateService.CurrentVersionString}).";
+            }
+            else
+            {
+                UpdateStatusText.Text = $"Version {info.Version} is available.";
+                await Views.UpdateDialog.ShowFor(info, TopLevel.GetTopLevel(this) as Window);
+            }
+        }
+        catch
+        {
+            UpdateStatusText.Text = "Couldn't check for updates. Check your connection and try again.";
+        }
+        finally
+        {
+            CheckUpdatesButton.IsEnabled = true;
+        }
+    }
+
+    private async void BrowseGit_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose Git executable",
+            AllowMultiple = false,
+        });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+            SettingsStore.Instance.Settings.GitExecutablePath = path;
+    }
+
     private void Link_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string url })
@@ -288,4 +538,14 @@ public partial class SettingsView : UserControl
             try { ProcessLauncher.OpenDefault(url); } catch { }
         }
     }
+}
+
+/// <summary>One entry in the interface font list, drawn in its own typeface.</summary>
+public sealed class FontChoice(string name, bool imported)
+{
+    public string Name { get; } = name;
+    public string Badge { get; } = imported ? "Imported" : "";
+    public FontFamily Preview { get; } = imported
+        ? new FontFamily($"{ImportedFontCollection.CollectionKey}#{name}, Noto Sans")
+        : new FontFamily($"{name}, Noto Sans");
 }

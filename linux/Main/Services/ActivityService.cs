@@ -16,7 +16,13 @@ namespace RainExplorer.Services;
 public sealed class ActivityService : ObservableObject
 {
     public static ActivityService Instance { get; } = new();
-    private const int Cap = 60;
+    private const int BasicCap = 60;
+    private const int DetailedCap = 2000;
+    private static int Cap => Detailed ? DetailedCap : BasicCap;
+    private static bool Detailed => SettingsStore.Instance.Settings.DetailedActivityHistory;
+
+    /// <summary>Drives the "View details" button in the activity center.</summary>
+    public bool DetailedHistory => Detailed;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -42,15 +48,25 @@ public sealed class ActivityService : ObservableObject
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "activity.json");
 
-        if (SettingsStore.Instance.Settings.RememberActivity) LoadPersisted();
+        if (Remember) LoadPersisted();
+        Prune();
 
         // React to the toggle: turning it on snapshots the current log; turning it
         // off resets the persisted file so nothing is restored next launch.
         SettingsStore.Instance.Settings.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(AppSettings.RememberActivity))
+            if (e.PropertyName is nameof(AppSettings.DetailedActivityHistory) or nameof(AppSettings.ActivityRetentionDays))
             {
-                if (SettingsStore.Instance.Settings.RememberActivity) Persist();
+                OnUi(() =>
+                {
+                    OnPropertyChanged(nameof(DetailedHistory));
+                    Prune();
+                    Persist();
+                });
+            }
+            if (e.PropertyName is nameof(AppSettings.RememberActivity) or nameof(AppSettings.DetailedActivityHistory))
+            {
+                if (Remember) Persist();
                 else
                 {
                     try { File.Delete(_path); } catch { }
@@ -61,7 +77,22 @@ public sealed class ActivityService : ObservableObject
         };
     }
 
-    private bool Remember => SettingsStore.Instance.Settings.RememberActivity;
+    // Detailed history is a saved log by definition, so it persists even with "Remember activity" off.
+    private static bool Remember => SettingsStore.Instance.Settings.RememberActivity || Detailed;
+
+    /// <summary>Drop finished entries past the retention period (detailed history) and over the cap.</summary>
+    private void Prune()
+    {
+        int days = SettingsStore.Instance.Settings.ActivityRetentionDays;
+        if (Detailed && days > 0)
+        {
+            DateTime cutoff = DateTime.Now.AddDays(-days);
+            for (int i = Items.Count - 1; i >= 0; i--)
+                if (!Items[i].IsActive && Items[i].StartedAt < cutoff) Items.RemoveAt(i);
+        }
+        while (Items.Count > Cap && Items.Count > 0 && !Items[^1].IsActive) Items.RemoveAt(Items.Count - 1);
+        OnPropertyChanged(nameof(IsEmpty));
+    }
 
     private void LoadPersisted()
     {
@@ -179,6 +210,7 @@ public sealed class ActivityService : ObservableObject
             IconKey = iconKey,
             Detail = detail,
             StartedAt = DateTime.Now,
+            BeginDetail = detail,
             Status = ActivityStatus.Running,
             Watch = Stopwatch.StartNew(),
         };
@@ -218,7 +250,12 @@ public sealed class ActivityService : ObservableObject
         OnUi(() =>
         {
             e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
-            if (!ok && !string.IsNullOrWhiteSpace(error)) e.Detail = Shorten(error!);
+            e.FinishedAt = DateTime.Now;
+            if (!ok && !string.IsNullOrWhiteSpace(error))
+            {
+                e.Detail = Shorten(error!);
+                if (Detailed) e.FullDetail = error!.Trim();
+            }
             if (ok) e.Progress = 1;
             e.ProgressText = string.Empty;
             e.IsPaused = false;
@@ -226,7 +263,46 @@ public sealed class ActivityService : ObservableObject
             e.DetachControls();
             KeepActiveAtTop();
             Persist();
+            if (!ok && SettingsStore.Instance.Settings.OpenActivityOnFailure) ShowRequested?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// Record something that failed outside a file operation, such as opening a folder. Only kept with
+    /// detailed history on; otherwise the status bar message is enough.
+    /// </summary>
+    public void LogFailure(string title, string detail, string error, string iconKey)
+    {
+        if (!Detailed) return;
+        var e = new ActivityEntry
+        {
+            Title = title,
+            IconKey = iconKey,
+            Detail = Shorten(error),
+            BeginDetail = detail,
+            FullDetail = error.Trim(),
+            StartedAt = DateTime.Now,
+            FinishedAt = DateTime.Now,
+            Status = ActivityStatus.Failed,
+        };
+        Add(e);
+        if (SettingsStore.Instance.Settings.OpenActivityOnFailure) RequestShow();
+    }
+
+    /// <summary>The whole history as readable text (Settings → Export activity history).</summary>
+    public string ExportText()
+    {
+        var parts = new List<string>
+        {
+            $"Rain Explorer activity history — exported {DateTime.Now:yyyy-MM-dd HH:mm}",
+            new string('=', 60),
+        };
+        foreach (ActivityEntry entry in Items.ToList())
+        {
+            parts.Add(ActivityExplainer.Describe(entry));
+            parts.Add(new string('-', 60));
+        }
+        return string.Join(Environment.NewLine, parts) + Environment.NewLine;
     }
 
     /// <summary>Mark a running activity as cancelled (the user backed out of a confirm dialog,
@@ -235,6 +311,7 @@ public sealed class ActivityService : ObservableObject
     {
         e.Watch?.Stop();
         e.DurationText = FormatDuration(e.Watch?.Elapsed ?? TimeSpan.Zero);
+        e.FinishedAt = DateTime.Now;
         if (!string.IsNullOrWhiteSpace(detail)) e.Detail = Shorten(detail!);
         e.ProgressText = string.Empty;
         e.IsPaused = false;
@@ -261,7 +338,7 @@ public sealed class ActivityService : ObservableObject
         int insertAt = 0;
         while (insertAt < Items.Count && Items[insertAt].IsActive) insertAt++;
         Items.Insert(insertAt, e);
-        while (Items.Count > Cap) Items.RemoveAt(Items.Count - 1);
+        Prune();
         UnseenCount++;
         OnPropertyChanged(nameof(IsEmpty));
         Persist();

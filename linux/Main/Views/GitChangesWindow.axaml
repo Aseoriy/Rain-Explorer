@@ -1,0 +1,360 @@
+<v:DialogWindow xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:v="using:RainExplorer.Views"
+                xmlns:c="using:RainExplorer.Controls"
+                xmlns:m="using:RainExplorer.Models"
+                xmlns:vm="using:RainExplorer.ViewModels"
+                x:Class="RainExplorer.Views.GitChangesWindow"
+                x:DataType="vm:GitChangesViewModel"
+                Title="Git &amp; GitHub" Width="1040" Height="760" MinWidth="820" MinHeight="600">
+    <v:DialogWindow.Styles>
+        <Style Selector="TextBlock.rowTitle">
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style Selector="Border.section">
+            <Setter Property="Background" Value="{DynamicResource Glass2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line1}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="0,0,0,9" />
+        </Style>
+        <Style Selector="Border.section.collapsible">
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.sectionHeader">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.sectionHeader /template/ ContentPresenter">
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Button.sectionHeader:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Glass3}" />
+        </Style>
+        <Style Selector="StackPanel.sectionBody">
+            <Setter Property="Margin" Value="10,0,10,10" />
+        </Style>
+        <Style Selector="ListBox.gitList">
+            <Setter Property="Background" Value="{DynamicResource Glass1}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line1}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="SelectionMode" Value="Multiple" />
+            <Setter Property="MaxHeight" Value="210" />
+        </Style>
+        <Style Selector="ListBox.gitList ListBoxItem">
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Button.small">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="11,6" />
+        </Style>
+    </v:DialogWindow.Styles>
+
+    <v:DialogWindow.DataTemplates>
+        <DataTemplate DataType="m:GitFileStatus">
+            <Grid ColumnDefinitions="94,*">
+                <Border Background="{DynamicResource AccentWash}" BorderBrush="{DynamicResource AccentLine}"
+                        BorderThickness="1" CornerRadius="5" Padding="6,2" Margin="0,0,8,0">
+                    <TextBlock Text="{Binding ChangeText}" FontSize="10" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AccentBright}" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="{Binding Path}" FontFamily="{DynamicResource MonoFont}" FontSize="11"
+                           Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+        <DataTemplate DataType="m:GitRemoteInfo">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Text}" />
+                <TextBlock Text="  ·  " Foreground="{DynamicResource TextFaint}" />
+                <TextBlock Text="{Binding DisplayUrl}" Foreground="{DynamicResource TextMuted}"
+                           TextTrimming="CharacterEllipsis" MaxWidth="170" />
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate DataType="m:GitBranchInfo">
+            <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Text}" />
+        </DataTemplate>
+    </v:DialogWindow.DataTemplates>
+
+    <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}"
+            BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+            <!-- Title: repository name and path, window actions -->
+            <Border x:Name="TitleBar" Grid.Row="0" Padding="18,13" Background="Transparent"
+                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                        <TextBlock Text="{Binding RepositoryName}" FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource Text}" />
+                        <TextBlock Text="{Binding RepositoryPath}" Margin="0,3,0,0" FontFamily="{DynamicResource MonoFont}"
+                                   FontSize="11" Foreground="{DynamicResource TextMuted}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Name="CommandToggle" Content="Command box" Theme="{StaticResource GhostButton}"
+                                Click="CommandToggle_Click" ToolTip.Tip="Run commands in this repository without leaving Rain" />
+                        <Button Content="Open terminal" Theme="{StaticResource GhostButton}" Click="OpenTerminal_Click"
+                                ToolTip.Tip="Open your terminal app in the repository folder" />
+                        <Button Content="Refresh" Theme="{StaticResource GhostButton}" Click="Refresh_Click" />
+                        <Button Content="Cancel operation" Theme="{StaticResource GhostButton}"
+                                IsEnabled="{Binding CanCancel}" Click="CancelOperation_Click" />
+                        <Button Content="Close" Theme="{StaticResource DialogButton}" Click="Close_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Branch and remote -->
+            <Border Grid.Row="1" Background="{DynamicResource Glass2}" Padding="18,10"
+                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding BranchText}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentBright}" />
+                            <TextBlock Text="  ·  " Foreground="{DynamicResource TextFaint}" />
+                            <TextBlock Text="{Binding TrackingText}" Foreground="{DynamicResource TextMuted}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,9,0,0" Spacing="7"
+                                    ToolTip.Tip="{Binding BranchManagementHint}">
+                            <ComboBox Width="190" ItemsSource="{Binding Branches}"
+                                      SelectedItem="{Binding SelectedBranch, Mode=TwoWay}"
+                                      AutomationProperties.Name="Local branch" />
+                            <Button Content="Switch" Theme="{StaticResource DialogButton}" Classes="small"
+                                    IsEnabled="{Binding CanSwitchBranch}" Click="SwitchBranch_Click" />
+                            <Button Content="New…" Theme="{StaticResource DialogButton}" Classes="small"
+                                    IsEnabled="{Binding CanCreateBranch}" Click="NewBranch_Click" />
+                            <Button Content="Delete" Theme="{StaticResource GhostButton}" Classes="small"
+                                    IsEnabled="{Binding CanDeleteBranch}" Click="DeleteBranch_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
+                        <TextBlock Text="Push remote" Foreground="{DynamicResource TextFaint}" FontSize="11" Margin="3,0,0,5" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ComboBox Width="250" ItemsSource="{Binding Remotes}"
+                                      SelectedItem="{Binding SelectedRemote, Mode=TwoWay}"
+                                      AutomationProperties.Name="Push remote" />
+                            <Button Content="Open on GitHub" Theme="{StaticResource GhostButton}"
+                                    IsEnabled="{Binding HasGitHubRemote}" Click="OpenGitHub_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- File lists and the commit panel -->
+            <Grid Grid.Row="2" Margin="16" ColumnDefinitions="*,12,340" MinHeight="260">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Classes="section" Padding="26" IsVisible="{Binding HasNoFileEntries}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="No file changes" FontSize="17" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Foreground="{DynamicResource Text}" />
+                                <TextBlock Text="Your working tree is clean. Make a change, then refresh this view."
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                           TextAlignment="Center" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="section collapsible" IsVisible="{Binding HasConflicts}">
+                            <StackPanel>
+                                <Button Theme="{StaticResource BareButton}" Classes="sectionHeader" Click="Section_Click"
+                                        AutomationProperties.Name="Conflicts">
+                                    <DockPanel>
+                                        <c:Icon DockPanel.Dock="Right" Kind="chevron-down" Width="14" Height="14"
+                                                Foreground="{DynamicResource TextMuted}" Margin="12,0,0,0" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Conflicts" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                                            <TextBlock Text="{Binding Conflicts.Count, StringFormat=' ({0})'}"
+                                                       Foreground="{DynamicResource Danger}" Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                                <StackPanel Classes="sectionBody">
+                                    <ListBox x:Name="ConflictList" Classes="gitList" ItemsSource="{Binding Conflicts}" />
+                                    <Button Content="Stage selected resolutions" Tag="conflicts" Theme="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left" Margin="0,7,0,0" Click="Stage_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="section collapsible" IsVisible="{Binding HasStagedFiles}">
+                            <StackPanel>
+                                <Button Theme="{StaticResource BareButton}" Classes="sectionHeader" Click="Section_Click"
+                                        AutomationProperties.Name="Staged changes">
+                                    <DockPanel>
+                                        <c:Icon DockPanel.Dock="Right" Kind="chevron-down" Width="14" Height="14"
+                                                Foreground="{DynamicResource TextMuted}" Margin="12,0,0,0" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Staged changes" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                                            <TextBlock Text="{Binding Staged.Count, StringFormat=' ({0})'}"
+                                                       Foreground="{DynamicResource AccentBright}" Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                                <StackPanel Classes="sectionBody">
+                                    <ListBox x:Name="StagedList" Classes="gitList" ItemsSource="{Binding Staged}" />
+                                    <Button Content="Unstage selected" Theme="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left" Margin="0,7,0,0" Click="Unstage_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="section collapsible" IsVisible="{Binding HasUnstagedFiles}">
+                            <StackPanel>
+                                <Button Theme="{StaticResource BareButton}" Classes="sectionHeader" Click="Section_Click"
+                                        AutomationProperties.Name="Unstaged changes">
+                                    <DockPanel>
+                                        <c:Icon DockPanel.Dock="Right" Kind="chevron-down" Width="14" Height="14"
+                                                Foreground="{DynamicResource TextMuted}" Margin="12,0,0,0" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Unstaged changes" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                                            <TextBlock Text="{Binding Unstaged.Count, StringFormat=' ({0})'}"
+                                                       Foreground="{DynamicResource TextMuted}" Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                                <StackPanel Classes="sectionBody">
+                                    <ListBox x:Name="UnstagedList" Classes="gitList" ItemsSource="{Binding Unstaged}" />
+                                    <Button Content="Stage selected" Tag="unstaged" Theme="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left" Margin="0,7,0,0" Click="Stage_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="section collapsible" IsVisible="{Binding HasUntrackedFiles}">
+                            <StackPanel>
+                                <Button Theme="{StaticResource BareButton}" Classes="sectionHeader" Click="Section_Click"
+                                        AutomationProperties.Name="Untracked files">
+                                    <DockPanel>
+                                        <c:Icon DockPanel.Dock="Right" Kind="chevron-down" Width="14" Height="14"
+                                                Foreground="{DynamicResource TextMuted}" Margin="12,0,0,0" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Untracked files" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                                            <TextBlock Text="{Binding Untracked.Count, StringFormat=' ({0})'}"
+                                                       Foreground="{DynamicResource TextMuted}" Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                                <StackPanel Classes="sectionBody">
+                                    <ListBox x:Name="UntrackedList" Classes="gitList" ItemsSource="{Binding Untracked}" />
+                                    <Button Content="Stage selected" Tag="untracked" Theme="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left" Margin="0,7,0,0" Click="Stage_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="section collapsible" IsVisible="{Binding HasIgnoredFiles}">
+                            <StackPanel>
+                                <Button Theme="{StaticResource BareButton}" Classes="sectionHeader" Click="Section_Click"
+                                        AutomationProperties.Name="Ignored entries">
+                                    <DockPanel>
+                                        <c:Icon DockPanel.Dock="Right" Kind="chevron-right" Width="14" Height="14"
+                                                Foreground="{DynamicResource TextMuted}" Margin="12,0,0,0" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Ignored entries" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                                            <TextBlock Text="{Binding Ignored.Count, StringFormat=' ({0})'}"
+                                                       Foreground="{DynamicResource TextFaint}" Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                                <StackPanel Classes="sectionBody" IsVisible="False">
+                                    <ListBox x:Name="IgnoredList" Classes="gitList" ItemsSource="{Binding Ignored}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Column="2" Background="{DynamicResource Glass2}" BorderBrush="{DynamicResource Line1}"
+                        BorderThickness="1" CornerRadius="10" Padding="16,16,8,16">
+                    <!-- Scrolls instead of squashing the description when the window is short. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+                    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+                        <StackPanel>
+                            <TextBlock Text="Create a local commit" FontSize="16" FontWeight="Bold"
+                                       Foreground="{DynamicResource Text}" />
+                            <TextBlock Text="This records the staged changes on this PC. It does not upload anything."
+                                       Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,5,0,12" />
+                            <TextBlock Text="{Binding StagedSummary}" Foreground="{DynamicResource AccentBright}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                            <TextBlock Text="Summary" Classes="rowTitle" />
+                            <TextBox x:Name="SummaryBox" Classes="field" Height="32" MaxLength="200" />
+                        </StackPanel>
+                        <DockPanel Grid.Row="2" Margin="0,13,0,0">
+                            <TextBlock DockPanel.Dock="Top" Text="Description (optional)" Classes="rowTitle" />
+                            <TextBox x:Name="DescriptionBox" Classes="field" AcceptsReturn="True" TextWrapping="Wrap"
+                                     Height="NaN" MinHeight="96" VerticalAlignment="Stretch" VerticalContentAlignment="Top" />
+                        </DockPanel>
+                        <Button Grid.Row="3" Content="Commit locally" Theme="{StaticResource PrimaryButton}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,14,0,0"
+                                IsEnabled="{Binding CanCommit}" Click="Commit_Click" />
+                        <Button Grid.Row="4" Content="{Binding PushButtonText}" Theme="{StaticResource DialogButton}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,9,0,0"
+                                IsEnabled="{Binding CanPush}" Click="Push_Click" />
+                    </Grid>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Background="{DynamicResource Glass2}" BorderBrush="{DynamicResource Line1}"
+                    BorderThickness="0,1,0,0" Padding="16,9">
+                <Panel>
+                    <ScrollViewer MaxHeight="72" IsVisible="{Binding HasPlainMessage}" VerticalScrollBarVisibility="Auto">
+                        <SelectableTextBlock Text="{Binding Message}" Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" />
+                    </ScrollViewer>
+                    <StackPanel IsVisible="{Binding HasHelp}" Margin="0,3">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <c:Icon Kind="info" Width="16" Height="16" Foreground="{DynamicResource Danger}" />
+                            <TextBlock Text="{Binding Help.Title}" FontWeight="SemiBold" Foreground="{DynamicResource Text}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Help.Explanation}" Foreground="{DynamicResource TextDim}"
+                                   TextWrapping="Wrap" Margin="24,5,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,9,0,0">
+                            <Button x:Name="SetIdentityButton" Content="Set name and email…" Theme="{StaticResource PrimaryButton}"
+                                    Classes="small" Click="SetIdentity_Click" />
+                            <Button x:Name="HelpTerminalButton" Content="Open terminal here" Theme="{StaticResource DialogButton}"
+                                    Classes="small" Click="OpenTerminal_Click" />
+                            <Button x:Name="HelpCommandButton" Content="Use command box" Theme="{StaticResource DialogButton}"
+                                    Classes="small" Click="CommandToggle_Click" />
+                            <Button x:Name="DetailsToggle" Content="Show Git's message" Theme="{StaticResource GhostButton}"
+                                    Classes="small" Click="DetailsToggle_Click" />
+                        </StackPanel>
+                        <ScrollViewer x:Name="DetailsScroll" IsVisible="False" MaxHeight="120" Margin="24,8,0,0"
+                                      VerticalScrollBarVisibility="Auto">
+                            <SelectableTextBlock Text="{Binding Help.Details}" FontFamily="{DynamicResource MonoFont}" FontSize="11"
+                                                 Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </StackPanel>
+                </Panel>
+            </Border>
+
+            <!-- Command box: runs one command at a time in the repository folder -->
+            <Border x:Name="CommandPanel" Grid.Row="4" IsVisible="False" Padding="16,10"
+                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <ScrollViewer x:Name="CommandScroll" Height="120" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto" Background="{DynamicResource Glass1}" Padding="10,8">
+                        <SelectableTextBlock x:Name="CommandOutput" FontFamily="{DynamicResource MonoFont}" FontSize="11.5"
+                                             Foreground="{DynamicResource TextDim}" />
+                    </ScrollViewer>
+                    <DockPanel Margin="0,8,0,0">
+                        <Button x:Name="CommandRunButton" DockPanel.Dock="Right" Content="Run" Theme="{StaticResource PrimaryButton}"
+                                Classes="small" Margin="8,0,0,0" Click="RunCommand_Click" />
+                        <TextBlock DockPanel.Dock="Left" Text="$" FontFamily="{DynamicResource MonoFont}" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource AccentBright}" Margin="2,0,8,0" />
+                        <TextBox x:Name="CommandBox" Classes="field" Height="32" FontFamily="{DynamicResource MonoFont}"
+                                 Watermark="git status" KeyDown="CommandBox_KeyDown"
+                                 AutomationProperties.Name="Command to run in the repository" />
+                    </DockPanel>
+                    <TextBlock Text="Runs in the repository folder. Commands that ask for input (passwords, editors) can't answer here; use Open terminal for those."
+                               Foreground="{DynamicResource TextFaint}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</v:DialogWindow>

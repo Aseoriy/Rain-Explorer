@@ -31,6 +31,9 @@ public enum DeleteBehavior
 [JsonConverter(typeof(JsonStringEnumConverter<ViewLayout>))]
 public enum ViewLayout { Details, List, Tiles, Grid }
 
+[JsonConverter(typeof(JsonStringEnumConverter<ScrollSpeed>))]
+public enum ScrollSpeed { Slow, Normal, Fast }
+
 /// <summary>
 /// User preferences, persisted as JSON. Observable so the settings panel and
 /// the rest of the app react live to changes.
@@ -115,6 +118,61 @@ public sealed class AppSettings : INotifyPropertyChanged
     private string _archiveManager = "";
     /// <summary>Desktop archive app used for archive actions. Empty means detect automatically.</summary>
     public string ArchiveManager { get => _archiveManager; set => Set(ref _archiveManager, value); }
+
+    private bool _smoothScrolling = true;
+    /// <summary>Mouse-wheel notches glide instead of jumping (touchpads are already smooth).</summary>
+    public bool SmoothScrolling { get => _smoothScrolling; set => Set(ref _smoothScrolling, value); }
+
+    private ScrollSpeed _scrollSpeed = ScrollSpeed.Normal;
+    public ScrollSpeed ScrollSpeed { get => _scrollSpeed; set => Set(ref _scrollSpeed, value); }
+
+    private bool _alwaysSmoothAnimations;
+    /// <summary>Spend extra work (reading sidebar subfolders ahead, waiting for content before animating)
+    /// so expand animations are smooth even the first time.</summary>
+    public bool AlwaysSmoothAnimations { get => _alwaysSmoothAnimations; set => Set(ref _alwaysSmoothAnimations, value); }
+
+    private bool _detailedActivityHistory;
+    /// <summary>Keep full messages, plain-language explanations and timestamps for each activity, with a
+    /// "View details" button in the activity center.</summary>
+    public bool DetailedActivityHistory { get => _detailedActivityHistory; set => Set(ref _detailedActivityHistory, value); }
+
+    private int _activityRetentionDays = 7;
+    /// <summary>How long detailed history is kept; 0 means until it's cleared.</summary>
+    public int ActivityRetentionDays { get => _activityRetentionDays; set => Set(ref _activityRetentionDays, value); }
+
+    private bool _openActivityOnFailure;
+    /// <summary>Open the activity center when an action fails.</summary>
+    public bool OpenActivityOnFailure { get => _openActivityOnFailure; set => Set(ref _openActivityOnFailure, value); }
+
+    private bool _gitIntegrationEnabled = true;
+    /// <summary>Show Rain Explorer's local Git integration when a supported Git installation is available.</summary>
+    public bool GitIntegrationEnabled { get => _gitIntegrationEnabled; set => Set(ref _gitIntegrationEnabled, value); }
+
+    private string _gitExecutablePath = "";
+    /// <summary>Optional full path to git. Empty means the git found on $PATH.</summary>
+    public string GitExecutablePath { get => _gitExecutablePath; set => Set(ref _gitExecutablePath, value); }
+
+    private bool _gitAutoRefreshWhenViewOpen = true;
+    public bool GitAutoRefreshWhenViewOpen
+    {
+        get => _gitAutoRefreshWhenViewOpen;
+        set => Set(ref _gitAutoRefreshWhenViewOpen, value);
+    }
+
+    private string _gitDefaultCloneFolder = "";
+    public string GitDefaultCloneFolder { get => _gitDefaultCloneFolder; set => Set(ref _gitDefaultCloneFolder, value); }
+
+    private bool _autoUpdate = true;
+    /// <summary>Check GitHub for a newer release on launch and offer it.</summary>
+    public bool AutoUpdate { get => _autoUpdate; set => Set(ref _autoUpdate, value); }
+
+    private bool _betaUpdates;
+    /// <summary>Also offer "-beta" pre-releases when checking for updates.</summary>
+    public bool BetaUpdates { get => _betaUpdates; set => Set(ref _betaUpdates, value); }
+
+    private string _skippedUpdateVersion = "";
+    /// <summary>A version the user chose to skip; the launch check won't offer it again.</summary>
+    public string SkippedUpdateVersion { get => _skippedUpdateVersion; set => Set(ref _skippedUpdateVersion, value); }
 
     private bool _handleShowInFolder;
     /// <summary>Opt in to handling the desktop's Show in folder requests.</summary>

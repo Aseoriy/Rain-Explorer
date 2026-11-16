@@ -44,7 +44,7 @@ echo "  $ROOT/dist/$NAME.tar.gz"
 PACKAGES=("$NAME.tar.gz")
 if command -v dpkg-deb >/dev/null && [[ "$RID" == linux-x64 || "$RID" == linux-arm64 ]]; then
     RID="$RID" "$ROOT/packaging/build-deb.sh" "$OUT"
-    DEB_VERSION="${VERSION/-linux-/~linux.}"
+    DEB_VERSION="${VERSION/-linux-/~linux.}"; DEB_VERSION="${DEB_VERSION/-beta-/~beta.}"
     case "$RID" in linux-x64) DEB_ARCH=amd64 ;; linux-arm64) DEB_ARCH=arm64 ;; esac
     PACKAGES+=("rain-explorer_${DEB_VERSION}_${DEB_ARCH}.deb")
 else

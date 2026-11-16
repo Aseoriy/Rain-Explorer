@@ -176,7 +176,11 @@ public static class ThemeService
     public static void ApplyFont(string family)
     {
         if (string.IsNullOrWhiteSpace(family)) family = AppSettings.DefaultFontFamily;
-        Res["AppFont"] = new FontFamily($"{family}, Noto Sans, DejaVu Sans, sans-serif");
+        // Imported fonts load from Rain's own collection (they're not in the system list until a restart).
+        string primary = ImportedFontCollection.Instance.Contains(family)
+            ? $"{ImportedFontCollection.CollectionKey}#{family}"
+            : family;
+        Res["AppFont"] = new FontFamily($"{primary}, Noto Sans, DejaVu Sans, sans-serif");
     }
 
     // ---- helpers ------------------------------------------------------------

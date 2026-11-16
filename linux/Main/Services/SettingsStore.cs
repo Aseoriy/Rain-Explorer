@@ -146,6 +146,9 @@ public sealed class SettingsStore
         settings.QuickAccessName ??= "Quick access";
         settings.DrivesName ??= "Drives";
         settings.TerminalCommand ??= string.Empty;
+        settings.GitExecutablePath ??= string.Empty;
+        settings.GitDefaultCloneFolder ??= string.Empty;
+        settings.SkippedUpdateVersion ??= string.Empty;
 
         foreach (var group in settings.CustomGroups)
         {

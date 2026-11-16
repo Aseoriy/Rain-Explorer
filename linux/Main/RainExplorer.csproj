@@ -21,9 +21,9 @@
     <Company>Aseoriy</Company>
     <Authors>Aseoriy</Authors>
     <Copyright>© 2026 Aseoriy</Copyright>
-    <Version>0.1.0-linux-alpha</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>2.0.0-beta-2</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

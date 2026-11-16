@@ -309,7 +309,8 @@
                     <ColumnDefinition Width="0" />
                     <ColumnDefinition Width="0" />
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" RowDefinitions="Auto,*">
+                <!-- Clip: wide columns must not spill under the preview pane's header. -->
+                <Grid Grid.Column="0" RowDefinitions="Auto,*" ClipToBounds="True">
                     <!-- GridView-style column headers (Details layout only) -->
                     <Grid x:Name="HeaderRow" Grid.Row="0" HorizontalAlignment="Left">
                         <Grid.ColumnDefinitions>

@@ -76,8 +76,10 @@
         <Style Selector="Grid.row">
             <Setter Property="Margin" Value="0,14" />
         </Style>
+        <!-- Rows are two columns (text | control) so long hints wrap before the control instead of
+             running underneath it. -->
         <Style Selector="Grid.row > StackPanel">
-            <Setter Property="Margin" Value="0,0,90,0" />
+            <Setter Property="Margin" Value="0,0,24,0" />
         </Style>
         <Style Selector="Grid.row > CheckBox, Grid.row > ComboBox, Grid.row > Button">
             <Setter Property="HorizontalAlignment" Value="Right" />
@@ -185,61 +187,115 @@
 
                             <TextBlock Text="DISPLAY" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="File list layout" Classes="rowTitle" />
                                         <TextBlock Text="Details rows, a compact list, tiles, or a large-icon grid." Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="LayoutBox" Width="180" />
+                                    <ComboBox Grid.Column="1" x:Name="LayoutBox" Width="180" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Row density" Classes="rowTitle" />
                                         <TextBlock Text="Comfortable spacing, or compact to fit more rows." Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="DensityBox" Width="180" />
+                                    <ComboBox Grid.Column="1" x:Name="DensityBox" Width="180" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Ambient background glow" Classes="rowTitle" />
                                         <TextBlock Text="The soft themed orb behind the window. Paused in performance mode." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowAmbientBackground, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowAmbientBackground, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Performance mode" Classes="rowTitle" />
                                         <TextBlock Text="Use 60 Hz and remove the ambient glow and settings blur to reduce CPU/GPU work. Off follows your display refresh rate (up to 360 Hz). Tab animations stay on. Applies immediately."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox x:Name="PerformanceModeToggle" AutomationProperties.Name="Performance mode"
+                                    <CheckBox Grid.Column="1" x:Name="PerformanceModeToggle" AutomationProperties.Name="Performance mode"
                                               IsChecked="{Binding PerformanceMode, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Use the system title bar" Classes="rowTitle" />
                                         <TextBlock Text="Use your desktop's window frame and buttons instead of Rain's custom title bar."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding UseSystemTitleBar, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding UseSystemTitleBar, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="MOTION" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Smooth scrolling" Classes="rowTitle" />
+                                        <TextBlock Text="Glide when you scroll with a mouse wheel instead of jumping a step per notch. Touchpads already scroll smoothly. Off in Performance mode."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding SmoothScrolling, Mode=TwoWay}" AutomationProperties.Name="Smooth scrolling" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Scroll speed" Classes="rowTitle" />
+                                        <TextBlock Text="How far one wheel notch scrolls." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" x:Name="ScrollSpeedBox" Width="180" AutomationProperties.Name="Scroll speed" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Always smooth animations" Classes="rowTitle" />
+                                        <TextBlock Text="Do a little extra work in the background, like reading sidebar folders ahead of time, so expanding things animates smoothly even the first time. Uses a bit more disk activity and memory."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding AlwaysSmoothAnimations, Mode=TwoWay}" AutomationProperties.Name="Always smooth animations" />
                                 </Grid>
                             </Border>
 
                             <TextBlock Text="FONT" Classes="sectionLabel" />
-                            <Border Classes="card first">
+                            <Border x:Name="FontCard" Classes="card first" DragDrop.AllowDrop="True">
                                 <StackPanel Margin="0,12">
-                                    <TextBlock Text="Interface font" Classes="rowTitle" />
-                                    <TextBlock Text="Applied across the app. Paths and sizes keep a mono font." Classes="rowHint" />
-                                    <ComboBox x:Name="FontBox" Margin="0,7,0,0" Width="280" HorizontalAlignment="Left"
-                                              MaxDropDownHeight="320" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock Text="Interface font" Classes="rowTitle" />
+                                            <TextBlock Text="Applied across the app. Paths and sizes keep a mono font. Each name is shown in its own font."
+                                                       Classes="rowHint" />
+                                        </StackPanel>
+                                        <Button x:Name="ImportFontButton" Grid.Column="1" Content="Import font…"
+                                                Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                                VerticalAlignment="Center" Click="ImportFont_Click" />
+                                    </Grid>
+                                    <TextBox x:Name="FontSearch" Classes="field" Height="32" Margin="0,12,0,0"
+                                             Watermark="Search fonts…" AutomationProperties.Name="Search fonts" />
+                                    <ListBox x:Name="FontList" Height="230" Margin="0,8,0,0" Background="{DynamicResource Glass1}"
+                                             BorderBrush="{DynamicResource Line1}" BorderThickness="1" CornerRadius="8" Padding="4"
+                                             AutomationProperties.Name="Interface font">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="c:FontChoice">
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="11"
+                                                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" Margin="10,0,4,0" />
+                                                    <TextBlock Text="{Binding Name}" FontFamily="{Binding Preview}" FontSize="14"
+                                                               Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock x:Name="FontStatus" Classes="rowHint" Margin="0,8,0,0" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -262,75 +318,75 @@
                                 </StackPanel>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Preserve open tabs on close" Classes="rowTitle" />
                                         <TextBlock Text="Restore all open tabs and split panes after reopening Rain Explorer or restarting your PC."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding PreserveOpenTabsOnClose, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding PreserveOpenTabsOnClose, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Automatically refresh folders" Classes="rowTitle" />
                                         <TextBlock Text="Update open folder views when files change outside Rain Explorer."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding AutoRefreshFolders, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding AutoRefreshFolders, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
                             <TextBlock Text="EDITING" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Rename &amp; new folder input" Classes="rowTitle" />
                                         <TextBlock Text="Use a pop-up dialog, or edit inline in the list." Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="RenameBox" Width="180" />
+                                    <ComboBox Grid.Column="1" x:Name="RenameBox" Width="180" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Keep file extensions unselected when renaming" Classes="rowTitle" />
                                         <TextBlock Text="Select only the name before .ext so typing keeps the existing extension."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding SelectFileNameWithoutExtensionOnRename, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding SelectFileNameWithoutExtensionOnRename, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Open folders in a new tab" Classes="rowTitle" />
                                         <TextBlock Text="Double-clicking a folder opens it in a new tab." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding OpenFoldersInNewTab, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding OpenFoldersInNewTab, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Open items with a single click" Classes="rowTitle" />
                                         <TextBlock Text="A single click opens files and folders instead of a double-click."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding SingleClickToOpen, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
                             <TextBlock Text="TERMINAL" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Open in Terminal" Classes="rowTitle" />
                                         <TextBlock Text="Which terminal opens for &quot;Open in Terminal&quot; and address-bar commands."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="TerminalAppBox" Width="160" />
+                                    <ComboBox Grid.Column="1" x:Name="TerminalAppBox" Width="160" />
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -341,92 +397,132 @@
                         <StackPanel>
                             <TextBlock Text="VISIBILITY" Classes="sectionLabel first" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show hidden files" Classes="rowTitle" />
                                         <TextBlock Text="Display dotfiles and folders that are normally kept out of view (Ctrl+H)."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show file extensions" Classes="rowTitle" />
                                         <TextBlock Text="Display the trailing .ext on file names." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show Quick access in sidebar" Classes="rowTitle" />
                                         <TextBlock Text="Show the built-in Quick access section in the sidebar list." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowQuickAccessInSidebar, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowQuickAccessInSidebar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show drives in sidebar" Classes="rowTitle" />
                                         <TextBlock Text="Show the Drives section in the sidebar list." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowDrivesInSidebar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Custom sidebar lists" Classes="rowTitle" />
                                         <TextBlock Text="Create another collapsible list. Rename or delete it from its header in the sidebar."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <Button Content="New list…" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                    <Button Grid.Column="1" Content="New list…" Theme="{StaticResource DialogButton}" MinWidth="0"
                                             Padding="14,7" Click="NewList_Click" />
                                 </Grid>
                             </Border>
 
                             <TextBlock Text="BEHAVIOR" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="When deleting items" Classes="rowTitle" />
                                         <TextBlock Text="Prompt = choose Trash or permanent. Trash skips confirmation; permanent uses one final Rain confirmation."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="DeleteBehaviorBox" Width="160" />
+                                    <ComboBox Grid.Column="1" x:Name="DeleteBehaviorBox" Width="160" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Remember activity" Classes="rowTitle" />
                                         <TextBlock Text="Keep the activity center log across restarts. When off, it resets each launch."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding RememberActivity, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding RememberActivity, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Detailed activity history" Classes="rowTitle" />
+                                        <TextBlock Text="Keep a full record of what Rain does: complete error messages, a plain-English explanation of what went wrong, and exact times. Adds a View details button to each activity and also logs folders that fail to open. Uses more storage and memory than the basic log, and is always saved between launches."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding DetailedActivityHistory, Mode=TwoWay}" AutomationProperties.Name="Detailed activity history" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card" IsEnabled="{Binding DetailedActivityHistory}">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Keep detailed history for" Classes="rowTitle" />
+                                        <TextBlock Text="Older entries are removed automatically. Running actions are never removed." Classes="rowHint" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" x:Name="RetentionBox" Width="180" AutomationProperties.Name="Keep detailed history for" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Show the activity center when something fails" Classes="rowTitle" />
+                                        <TextBlock Text="Open it automatically so failures don't go unnoticed." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding OpenActivityOnFailure, Mode=TwoWay}"
+                                              AutomationProperties.Name="Show the activity center when something fails" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Export activity history" Classes="rowTitle" />
+                                        <TextBlock x:Name="ExportActivityStatus" Classes="rowHint"
+                                                   Text="Save everything in the activity center as a text file, handy when asking for help." />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Export…" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                            Click="ExportActivity_Click" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Warn when changing a file extension" Classes="rowTitle" />
                                         <TextBlock Text="Show a warning if a rename changes the .ext." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding WarnOnExtensionChange, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding WarnOnExtensionChange, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Calculate folder sizes" Classes="rowTitle" />
                                         <TextBlock Text="Show the total size of folders in the list. Computed in the background; can be slow on big folders."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding CalculateFolderSizes, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding CalculateFolderSizes, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
@@ -444,33 +540,33 @@
 
                             <TextBlock Text="SORTING" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show folders first" Classes="rowTitle" />
                                         <TextBlock Text="Keep folders grouped above files in every sort." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding FoldersFirst, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding FoldersFirst, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
                             <TextBlock Text="UNITS" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="File size units" Classes="rowTitle" />
                                         <TextBlock Text="Binary = 1024-based (KiB, MiB); Decimal = 1000-based (KB, MB)." Classes="rowHint" />
                                     </StackPanel>
-                                    <ComboBox x:Name="SizeFormatBox" Width="160" />
+                                    <ComboBox Grid.Column="1" x:Name="SizeFormatBox" Width="160" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Count files on the Drives page" Classes="rowTitle" />
                                         <TextBlock Text="Shows a recursive file count per drive. Resource-intensive on big disks."
                                                    Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowDriveItemCounts, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowDriveItemCounts, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -481,12 +577,12 @@
                         <StackPanel>
                             <TextBlock Text="INTERFACE" Classes="sectionLabel first" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Show status bar" Classes="rowTitle" />
                                         <TextBlock Text="The item-count strip at the bottom of each pane." Classes="rowHint" />
                                     </StackPanel>
-                                    <CheckBox IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
                                 </Grid>
                             </Border>
 
@@ -502,13 +598,13 @@
                             </Border>
                             <Border Classes="card" Padding="16,14">
                                 <StackPanel>
-                                    <Grid Classes="row">
+                                    <Grid Classes="row" ColumnDefinitions="*,Auto">
                                         <StackPanel>
                                             <TextBlock Text="Handle Show in folder" Classes="rowTitle" />
                                             <TextBlock Text="Let other apps reveal local files and folders in Rain, even when Rain is closed. Folder-opening defaults stay as you chose them."
                                                        Classes="rowHint" />
                                         </StackPanel>
-                                        <CheckBox x:Name="ShowInFolderBox" IsChecked="{Binding HandleShowInFolder, Mode=TwoWay}"
+                                        <CheckBox Grid.Column="1" x:Name="ShowInFolderBox" IsChecked="{Binding HandleShowInFolder, Mode=TwoWay}"
                                                   AutomationProperties.Name="Handle Show in folder" />
                                     </Grid>
                                     <TextBlock x:Name="ShowInFolderStatus" Classes="rowHint" Margin="0,8,0,0" />
@@ -518,14 +614,41 @@
                                 </StackPanel>
                             </Border>
 
+                            <TextBlock Text="GIT" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Git &amp; GitHub integration" Classes="rowTitle" />
+                                        <TextBlock Text="Show repository status, stage files, create local commits and push with your installed Git."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding GitIntegrationEnabled, Mode=TwoWay}"
+                                              AutomationProperties.Name="Git and GitHub integration" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="Git executable" Classes="rowTitle" />
+                                    <TextBlock Text="Leave blank to use the git on your PATH. Rain Explorer requires Git 2.40 or newer."
+                                               Classes="rowHint" />
+                                    <DockPanel Margin="0,10,0,0">
+                                        <Button DockPanel.Dock="Right" Content="Browse…" Theme="{StaticResource DialogButton}"
+                                                MinWidth="0" Padding="14,7" Margin="8,0,0,0" Click="BrowseGit_Click" />
+                                        <TextBox Classes="field" Height="32" Watermark="/usr/bin/git"
+                                                 Text="{Binding GitExecutablePath, Mode=TwoWay}"
+                                                 AutomationProperties.Name="Git executable path" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Text="CONFIGURATION" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel MaxWidth="420" HorizontalAlignment="Left">
                                         <TextBlock Text="Settings file" Classes="rowTitle" />
                                         <TextBlock x:Name="ConfigPathText" Classes="rowHint" FontFamily="{DynamicResource MonoFont}" />
                                     </StackPanel>
-                                    <Button Content="Open folder" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                    <Button Grid.Column="1" Content="Open folder" Theme="{StaticResource DialogButton}" MinWidth="0"
                                             Padding="14,7" Click="OpenConfigFolder_Click" />
                                 </Grid>
                             </Border>
@@ -555,24 +678,56 @@
                                 </StackPanel>
                             </Border>
 
+                            <TextBlock Text="UPDATES" Classes="sectionLabel" />
+                            <Border Classes="card first">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Check for updates" Classes="rowTitle" />
+                                        <TextBlock x:Name="UpdateStatusText" Classes="rowHint"
+                                                   Text="Fetches the latest release from GitHub." />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" x:Name="CheckUpdatesButton" Content="Check now" Theme="{StaticResource PrimaryButton}"
+                                            MinWidth="0" Padding="16,7" Click="CheckUpdates_Click" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Automatic updates" Classes="rowTitle" />
+                                        <TextBlock Text="Check for a newer release on launch and offer to install it." Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding AutoUpdate, Mode=TwoWay}" AutomationProperties.Name="Automatic updates" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="Beta updates" Classes="rowTitle" />
+                                        <TextBlock Text="Also receive pre-release (beta) builds. Earlier features, but less tested."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding BetaUpdates, Mode=TwoWay}" AutomationProperties.Name="Beta updates" />
+                                </Grid>
+                            </Border>
+
                             <TextBlock Text="LINKS" Classes="sectionLabel" />
                             <Border Classes="card first">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Project page" Classes="rowTitle" />
                                         <TextBlock Text="Source, releases and changelogs on GitHub." Classes="rowHint" />
                                     </StackPanel>
-                                    <Button Content="Open GitHub" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                    <Button Grid.Column="1" Content="Open GitHub" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
                                             Tag="https://github.com/Aseoriy/Rain-Explorer" Click="Link_Click" />
                                 </Grid>
                             </Border>
                             <Border Classes="card">
-                                <Grid Classes="row">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
                                     <StackPanel>
                                         <TextBlock Text="Website" Classes="rowTitle" />
                                         <TextBlock Text="rain-explorer.sailhub.fyi" Classes="rowHint" />
                                     </StackPanel>
-                                    <Button Content="Visit" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                    <Button Grid.Column="1" Content="Visit" Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
                                             Tag="https://rain-explorer.sailhub.fyi/" Click="Link_Click" />
                                 </Grid>
                             </Border>

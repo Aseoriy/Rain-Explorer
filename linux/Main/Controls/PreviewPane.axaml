@@ -23,10 +23,45 @@
                            TextTrimming="CharacterEllipsis" />
             </Border>
 
+            <!-- PDF page navigation -->
+            <Border x:Name="PdfBar" DockPanel.Dock="Bottom" IsVisible="False" Padding="10,6"
+                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                    <Button x:Name="PdfPrev" Theme="{StaticResource IconButton}" Click="PdfPrev_Click"
+                            ToolTip.Tip="Previous page" AutomationProperties.Name="Previous page">
+                        <c:Icon Kind="arrow-left" Width="15" Height="15" />
+                    </Button>
+                    <TextBlock x:Name="PdfPage" VerticalAlignment="Center" MinWidth="64" TextAlignment="Center"
+                               Foreground="{DynamicResource TextDim}" FontSize="12" />
+                    <Button x:Name="PdfNext" Theme="{StaticResource IconButton}" Click="PdfNext_Click"
+                            ToolTip.Tip="Next page" AutomationProperties.Name="Next page">
+                        <c:Icon Kind="arrow-right" Width="15" Height="15" />
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Audio / video: play in the desktop media player -->
+            <Border x:Name="MediaBar" DockPanel.Dock="Bottom" IsVisible="False" Padding="10,6"
+                    BorderBrush="{DynamicResource Line1}" BorderThickness="0,1,0,0">
+                <DockPanel>
+                    <Button DockPanel.Dock="Left" Theme="{StaticResource IconButton}" Click="Play_Click"
+                            ToolTip.Tip="Play in media player" AutomationProperties.Name="Play in media player">
+                        <c:Icon Kind="play" Width="15" Height="15" />
+                    </Button>
+                    <TextBlock x:Name="MediaText" VerticalAlignment="Center" Margin="8,0,0,0"
+                               Foreground="{DynamicResource TextDim}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+            </Border>
+
             <!-- Content: image / text / empty (visibility-switched) -->
             <Panel Margin="10">
                 <Image x:Name="ImageView" Stretch="Uniform" IsVisible="False"
                        RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+                <StackPanel x:Name="AudioView" IsVisible="False" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <c:Icon Kind="music" Width="72" Height="72" StrokeThickness="1.2"
+                            HorizontalAlignment="Center" Foreground="{DynamicResource TextFaint}" />
+                </StackPanel>
 
                 <ScrollViewer x:Name="TextScroll" IsVisible="False"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">

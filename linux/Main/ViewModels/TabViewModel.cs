@@ -377,6 +377,7 @@ public sealed class TabViewModel : ObservableObject, IDisposable
                     UnauthorizedAccessException => $"⚠️ You don't have permission to open {FolderDisplayName(path)}.",
                     _ => $"⚠️ {ex.Message}",
                 };
+                ActivityService.Instance.LogFailure("Open folder", path, ex.Message, "folder-open");
                 // A tab that never managed to load anything falls back to Home.
                 if (string.IsNullOrEmpty(CurrentPath) && path != HomeToken)
                     ShowPage(PageKind.Home, HomeToken, pushHistory: true);
@@ -393,6 +394,8 @@ public sealed class TabViewModel : ObservableObject, IDisposable
         if (PathUtil.Same(path, FileSystemService.TrashToken)) return "Trash";
         if (path == "/") return "File System";
         if (PathUtil.Same(path, XdgDirs.Home)) return "Home folder";
+        if (NetworkLocationService.FindGvfsMount(path) is { } network && PathUtil.Same(network.MountPoint, path))
+            return network.Label;
         return PathUtil.DisplayName(path);
     }
 

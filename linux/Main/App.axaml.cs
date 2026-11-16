@@ -27,6 +27,8 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        Helpers.SmoothScroll.Install();
+        ImportedFontCollection.Register();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             SingleInstance.StartListening();
@@ -63,14 +65,46 @@ public partial class App : Application
                 FileManagerIntegration.Instance.Stop();
                 SingleInstance.Stop();
                 SettingsStore.Instance.Flush();
+                // After an AppImage update: start the new file once this instance has released the
+                // single-instance socket, so the new process doesn't just forward to us.
+                if (RelaunchOnExit is { } relaunch)
+                {
+                    try { UpdateService.Relaunch(relaunch); } catch { }
+                }
             };
             desktop.MainWindow = new MainWindow();
+            if (settings.AutoUpdate)
+                desktop.MainWindow.Opened += (_, _) => _ = CheckForUpdatesOnStartupAsync();
             FileManagerIntegration.Instance.Start(ShowFileManagerRequestAsync);
             if (desktop.Args?.Contains("--select", StringComparer.Ordinal) == true)
                 desktop.MainWindow.Opened += async (_, _) => await ShowArgumentSelectionAsync(desktop.Args);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Set by the update dialog: the AppImage to start after this instance exits.</summary>
+    public static string? RelaunchOnExit { get; set; }
+
+    /// <summary>Quiet launch check: offer a newer, non-skipped release. Silent on failure or offline.</summary>
+    private static async Task CheckForUpdatesOnStartupAsync()
+    {
+        try
+        {
+            await Task.Delay(2500);   // let the window settle before interrupting
+            var settings = SettingsStore.Instance.Settings;
+            var info = await UpdateService.CheckAsync(settings.BetaUpdates);
+            if (info is null
+                || string.Equals(info.Version, settings.SkippedUpdateVersion, StringComparison.OrdinalIgnoreCase))
+                return;
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop) return;
+                var owner = desktop.Windows.OfType<MainWindow>().LastOrDefault(w => w.IsVisible);
+                await Views.UpdateDialog.ShowFor(info, owner);
+            });
+        }
+        catch { /* an update check must never break startup */ }
     }
 
     private static void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
