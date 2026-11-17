@@ -1120,8 +1120,17 @@ public partial class MainWindow : Window
 
     private void UpdateBlur()
     {
-        BodyGrid.Effect = _vm.IsSettingsOpen
+        bool open = _vm.IsSettingsOpen;
+        BodyGrid.Effect = open
             ? new BlurEffect { Radius = 12, RenderingBias = RenderingBias.Performance }
+            : null;
+        // Settings is semi-transparent over the blurred browser, so every scroll frame in Settings
+        // made WPF redraw the whole browser (sidebar, tabs, file list) and blur it again; on a large
+        // scaled display that cost more than a frame and smooth scrolling stuttered. While Settings is
+        // open the browser is drawn once into a cache and only that bitmap is blurred per frame. It is
+        // blurred anyway, so half resolution looks the same.
+        BodyGrid.CacheMode = open
+            ? new BitmapCache { RenderAtScale = 0.5, EnableClearType = false, SnapsToDevicePixels = false }
             : null;
     }
 
