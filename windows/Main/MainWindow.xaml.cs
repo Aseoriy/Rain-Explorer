@@ -241,11 +241,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        IntPtr handle = new WindowInteropHelper(this).Handle;
-        SetWindowPos(handle, IntPtr.Zero, rect.Left, rect.Top, rect.Width, rect.Height,
-            SwpNoZOrder | SwpNoActivate);
+        PlaceAtPixelBounds(new WindowInteropHelper(this).Handle, rect.Left, rect.Top, rect.Width, rect.Height);
         _lastNormalPixelBounds = rect;
         if (settings.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    /// <summary>
+    /// Put a window at an exact physical-pixel rectangle. The window is created on the primary monitor;
+    /// when the saved rectangle is on a monitor with a different scale, the first move crosses monitors
+    /// and Windows rescales the window for the new DPI (125% → 100% shrank it by 1.25 on every launch).
+    /// The second call runs on the target monitor, where no rescale happens, and applies the exact size.
+    /// </summary>
+    internal static void PlaceAtPixelBounds(IntPtr handle, int left, int top, int width, int height)
+    {
+        if (handle == IntPtr.Zero) return;
+        SetWindowPos(handle, IntPtr.Zero, left, top, width, height, SwpNoZOrder | SwpNoActivate);
+        if (GetWindowRect(handle, out var placed)
+            && (placed.Left != left || placed.Top != top || placed.Width != width || placed.Height != height))
+            SetWindowPos(handle, IntPtr.Zero, left, top, width, height, SwpNoZOrder | SwpNoActivate);
     }
 
     private void CaptureNormalPixelBounds()
