@@ -20,11 +20,12 @@ public sealed class SmoothScrollTests
         Assert.Equal(pixels, SmoothScroll.StepFor(Enum.Parse<ScrollSpeed>(speed)));
 
     [Theory]
-    [InlineData(120, true)]
-    [InlineData(-240, true)]
-    [InlineData(40, false)]    // precision touchpad / hi-res wheel: already smooth
-    [InlineData(0, false)]
-    public void OnlyWholeNotchesGlide(int delta, bool notch) => Assert.Equal(notch, SmoothScroll.IsNotch(delta));
+    [InlineData(120, 1.0)]
+    [InlineData(-240, -2.0)]
+    [InlineData(40, 1.0 / 3)]    // hi-res wheel / wheel acceleration: partial notches glide too
+    [InlineData(150, 1.25)]
+    public void EveryWheelAmountGlidesScaledToItsSize(int delta, double notches) =>
+        Assert.Equal(notches, SmoothScroll.Notches(delta), 6);
 
     [Theory]
     [InlineData(@"C:\Windows", true)]
@@ -103,6 +104,75 @@ public sealed class SmoothScrollTests
                 SmoothScroll.SettingsSource = original;
             }
         });
+    }
+
+    [Fact]
+    public void AFastMixedSpinIsHandledWholeAndLandsOnTheSum()
+    {
+        // The reported hitch: fast spins mix whole and partial notches. Partial ones used to fall back
+        // to WPF's instant scroll, which jumped the view under the glide and stopped it.
+        GlideTest((viewer, content, wheel) =>
+        {
+            Assert.True(wheel(-120));
+            Assert.True(wheel(-40));
+            Assert.True(wheel(-240));
+            Assert.True(wheel(-150));
+            WaitFor(() => Math.Abs(viewer.VerticalOffset - 335) < 0.6);
+            Assert.Equal(60 + 20 + 120 + 75, viewer.VerticalOffset, 1);   // 335 px at Normal speed
+        });
+    }
+
+    [Fact]
+    public void ASmallOutsideShiftMidGlideDoesNotStopIt()
+    {
+        // A virtualized list correcting its estimated offset (or an arrow key) nudges the view a little;
+        // the glide carries on from there instead of freezing.
+        GlideTest((viewer, content, wheel) =>
+        {
+            Assert.True(wheel(-240));   // glide towards 120
+            Pump(TimeSpan.FromMilliseconds(40));
+            viewer.ScrollToVerticalOffset(viewer.VerticalOffset + 20);
+            WaitFor(() => Math.Abs(viewer.VerticalOffset - 140) < 0.6);
+            Assert.Equal(140, viewer.VerticalOffset, 1);
+        });
+    }
+
+    private static void GlideTest(Action<ScrollViewer, FrameworkElement, Func<int, bool>> body)
+    {
+        RunSta(() =>
+        {
+            Func<AppSettings> original = SmoothScroll.SettingsSource;
+            SmoothScroll.SettingsSource = () => new AppSettings { SmoothScrolling = true, ScrollSpeed = ScrollSpeed.Normal };
+            SmoothScroll.Install();
+            var content = new Border { Height = 5000 };
+            var viewer = new ScrollViewer { Height = 300, Content = content };
+            var window = Host(viewer);
+            try
+            {
+                bool Wheel(int delta)
+                {
+                    var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+                    {
+                        RoutedEvent = UIElement.PreviewMouseWheelEvent,
+                        Source = content,
+                    };
+                    content.RaiseEvent(args);
+                    return args.Handled;
+                }
+                body(viewer, content, Wheel);
+            }
+            finally
+            {
+                window.Close();
+                SmoothScroll.SettingsSource = original;
+            }
+        });
+    }
+
+    private static void WaitFor(Func<bool> condition)
+    {
+        var until = DateTime.UtcNow.AddSeconds(3);
+        while (!condition() && DateTime.UtcNow < until) Pump(TimeSpan.FromMilliseconds(30));
     }
 
     private static ScrollViewer Viewer(DependencyObject root)

@@ -10,9 +10,11 @@ using RainExplorer.Services;
 namespace RainExplorer.Helpers;
 
 /// <summary>
-/// "Smooth scrolling" setting: a mouse-wheel notch glides to its target over a few frames instead of
-/// jumping at once. Precision-touchpad and hi-res wheel input (deltas below one notch) is already smooth
-/// and is left to WPF, as are Ctrl+wheel and lists that scroll by item rather than by pixel. One class
+/// "Smooth scrolling" setting: mouse-wheel input glides to its target over a few frames instead of
+/// jumping at once. Every wheel delta is handled, scaled to its size: fast spins (wheel acceleration,
+/// free-spin wheels, hi-res wheels) mix whole notches with partial ones, and letting the partial ones
+/// fall back to WPF's instant scroll made the view jump under a running glide and cut it off (a visible
+/// hitch). Ctrl+wheel and lists that scroll by item rather than by pixel are left to WPF. One class
 /// handler covers every ScrollViewer. Port of the Linux SmoothScroll.
 /// </summary>
 public static class SmoothScroll
@@ -51,16 +53,16 @@ public static class SmoothScroll
         _ => 60,
     };
 
-    /// <summary>Mouse wheels send whole notches; touchpads and hi-res wheels send smaller steps.</summary>
-    internal static bool IsNotch(int delta) => delta != 0 && delta % Notch == 0;
+    /// <summary>How many notches a wheel delta is (120 = one notch; partial and multiple notches scale).</summary>
+    internal static double Notches(int delta) => delta / (double)Notch;
 
     private static void OnWheel(object sender, MouseWheelEventArgs e)
     {
         AppSettings settings = SettingsSource();
-        if (e.Handled || !settings.SmoothScrolling) return;
-        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 || !IsNotch(e.Delta)) return;
+        if (e.Handled || !settings.SmoothScrolling || e.Delta == 0) return;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) return;
         bool horizontal = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
-        double notches = e.Delta / (double)Notch;
+        double notches = Notches(e.Delta);
 
         // The preview tunnels from the outermost ScrollViewer; scroll the innermost one that can move.
         ScrollViewer? viewer = FindTarget(e.OriginalSource as DependencyObject, notches, horizontal);
@@ -69,8 +71,8 @@ public static class SmoothScroll
 
         var state = States.GetOrCreateValue(viewer);
         var current = new Point(viewer.HorizontalOffset, viewer.VerticalOffset);
-        if (!state.Running || Distance(current, state.LastSet) > 1)
-            state.Target = current;   // start from where the view really is (scrollbar drags, keys)
+        if (!state.Running) state.Target = current;
+        else if (Distance(current, state.LastSet) > 1) Rebase(state, current);
         double step = StepFor(settings.ScrollSpeed) * notches;
         state.Target = horizontal
             ? new Point(state.Target.X - step, state.Target.Y)
@@ -89,11 +91,23 @@ public static class SmoothScroll
     {
         if (state.LastFrame == time) return;   // Rendering can fire more than once per frame
         var current = new Point(viewer.HorizontalOffset, viewer.VerticalOffset);
-        // Something else moved the view (scrollbar, keyboard, a reveal) or it left the tree: stop gliding.
-        if (Distance(current, state.LastSet) > 1 || PresentationSource.FromVisual(viewer) is null)
+        if (PresentationSource.FromVisual(viewer) is null)
         {
             Stop(state);
             return;
+        }
+        if (Distance(current, state.LastSet) > 1)
+        {
+            // The user grabbed the scrollbar (or something jumped the view a whole page or more): stop.
+            // Smaller shifts (a virtualized list correcting its estimated offset, an arrow key) just move
+            // the glide along with them instead of cutting it off, which looked like a hitch.
+            if (Mouse.LeftButton == MouseButtonState.Pressed
+                || Distance(current, state.LastSet) >= Math.Max(viewer.ViewportHeight, 200))
+            {
+                Stop(state);
+                return;
+            }
+            Rebase(state, current);
         }
         double dt = state.LastFrame is { } last ? Math.Clamp((time - last).TotalSeconds, 0.001, 0.05) : 1 / 60.0;
         state.LastFrame = time;
@@ -105,6 +119,14 @@ public static class SmoothScroll
         if (next.Y != current.Y) viewer.ScrollToVerticalOffset(next.Y);
         state.LastSet = next;
         if (next == target) Stop(state);
+    }
+
+    /// <summary>The view moved by itself: keep the remaining glide distance, measured from where it is now.</summary>
+    private static void Rebase(State state, Point current)
+    {
+        state.Target = new Point(state.Target.X + current.X - state.LastSet.X,
+                                 state.Target.Y + current.Y - state.LastSet.Y);
+        state.LastSet = current;
     }
 
     private static void Stop(State state)
