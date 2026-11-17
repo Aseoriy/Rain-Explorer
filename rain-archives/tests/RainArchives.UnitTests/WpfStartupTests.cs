@@ -491,8 +491,13 @@ public sealed class WpfStartupTests
                     AutomationLiveSetting.Off,
                     AutomationProperties.GetLiveSetting(activityGrid));
                 Assert.AreEqual(13, activityGrid.Columns.Count);
+                // The Cancel control sits beside the status columns so it is visible at the default
+                // window size instead of past the horizontal scroll (it used to be the last of 13).
                 var activityControlColumn = Assert.IsInstanceOfType<DataGridTemplateColumn>(
-                    activityGrid.Columns[^1]);
+                    activityGrid.Columns.Single(column => Equals(column.Header, "Control")));
+                Assert.IsTrue(
+                    activityGrid.Columns.IndexOf(activityControlColumn) <= 3,
+                    "The Cancel control must stay within the first columns.");
                 var activityCancel = Assert.IsInstanceOfType<Button>(
                     activityControlColumn.CellTemplate.LoadContent());
                 Assert.AreEqual("Cancel operation", AutomationProperties.GetName(activityCancel));

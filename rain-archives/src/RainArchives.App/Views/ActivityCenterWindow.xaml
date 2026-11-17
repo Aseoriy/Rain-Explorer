@@ -122,20 +122,13 @@
                                 <Setter Property="AutomationProperties.HelpText" Value="Operation activity record. Warning and failure details are intentionally bounded and redacted." />
                             </Style>
                         </DataGrid.RowStyle>
+                        <!-- Ordered by importance so what matters (status, the Cancel control, the outcome)
+                             is visible at the default size; detail columns scroll in from the right. -->
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Operation" Binding="{Binding OperationName}" Width="170" />
-                            <DataGridTextColumn Header="Phase" Binding="{Binding PhaseText}" Width="135" />
-                            <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="90" />
-                            <DataGridTextColumn Header="Current item" Binding="{Binding CurrentItem}" Width="190" />
-                            <DataGridTextColumn Header="Bytes" Binding="{Binding BytesText}" Width="145" />
-                            <DataGridTextColumn Header="Entries" Binding="{Binding EntriesText}" Width="115" />
-                            <DataGridTextColumn Header="Elapsed" Binding="{Binding ElapsedText}" Width="90" />
-                            <DataGridTextColumn Header="Throughput" Binding="{Binding ThroughputText}" Width="105" />
-                            <DataGridTextColumn Header="Ratio" Binding="{Binding RatioText}" Width="85" />
-                            <DataGridTextColumn Header="Warnings" Binding="{Binding WarningText}" Width="105" />
-                            <DataGridTextColumn Header="Outcome" Binding="{Binding OutcomeText}" Width="220" />
-                            <DataGridTextColumn Header="Updated" Binding="{Binding UpdatedAtText}" Width="145" />
-                            <DataGridTemplateColumn Header="Control" Width="100">
+                            <DataGridTextColumn Header="Operation" Binding="{Binding OperationName}" Width="150" />
+                            <DataGridTextColumn Header="Phase" Binding="{Binding PhaseText}" Width="170" />
+                            <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="80" />
+                            <DataGridTemplateColumn Header="Control" Width="90">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Margin="4"
@@ -149,6 +142,15 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Outcome" Binding="{Binding OutcomeText}" Width="230" />
+                            <DataGridTextColumn Header="Warnings" Binding="{Binding WarningText}" Width="100" />
+                            <DataGridTextColumn Header="Bytes" Binding="{Binding BytesText}" Width="130" />
+                            <DataGridTextColumn Header="Entries" Binding="{Binding EntriesText}" Width="90" />
+                            <DataGridTextColumn Header="Elapsed" Binding="{Binding ElapsedText}" Width="80" />
+                            <DataGridTextColumn Header="Throughput" Binding="{Binding ThroughputText}" Width="100" />
+                            <DataGridTextColumn Header="Ratio" Binding="{Binding RatioText}" Width="70" />
+                            <DataGridTextColumn Header="Current item" Binding="{Binding CurrentItem}" Width="260" />
+                            <DataGridTextColumn Header="Updated" Binding="{Binding UpdatedAtText}" Width="130" />
                         </DataGrid.Columns>
                     </DataGrid>
 
