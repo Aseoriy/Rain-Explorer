@@ -33,6 +33,8 @@ internal interface IArchiveAssociationRegistry
     string? GetString(string path, string? name);
     void SetString(string path, string? name, string value);
     void SetNone(string path, string name);
+    void DeleteValue(string path, string name);
+    void DeleteTree(string path);
 }
 
 /// <summary>
@@ -215,6 +217,50 @@ internal static class ArchiveFileAssociationService
         }
     }
 
+    /// <summary>Remove Rain's archive association data (used by the uninstaller). Best-effort, never throws.</summary>
+    internal static bool UnregisterForCurrentUser()
+    {
+        try
+        {
+            bool removed = UnregisterForCurrentUser(new CurrentUserArchiveAssociationRegistry());
+            try { SHChangeNotify(ShcneAssocChanged, ShcnfIdList, 0, 0); } catch { }
+            return removed;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Undo <see cref="RegisterForCurrentUser(IArchiveAssociationRegistry, string)"/>: only keys carrying
+    /// Rain's owner marker and values that name Rain's own ProgID are removed. A same-named key without the
+    /// marker belongs to something else and is left alone (returns false). The user's current default app
+    /// choice (UserChoice) is Windows' and is never touched; Windows offers another app once the ProgID
+    /// is gone.
+    /// </summary>
+    internal static bool UnregisterForCurrentUser(IArchiveAssociationRegistry registry)
+    {
+        bool allRemoved = true;
+        if (string.Equals(registry.GetString(RegisteredApplicationsPath, RegisteredApplicationName),
+                CapabilitiesPath, StringComparison.Ordinal))
+            registry.DeleteValue(RegisteredApplicationsPath, RegisteredApplicationName);
+
+        foreach (string extension in ArchiveFileTypes.AssociationExtensions)
+        {
+            string openWith = $@"Software\Classes\{extension}\OpenWithProgids";
+            if (registry.ValueExists(openWith, ProgId)) registry.DeleteValue(openWith, ProgId);
+        }
+
+        foreach (string path in new[] { CapabilitiesPath, ProgIdPath })
+        {
+            if (!registry.KeyExists(path)) continue;
+            if (HasOwner(registry, path)) registry.DeleteTree(path);
+            else allRemoved = false;
+        }
+        return allRemoved;
+    }
+
     internal static bool OpenWindowsDefaultAppsPage()
     {
         bool useRegisteredAppFilter = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
@@ -345,5 +391,14 @@ internal static class ArchiveFileAssociationService
             using RegistryKey key = Registry.CurrentUser.CreateSubKey(path, writable: true);
             key.SetValue(name, Array.Empty<byte>(), RegistryValueKind.None);
         }
+
+        public void DeleteValue(string path, string name)
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(path, writable: true);
+            key?.DeleteValue(name, throwOnMissingValue: false);
+        }
+
+        public void DeleteTree(string path) =>
+            Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false);
     }
 }

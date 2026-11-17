@@ -105,13 +105,37 @@ public static class ShellIntegrationService
 
     private static void UnregisterDefault()
     {
-        // Removing our override keys makes the merged view fall back to Windows Explorer.
-        foreach (string path in OpenCommandKeys)
+        // Removing our override keys makes the merged view fall back to Windows Explorer. Only keys whose
+        // command really launches Rain are removed, so an override set by the user or another app stays.
+        foreach (string path in OpenCommandKeys.Append(WinEKey))
         {
-            try { Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false); }
-            catch { /* already gone */ }
+            try
+            {
+                string? command;
+                using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(path, writable: false))
+                    command = key?.GetValue(null) as string;
+                if (IsRainCommand(command))
+                    Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false);
+            }
+            catch { /* already gone / locked: non-fatal */ }
         }
-        try { Registry.CurrentUser.DeleteSubKeyTree(WinEKey, throwOnMissingSubKey: false); }
-        catch { /* already gone */ }
+    }
+
+    /// <summary>True when a shell command line launches Rain Explorer (any install location).</summary>
+    internal static bool IsRainCommand(string? command) =>
+        !string.IsNullOrWhiteSpace(command)
+        && command.Contains("RainExplorer.exe", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Everything Rain may have added to the current user's shell, undone. Run by the uninstaller
+    /// (<c>--uninstall-cleanup</c>) before the program files are removed: an open verb left pointing at a
+    /// deleted RainExplorer.exe would stop folders and Win+E from opening at all.
+    /// </summary>
+    public static void RemoveAllForUninstall()
+    {
+        ApplyDefaultHandler(false);
+        Apply(false);
+        ArchiveContextMenuService.Apply(false);
+        ArchiveFileAssociationService.UnregisterForCurrentUser();
     }
 }

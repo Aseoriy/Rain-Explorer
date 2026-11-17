@@ -54,9 +54,11 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [UninstallRun]
-; Remove the optional "Rain Archives" right-click entry (HKCU keys the app wrote and
-; marked as its own). The app exits right away without opening a window.
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-archive-menu"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterArchiveMenu"
+; Undo every shell change the app made for this user before its files go: the default file
+; manager override (otherwise folders and Win+E would point at a deleted exe), "Open in Rain
+; Explorer", the Rain Archives right-click entry and the archive associations. Only entries that
+; are Rain's own are removed. The app exits right away without opening a window.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallCleanup"
 
 [Messages]
 FinishedLabel=Setup has finished installing [name] on your computer.%n%nOpen Rain Explorer from the Start menu or desktop shortcut.

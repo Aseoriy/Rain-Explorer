@@ -416,7 +416,63 @@ public sealed class ArchiveFileAssociationServiceTests
             if (recordWrite) Writes.Add(new(path, name, value, kind));
         }
 
+        public void DeleteValue(string path, string name) => _values.Remove(Key(path, name));
+
+        public void DeleteTree(string path)
+        {
+            string prefix = path.ToUpperInvariant();
+            foreach (var key in _values.Keys.Where(k => k.Path == prefix || k.Path.StartsWith(prefix + "\\", StringComparison.Ordinal)).ToList())
+                _values.Remove(key);
+            _keys.RemoveWhere(k => k.Equals(path, StringComparison.OrdinalIgnoreCase)
+                                   || k.StartsWith(path + "\\", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal int ValueCount => _values.Count;
+
         private static (string Path, string Name) Key(string path, string? name) =>
             (path.ToUpperInvariant(), (name ?? string.Empty).ToUpperInvariant());
     }
+
+    // ---- Uninstall cleanup (found by the Windows Sandbox uninstall test) ----------------------------
+
+    [Fact]
+    public void UninstallRemovesEverythingRegistrationWrote()
+    {
+        using var executable = TestExecutable.Create();
+        var registry = new FakeArchiveAssociationRegistry();
+        Assert.Equal(ArchiveAssociationRegistrationOutcome.Completed,
+            ArchiveFileAssociationService.RegisterForCurrentUser(registry, executable.Path).Outcome);
+
+        Assert.True(ArchiveFileAssociationService.UnregisterForCurrentUser(registry));
+
+        Assert.Equal(0, registry.ValueCount);
+        Assert.Equal(ArchiveAssociationRegistrationState.NotRegistered,
+            ArchiveFileAssociationService.GetRegistrationState(registry, executable.Path));
+    }
+
+    [Fact]
+    public void UninstallLeavesAForeignProgIdAndOtherAppsAlone()
+    {
+        var registry = new FakeArchiveAssociationRegistry();
+        registry.SetInitialString(ArchiveFileAssociationService.ProgIdPath, null, "Someone else's archive type");
+        registry.SetInitialString(@"Software\Classes\.zip\OpenWithProgids", "SomeOther.Archiver", "");
+        registry.SetInitialString(ArchiveFileAssociationService.RegisteredApplicationsPath, "Other Archiver", @"Software\Other");
+
+        Assert.False(ArchiveFileAssociationService.UnregisterForCurrentUser(registry));
+
+        Assert.Equal("Someone else's archive type",
+            registry.GetString(ArchiveFileAssociationService.ProgIdPath, null));
+        Assert.True(registry.ValueExists(@"Software\Classes\.zip\OpenWithProgids", "SomeOther.Archiver"));
+        Assert.Equal(@"Software\Other",
+            registry.GetString(ArchiveFileAssociationService.RegisteredApplicationsPath, "Other Archiver"));
+    }
+
+    [Theory]
+    [InlineData("\"C:\\Program Files\\Rain Explorer\\RainExplorer.exe\" \"%V\"", true)]
+    [InlineData("\"C:\\Users\\me\\AppData\\Local\\Programs\\Rain Explorer\\rainexplorer.exe\"", true)]
+    [InlineData("\"C:\\Program Files\\Files\\Files.exe\" \"%1\"", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void OnlyCommandsThatLaunchRainAreRemoved(string? command, bool rain) =>
+        Assert.Equal(rain, ShellIntegrationService.IsRainCommand(command));
 }

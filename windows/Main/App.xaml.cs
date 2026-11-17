@@ -25,6 +25,7 @@ public partial class App : Application
     // defaults, and Save over the user's pinned items. Per-user names so concurrent
     // logins don't collide.
     private const string MutexName = "RainExplorer.SingleInstance.v1";
+    internal const string UninstallCleanupSwitch = "--uninstall-cleanup";
     private const string PipeName = "RainExplorer.Forward.v1";
     private static Mutex? _instanceMutex;
 
@@ -32,11 +33,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // The uninstaller runs this to take the "Rain Archives" right-click entry away.
-        if (e.Args.Any(arg => string.Equals(arg, ArchiveContextMenuService.UnregisterSwitch,
-                StringComparison.OrdinalIgnoreCase)))
+        // The uninstaller runs this to undo every shell change Rain made (default file manager, Open in
+        // Rain Explorer, the Rain Archives menu, archive associations). The older switch name from the
+        // first beta-2 builds does the same, so their uninstallers clean up fully too.
+        if (e.Args.Any(arg => string.Equals(arg, UninstallCleanupSwitch, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(arg, ArchiveContextMenuService.UnregisterSwitch,
+                                  StringComparison.OrdinalIgnoreCase)))
         {
-            ArchiveContextMenuService.Apply(false);
+            ShellIntegrationService.RemoveAllForUninstall();
             Shutdown();
             return;
         }
@@ -87,6 +91,7 @@ public partial class App : Application
         // Re-register the default-handler keys on launch so they always point at the
         // current exe location (e.g. after the app is moved or updated).
         if (settings.SetAsDefaultExplorer) ShellIntegrationService.ApplyDefaultHandler(true);
+        if (settings.RegisterShellIntegration) ShellIntegrationService.Apply(true);
         if (settings.ArchiveContextMenu) ArchiveContextMenuService.Apply(true);
 
         // Re-apply theme/density/font whenever they change in the settings panel.
