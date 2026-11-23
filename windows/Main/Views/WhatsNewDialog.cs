@@ -33,7 +33,7 @@ public sealed class WhatsNewDialog : RainDialog
         new("package", "Back up your setup",
             "Save your settings, pins, sidebar lists, tab projects and shortcuts to one file, and restore them anytime.", "settings:back up restore"),
         new("archive", "Rain Archives, built in",
-            "Browse ZIP, 7z, RAR and TAR archives like folders, extract just what you need, and create new archives.", "settings:archive"),
+            "Browse ZIP, 7z, RAR and TAR archives like folders, extract just what you need, and make new ones (7z too) from the right-click menu.", "settings:archive"),
         new("external-link", "Git and GitHub, built in",
             "Status badges on files, a changes window for commits and pushes, and errors explained in plain words.", "settings:git"),
         new("sliders", "Smooth, or snappy",
