@@ -109,18 +109,15 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.IsSplit)) UpdateSplitLayout();
-            if (e.PropertyName == nameof(MainViewModel.IsSettingsOpen)) UpdateBlur();
+            if (e.PropertyName == nameof(MainViewModel.IsSettingsOpen))
+            {
+                UpdateBlur();
+                ShowSettingsOverlay(_vm.IsSettingsOpen);
+                if (!_vm.IsSettingsOpen) SettingsOverlay.OnClosed();
+            }
         };
 
-        // Navigation shortcuts act on the active pane's active tab.
-        AddShortcut(Key.Left, ModifierKeys.Alt, () => _vm.ActivePane.SelectedTab?.BackCommand.Execute(null));
-        AddShortcut(Key.Right, ModifierKeys.Alt, () => _vm.ActivePane.SelectedTab?.ForwardCommand.Execute(null));
-        AddShortcut(Key.Up, ModifierKeys.Alt, () => _vm.ActivePane.SelectedTab?.UpCommand.Execute(null));
-        AddShortcut(Key.F5, ModifierKeys.None, () => _vm.ActivePane.SelectedTab?.RefreshCommand.Execute(null));
-
-        // Tab shortcuts (Ctrl+Tab / Ctrl+Shift+Tab handled in OnPreviewKeyDown).
-        InputBindings.Add(new KeyBinding(_vm.NewTabCommand, Key.T, ModifierKeys.Control));
-        InputBindings.Add(new KeyBinding(_vm.CloseTabCommand, Key.W, ModifierKeys.Control));
+        // Keyboard shortcuts all go through ShortcutService (Settings → Shortcuts); see OnPreviewKeyDown.
 
         Loaded += (_, _) =>
         {
@@ -148,16 +145,32 @@ public partial class MainWindow : Window
 
         // StaysOpen="True" also means the popup ignores clicks in other apps, and a WPF
         // popup is its own topmost window, so it would float over whatever app the user
-        // switched to. Close it whenever this window stops being the active one.
-        Deactivated += (_, _) => ActivityPopup.IsOpen = false;
+        // switched to. Close it whenever this window stops being the active one; a pinned
+        // flyout comes back when Rain is active again.
+        Deactivated += (_, _) =>
+        {
+            _reopenPinnedActivity = ActivityPopup.IsOpen && SettingsStore.Instance.Settings.ActivityCenterPinned;
+            ActivityPopup.IsOpen = false;
+        };
+        Activated += (_, _) =>
+        {
+            if (!_reopenPinnedActivity) return;
+            _reopenPinnedActivity = false;
+            if (SettingsStore.Instance.Settings.ActivityCenterPinned && !SettingsStore.Instance.Settings.ActivityCenterPoppedOut)
+                OpenActivityFlyout();
+        };
     }
+
+    private bool _reopenPinnedActivity;
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // A pinned flyout stays open; Hide or its button close it.
+        if (SettingsStore.Instance.Settings.ActivityCenterPinned) return;
         bool insideFlyout = ActivityPopup.Child?.IsMouseOver == true;
         if (ActivityPopup.IsOpen && !insideFlyout
             && !IsDescendantOf(e.OriginalSource as DependencyObject, ActivityButton))
-            ActivityPopup.IsOpen = false;
+            CloseActivityFlyout();
     }
 
     private static bool IsDescendantOf(DependencyObject? d, DependencyObject ancestor)
@@ -295,8 +308,6 @@ public partial class MainWindow : Window
         settings.WindowMaximized = WindowState == WindowState.Maximized;
     }
 
-    private void AddShortcut(Key key, ModifierKeys mods, Action action) =>
-        InputBindings.Add(new KeyBinding(new RelayCommand(_ => action()), key, mods));
 
     /// <summary>Open <paramref name="target"/> in a new tab of the active pane, optionally
     /// highlighting <paramref name="select"/> once it loads. Used when a second launch is
@@ -448,37 +459,70 @@ public partial class MainWindow : Window
         return new Rect(left, top, width, height);
     }
 
-    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs in the active pane.
+    /// <summary>The pane view for the active pane (the right one only while split).</summary>
+    internal PaneView ActivePaneView =>
+        _vm.IsSplit && ReferenceEquals(_vm.ActivePane, _vm.RightPane) ? RightPaneView : LeftPaneView;
+
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        // Esc closes the settings overlay.
+        if (ShortcutService.IsRecording)
+        {
+            // Settings → Shortcuts is waiting for a key: it gets this one, and nothing else fires.
+            ShortcutService.Recorder?.Invoke(e);
+            e.Handled = true;
+            return;
+        }
+
+        // Esc closes the settings overlay (a search in it clears first).
         if (e.Key == Key.Escape && _vm.IsSettingsOpen)
         {
-            _vm.IsSettingsOpen = false;
+            if (!SettingsOverlay.HandleEscape()) _vm.IsSettingsOpen = false;
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        // Every customizable shortcut goes through ShortcutService.
+        bool inText = Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox;
+        if (ShortcutService.Match(e, inText) is { } action)
         {
-            if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
-                _vm.PrevTabCommand.Execute(null);
-            else
-                _vm.NextTabCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-
-        // Undo/redo file operations — but let text fields keep their own Ctrl+Z/Y.
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
-            && Keyboard.FocusedElement is not TextBox)
-        {
-            bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
-            if (e.Key == Key.Z && !shift) { DoUndo(); e.Handled = true; return; }
-            if (e.Key == Key.Y || (e.Key == Key.Z && shift)) { DoRedo(); e.Handled = true; return; }
+            if (_vm.IsSettingsOpen && action.Id == "nav.search")
+            {
+                SettingsOverlay.FocusSearch();
+                e.Handled = true;
+                return;
+            }
+            if (RunWindowShortcut(action.Id) || (!_vm.IsSettingsOpen && ActivePaneView.RunShortcut(action.Id)))
+            {
+                e.Handled = true;
+                return;
+            }
         }
 
         base.OnPreviewKeyDown(e);
+    }
+
+    /// <summary>Shortcuts that act on the window rather than the active pane. True when handled.</summary>
+    private bool RunWindowShortcut(string id)
+    {
+        var settings = SettingsStore.Instance.Settings;
+        bool typing = Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox;
+        switch (id)
+        {
+            case "tab.new": _vm.NewTabCommand.Execute(null); return true;
+            case "tab.close": _vm.CloseTabCommand.Execute(null); return true;
+            case "tab.reopen": _vm.ActivePane.ReopenClosedTab(); return true;
+            case "tab.next": _vm.NextTabCommand.Execute(null); return true;
+            case "tab.prev": _vm.PrevTabCommand.Execute(null); return true;
+            case "app.settings": _vm.IsSettingsOpen = !_vm.IsSettingsOpen; return true;
+            case "view.hidden": settings.ShowHiddenFiles = !settings.ShowHiddenFiles; return true;
+            case "view.sidebar": SidebarToggle_Click(this, new RoutedEventArgs()); return true;
+            // Text boxes keep their own undo.
+            case "edit.undo" when !typing: DoUndo(); return true;
+            case "edit.redo" when !typing: DoRedo(); return true;
+            case "app.activity": ToggleActivityCenter(); return true;
+            case "app.shortcuts": ShowShortcutsSheet(); return true;
+            default: return false;
+        }
     }
 
     private void UndoButton_Click(object sender, RoutedEventArgs e) => DoUndo();
@@ -614,7 +658,10 @@ public partial class MainWindow : Window
         {
             if (Application.Current is { } app
                 && !app.Windows.OfType<MainWindow>().Any(window => window.IsVisible))
+            {
+                ActivityWindow.CloseForShutdown();
                 app.Shutdown();
+            }
         });
     }
 
@@ -622,46 +669,125 @@ public partial class MainWindow : Window
     // light-dismiss, which otherwise always closes the popup before this Click even fires
     // (it needs a MouseUp; the light-dismiss reacts to MouseDown), making a "close" click
     // indistinguishable from a fresh one and instantly reopening it. Window_PreviewMouseDown
-    // handles the "click elsewhere closes it" half; this is purely the toggle.
+    // handles the "click elsewhere closes it" half; this is purely the toggle (closing with a fade).
     private void ActivityButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ActivityPopup.IsOpen) { ActivityPopup.IsOpen = false; return; }
+        if (SettingsStore.Instance.Settings.ActivityCenterPoppedOut)
+        {
+            // Popped out: the button closes the window when it's in front (it stays on top by default),
+            // otherwise brings it forward.
+            if (ActivityWindow.Current is { WindowState: not WindowState.Minimized } open && (open.IsActive || open.Topmost))
+                open.Close();
+            else ActivityWindow.ShowOrActivate(this);
+            return;
+        }
+        if (ActivityPopup.IsOpen && !_activityFading) CloseActivityFlyout();
+        else OpenActivityFlyout();
+    }
+
+    private bool _activityFading;
+
+    /// <summary>Open the title-bar activity flyout (also used when the pop-out window docks back).</summary>
+    public void OpenActivityFlyout()
+    {
+        if (ActivityPopup.Child is UIElement card)
+        {
+            card.BeginAnimation(OpacityProperty, null);
+            card.Opacity = 1;
+        }
+        _activityFading = false;
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         ActivityPopup.IsOpen = true;
         ActivityService.Instance.MarkSeen();
     }
 
-    private void ClearActivity_Click(object sender, RoutedEventArgs e) =>
-        ActivityService.Instance.Clear();
-
-    private void HideActivity_Click(object sender, RoutedEventArgs e) =>
-        ActivityPopup.IsOpen = false;
-
-    private void ActivityPause_Click(object sender, RoutedEventArgs e)
+    /// <summary>Fade the flyout out, then close it.</summary>
+    private void CloseActivityFlyout()
     {
-        if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)
-            ActivityService.Instance.RequestPauseToggle(activity);
+        if (!ActivityPopup.IsOpen || _activityFading) return;
+        if (ActivityPopup.Child is not UIElement card || !SystemParameters.ClientAreaAnimation)
+        {
+            ActivityPopup.IsOpen = false;
+            return;
+        }
+        _activityFading = true;
+        var fade = new DoubleAnimation(card.Opacity, 0, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+        fade.Completed += (_, _) =>
+        {
+            if (!_activityFading) return;   // reopened meanwhile
+            _activityFading = false;
+            ActivityPopup.IsOpen = false;
+            card.BeginAnimation(OpacityProperty, null);
+            card.Opacity = 1;
+        };
+        card.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void ActivityFlyout_HideRequested(object? sender, EventArgs e) => CloseActivityFlyout();
+
+    private void ActivityFlyout_PopOutRequested(object? sender, EventArgs e)
+    {
+        ActivityPopup.IsOpen = false;
+        ActivityWindow.ShowOrActivate(this);
+    }
+
+    private void ActivityFlyout_DetailsRequested(object? sender, ActivityEntry entry)
+    {
+        if (!SettingsStore.Instance.Settings.ActivityCenterPinned) ActivityPopup.IsOpen = false;
+        ActivityDetailsDialog.ShowFor(this, entry);
+    }
+
+    /// <summary>The activity center from the keyboard: same as its title-bar button.</summary>
+    private void ToggleActivityCenter() => ActivityButton_Click(this, new RoutedEventArgs());
+
+    /// <summary>F1 / ?: the keyboard shortcuts sheet, with a way into Settings → Shortcuts.</summary>
+    private void ShowShortcutsSheet() => ShortcutsSheet.ShowFor(this, () =>
+    {
+        _vm.IsSettingsOpen = true;
+        SettingsOverlay.OpenPage(SettingsView.ShortcutsPage);
+    });
+
+    /// <summary>The "What's new" screen (after an update, or from Settings → About).</summary>
+    public void ShowWhatsNew() => WhatsNewDialog.ShowFor(this, ShowMe);
+
+    /// <summary>A What's new "Show me": open the feature it describes.</summary>
+    internal void ShowMe(string target)
+    {
+        switch (target)
+        {
+            case "activity":
+                _vm.IsSettingsOpen = false;
+                if (SettingsStore.Instance.Settings.ActivityCenterPoppedOut) ActivityWindow.ShowOrActivate(this);
+                else OpenActivityFlyout();
+                break;
+            case "shortcuts":
+                _vm.IsSettingsOpen = true;
+                SettingsOverlay.OpenPage(SettingsView.ShortcutsPage);
+                break;
+            case "commandBox":
+                _vm.IsSettingsOpen = false;
+                ActivePaneView.SetCommandBoxOpen(true);
+                break;
+            default:
+                if (!target.StartsWith("settings:", StringComparison.Ordinal)) return;
+                _vm.IsSettingsOpen = true;
+                Dispatcher.BeginInvoke(() => SettingsOverlay.Reveal(target["settings:".Length..]),
+                    DispatcherPriority.Loaded);
+                break;
+        }
     }
 
     private void OnActivityShowRequested(Window? owner)
     {
         if (owner is not null && !ReferenceEquals(owner, this)) return;
         if (owner is null && !IsActive) return;
-        ActivityPopup.IsOpen = true;
-        ActivityService.Instance.MarkSeen();
+        if (SettingsStore.Instance.Settings.ActivityCenterPoppedOut) ActivityWindow.ShowOrActivate(this);
+        else OpenActivityFlyout();
     }
 
-    private void ActivityDetails_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not ActivityEntry activity) return;
-        ActivityPopup.IsOpen = false;
-        ActivityDetailsDialog.ShowFor(this, activity);
-    }
-
-    private void ActivityCancel_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is ActivityEntry activity)
-            ActivityService.Instance.RequestCancel(activity);
-    }
 
     // ===================== Sidebar tree =====================
     private static SidebarNode? NodeFrom(object sender) =>
@@ -1117,6 +1243,40 @@ public partial class MainWindow : Window
     private void ApplyAmbient() =>
         Orb.Visibility = SettingsStore.Instance.Settings.ShowAmbientBackground
             ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Show Settings at once; closing fades it out (it stops taking clicks straight away).</summary>
+    private void ShowSettingsOverlay(bool open)
+    {
+        SettingsOverlay.BeginAnimation(OpacityProperty, null);
+        if (open)
+        {
+            SettingsOverlay.Opacity = 1;
+            SettingsOverlay.IsHitTestVisible = true;
+            SettingsOverlay.Visibility = Visibility.Visible;
+            return;
+        }
+        if (SettingsOverlay.Visibility != Visibility.Visible) return;
+        SettingsOverlay.IsHitTestVisible = false;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            SettingsOverlay.Visibility = Visibility.Collapsed;
+            SettingsOverlay.IsHitTestVisible = true;
+            return;
+        }
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(140))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+        fade.Completed += (_, _) =>
+        {
+            if (_vm.IsSettingsOpen) return;   // reopened meanwhile
+            SettingsOverlay.Visibility = Visibility.Collapsed;
+            SettingsOverlay.BeginAnimation(OpacityProperty, null);
+            SettingsOverlay.Opacity = 1;
+            SettingsOverlay.IsHitTestVisible = true;
+        };
+        SettingsOverlay.BeginAnimation(OpacityProperty, fade);
+    }
 
     private void UpdateBlur()
     {

@@ -152,12 +152,10 @@ public partial class MainWindow
             return;
         }
 
-        string baseName = sources.Count == 1
-            ? Path.GetFileNameWithoutExtension(sources[0].ArchivePath)
-            : Path.GetFileName(Path.TrimEndingDirectorySeparator(folder));
-        if (string.IsNullOrWhiteSpace(baseName)) baseName = "Archive";
-        string suggested = FileOperationsService.UniquePath(
-            Path.Combine(folder, baseName + formats[0].Extension));
+        string suggested = ArchiveFileTypes.FreeArchivePath(
+            folder,
+            ArchiveFileTypes.SuggestedArchiveStem(sources, folder, formats[0].Format),
+            formats[0].Extension);
 
         var dialog = new CreateArchiveDialog(capabilities, sources, suggested) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Selection is not { } request) return;

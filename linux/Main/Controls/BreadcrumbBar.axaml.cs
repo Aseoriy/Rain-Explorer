@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RainExplorer.Helpers;
 using RainExplorer.Services;
 using RainExplorer.ViewModels;
 using RainExplorer.Views;
@@ -45,6 +46,7 @@ public partial class BreadcrumbBar : UserControl
     public BreadcrumbBar()
     {
         InitializeComponent();
+        ButtonToggle.Track(ChildPopup, () => ChildPopup.PlacementTarget);
         DataContextChanged += (_, _) => OnDataContextChanged();
         CrumbHost.AddHandler(PointerPressedEvent, CrumbHost_PointerPressed, RoutingStrategies.Tunnel);
         CrumbHost.AddHandler(DragDrop.DragOverEvent, CrumbHost_DragOver);
@@ -232,7 +234,10 @@ public partial class BreadcrumbBar : UserControl
             Content = "…",
             Theme = (Avalonia.Styling.ControlTheme?)this.FindResourceOrDefault("CrumbButton"),
         };
-        btn.Click += (_, _) => ShowDropdown(hidden.Select(h => new Suggestion(h.Label, h.Path)).ToList(), btn);
+        btn.Click += (_, _) =>
+        {
+            if (!ButtonToggle.JustClosed(btn)) ShowDropdown(hidden.Select(h => new Suggestion(h.Label, h.Path)).ToList(), btn);
+        };
         CrumbStrip.Children.Add(btn);
     }
 
@@ -270,7 +275,8 @@ public partial class BreadcrumbBar : UserControl
 
     private void Chevron_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string dir } b) _ = OpenChildPopup(dir, b);
+        // Clicking the same chevron again closes its dropdown.
+        if (sender is Button { Tag: string dir } b && !ButtonToggle.JustClosed(b)) _ = OpenChildPopup(dir, b);
         e.Handled = true;
     }
 
@@ -391,7 +397,7 @@ public partial class BreadcrumbBar : UserControl
             case Key.Enter:
                 string text = AcPopup.IsOpen && AcList.SelectedItem is Suggestion picked
                     ? picked.Path
-                    : EditBox.Text?.Trim() ?? string.Empty;
+                    : TypedPath(EditBox.Text);
                 e.Handled = true;
                 Commit(text);
                 break;
@@ -424,6 +430,20 @@ public partial class BreadcrumbBar : UserControl
         string? local = await Views.NetworkConnectFlow.OpenAsync(TopLevel.GetTopLevel(this) as Window, uri,
             message => tab.Status = message);
         if (local is not null) await tab.NavigateAsync(local, true);
+    }
+
+    /// <summary>
+    /// Typed address text without stray spaces, unless the exact text names something that exists:
+    /// Linux folders can really start or end with a space.
+    /// </summary>
+    private string TypedPath(string? raw)
+    {
+        raw ??= string.Empty;
+        string trimmed = raw.Trim();
+        if (raw.Length == trimmed.Length || trimmed.Length == 0) return trimmed;
+        string candidate = PathUtil.ExpandTilde(raw);
+        if (!candidate.StartsWith('/') && _tab is { IsFolderView: true }) candidate = Path.Combine(_tab.CurrentPath, candidate);
+        return Directory.Exists(candidate) || File.Exists(candidate) ? raw : trimmed;
     }
 
     private void Commit(string text)

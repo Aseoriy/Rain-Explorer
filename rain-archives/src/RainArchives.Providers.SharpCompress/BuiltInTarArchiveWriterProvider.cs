@@ -127,6 +127,9 @@ public sealed class BuiltInTarArchiveWriterProvider : IArchiveWriterProvider, IA
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        // Every expected entry and its data have been read. Only now do runs of zero blocks mean
+        // "end of archive"; zero runs inside file data (common in .exe/.dll files) must not count.
+        tracked.BeginTrailer();
         if (await reader.GetNextEntryAsync(copyData: false, cancellationToken).ConfigureAwait(false) is not null)
         {
             throw ManifestMismatch();
@@ -642,6 +645,17 @@ public sealed class BuiltInTarArchiveWriterProvider : IArchiveWriterProvider, IA
         private bool _nonZeroAfterEndMarkers;
 
         public TarTailTrackingReadStream(Stream source) => _source = source;
+
+        /// <summary>
+        /// Starts end-marker accounting after the last entry. Before this, whole zero blocks are
+        /// ordinary file content and must not be mistaken for end markers. The partially read
+        /// current block keeps its state, so the last entry's padding still completes normally.
+        /// </summary>
+        public void BeginTrailer()
+        {
+            _consecutiveZeroBlocks = 0;
+            _nonZeroAfterEndMarkers = false;
+        }
 
         public bool HasCanonicalEndMarkers =>
             _totalRead >= EndMarkerSize

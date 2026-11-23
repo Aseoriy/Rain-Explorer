@@ -71,10 +71,26 @@ public partial class App : Application
                 {
                     try { UpdateService.Relaunch(relaunch); } catch { }
                 }
+                else if (RestartOnExit)
+                {
+                    try { Restart(); } catch { }
+                }
             };
             desktop.MainWindow = new MainWindow();
+            if (Views.WhatsNewDialog.ShouldShowAfterUpdate(SettingsStore.Instance.IsFirstRun)
+                && desktop.MainWindow is MainWindow updated)
+            {
+                updated.Opened += (_, _) =>
+                    DispatcherTimer.RunOnce(updated.ShowWhatsNew, TimeSpan.FromMilliseconds(700));
+            }
             if (settings.AutoUpdate)
                 desktop.MainWindow.Opened += (_, _) => _ = CheckForUpdatesOnStartupAsync();
+            // Reopen the pop-out activity window if it was open when Rain closed.
+            if (settings.ActivityCenterPoppedOut && settings.ActivityWindowOpen)
+            {
+                var first = desktop.MainWindow;
+                first.Opened += (_, _) => Views.ActivityWindow.ShowOrActivate(first as Window);
+            }
             FileManagerIntegration.Instance.Start(ShowFileManagerRequestAsync);
             if (desktop.Args?.Contains("--select", StringComparer.Ordinal) == true)
                 desktop.MainWindow.Opened += async (_, _) => await ShowArgumentSelectionAsync(desktop.Args);
@@ -85,6 +101,20 @@ public partial class App : Application
 
     /// <summary>Set by the update dialog: the AppImage to start after this instance exits.</summary>
     public static string? RelaunchOnExit { get; set; }
+
+    /// <summary>Start Rain again once this instance has exited (after restoring a backup).</summary>
+    public static bool RestartOnExit { get; set; }
+
+    private static void Restart()
+    {
+        var command = FileManagerActivation.LaunchCommand();
+        var start = new System.Diagnostics.ProcessStartInfo(command[0])
+        {
+            UseShellExecute = false, WorkingDirectory = XdgDirs.Home,
+        };
+        foreach (string arg in command.Skip(1)) start.ArgumentList.Add(arg);
+        ProcessLauncher.StartDetached(start);
+    }
 
     /// <summary>Quiet launch check: offer a newer, non-skipped release. Silent on failure or offline.</summary>
     private static async Task CheckForUpdatesOnStartupAsync()

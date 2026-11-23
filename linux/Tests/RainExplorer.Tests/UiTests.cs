@@ -280,7 +280,7 @@ public sealed partial class UiTests
         Assert.True(window.FindControl<SettingsView>("SettingsOverlay")!.IsVisible);
         Snapshot(window, "07-settings");
         vm.IsSettingsOpen = false;
-        Assert.False(window.FindControl<SettingsView>("SettingsOverlay")!.IsVisible);
+        WaitFor(() => !window.FindControl<SettingsView>("SettingsOverlay")!.IsVisible);   // after its fade-out
 
         SettingsStore.Instance.Settings.Theme = "Light";
         ThemeService.ApplyTheme("Light");
@@ -521,7 +521,7 @@ public sealed partial class UiTests
             Assert.Equal(Application.Current!.Resources["Text"], title.Foreground);
             Snapshot(window, "theme-" + theme.ToLowerInvariant());
             vm.IsSettingsOpen = false;
-            Assert.False(overlay.IsVisible);
+            WaitFor(() => !overlay.IsVisible);   // after its fade-out
         }
         SettingsStore.Instance.Settings.Theme = "Violet";
         ThemeService.ApplyTheme("Violet");

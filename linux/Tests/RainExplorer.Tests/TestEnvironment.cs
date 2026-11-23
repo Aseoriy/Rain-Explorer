@@ -30,6 +30,13 @@ internal static class TestEnvironment
         Directory.CreateDirectory(Path.Combine(Root, "runtime"));
         File.SetUnixFileMode(Path.Combine(Root, "runtime"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
+        // Rain's own app-menu entry, so "Make Rain my default file manager" never depends on whether Rain
+        // happens to be installed on the machine running the tests.
+        string applications = Path.Combine(Root, "data", "applications");
+        Directory.CreateDirectory(applications);
+        File.WriteAllText(Path.Combine(applications, "rain-explorer.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Rain Explorer\nExec=rain-explorer %U\nMimeType=inode/directory;\n");
+
         // Exercise SVG rendering without depending on the host's theme or settings.
         File.WriteAllText(Path.Combine(Root, "config", "kdeglobals"), "[Icons]\nTheme=RainTest\n");
         string theme = Path.Combine(Root, "data", "icons", "RainTest");

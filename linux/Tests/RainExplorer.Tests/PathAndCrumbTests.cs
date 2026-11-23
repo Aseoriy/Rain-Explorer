@@ -41,4 +41,24 @@ public sealed class PathAndCrumbTests
         Assert.Equal("~/Music", PathUtil.Tildify(home + "/Music"));
     }
 
+    [Fact]
+    public async Task FolderNamesWithEdgeSpacesStayReal()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "rain-space-" + Guid.NewGuid().ToString("N"));
+        string spaced = Path.Combine(root, "Season 01 ");
+        string leading = Path.Combine(root, " Extras");
+        Directory.CreateDirectory(spaced);
+        Directory.CreateDirectory(leading);
+        File.WriteAllText(Path.Combine(spaced, "ep1.mkv"), "x");
+        try
+        {
+            Assert.Equal(spaced, PathUtil.Normalize(spaced));
+            Assert.Equal(leading, PathUtil.Normalize(leading));
+            Assert.False(PathUtil.Same(spaced, Path.Combine(root, "Season 01")));
+            var items = await new FileSystemService().ReadDirectoryAsync(PathUtil.Normalize(spaced));
+            Assert.Contains(items, i => i.Name == "ep1.mkv");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
 }

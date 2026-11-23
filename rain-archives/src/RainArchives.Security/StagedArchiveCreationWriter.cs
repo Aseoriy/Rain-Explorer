@@ -59,6 +59,31 @@ public sealed class StagedArchiveCreationWriter
         UseSourceUtcTimestamps: true,
         RequiresStagedReadback: true,
         RequiresContentDigest: true);
+    private static readonly CreationFormatProfile SevenZipProfile = new(
+        "7z",
+        "7Z",
+        ArchiveCreationOutputFormat.SevenZip,
+        "7z.creation_options_unsupported",
+        UseSourceUtcTimestamps: true,
+        RequiresStagedReadback: true,
+        RequiresContentDigest: true);
+    private static readonly CreationFormatProfile TarXzProfile = new(
+        "tar.xz",
+        "TAR.XZ",
+        ArchiveCreationOutputFormat.TarXz,
+        "tar.xz.creation_options_unsupported",
+        UseSourceUtcTimestamps: true,
+        RequiresStagedReadback: true,
+        RequiresContentDigest: true,
+        MinimumTimestamp: DateTimeOffset.UnixEpoch);
+    private static readonly CreationFormatProfile XzProfile = new(
+        "xz",
+        "XZ",
+        ArchiveCreationOutputFormat.Xz,
+        "xz.creation_options_unsupported",
+        UseSourceUtcTimestamps: true,
+        RequiresStagedReadback: true,
+        RequiresContentDigest: true);
     private static readonly CreationFormatProfile RarProfile = new(
         "rar",
         "RAR",
@@ -345,6 +370,88 @@ public sealed class StagedArchiveCreationWriter
             beforeCommit,
             reportWarning,
             operationId);
+
+    public Task CreateSevenZipAsync(
+        IArchiveWriterProvider provider,
+        IReadOnlyList<ArchiveCreationFile> files,
+        string destinationPath,
+        ArchiveCompressionPreset compressionPreset,
+        Func<OperationProgress, ValueTask> reportProgress,
+        CancellationToken cancellationToken,
+        Func<ValueTask>? beforeWriting = null,
+        Func<ValueTask>? beforeCommit = null,
+        Func<ArchiveWarning, ValueTask>? reportWarning = null,
+        OperationId? operationId = null) =>
+        CreateCoreAsync(
+            SevenZipProfile, provider, files, [], includeDirectories: false, destinationPath,
+            compressionPreset, reportProgress, cancellationToken, beforeWriting, beforeCommit,
+            reportWarning, operationId);
+
+    public Task CreateSevenZipTreeAsync(
+        IArchiveWriterProvider provider,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        string destinationPath,
+        ArchiveCompressionPreset compressionPreset,
+        Func<OperationProgress, ValueTask> reportProgress,
+        CancellationToken cancellationToken,
+        Func<ValueTask>? beforeWriting = null,
+        Func<ValueTask>? beforeCommit = null,
+        Func<ArchiveWarning, ValueTask>? reportWarning = null,
+        OperationId? operationId = null) =>
+        CreateCoreAsync(
+            SevenZipProfile, provider, files, directories, includeDirectories: true, destinationPath,
+            compressionPreset, reportProgress, cancellationToken, beforeWriting, beforeCommit,
+            reportWarning, operationId);
+
+    public Task CreateTarXzAsync(
+        IArchiveWriterProvider provider,
+        IReadOnlyList<ArchiveCreationFile> files,
+        string destinationPath,
+        ArchiveCompressionPreset compressionPreset,
+        Func<OperationProgress, ValueTask> reportProgress,
+        CancellationToken cancellationToken,
+        Func<ValueTask>? beforeWriting = null,
+        Func<ValueTask>? beforeCommit = null,
+        Func<ArchiveWarning, ValueTask>? reportWarning = null,
+        OperationId? operationId = null) =>
+        CreateCoreAsync(
+            TarXzProfile, provider, files, [], includeDirectories: false, destinationPath,
+            compressionPreset, reportProgress, cancellationToken, beforeWriting, beforeCommit,
+            reportWarning, operationId);
+
+    public Task CreateTarXzTreeAsync(
+        IArchiveWriterProvider provider,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        string destinationPath,
+        ArchiveCompressionPreset compressionPreset,
+        Func<OperationProgress, ValueTask> reportProgress,
+        CancellationToken cancellationToken,
+        Func<ValueTask>? beforeWriting = null,
+        Func<ValueTask>? beforeCommit = null,
+        Func<ArchiveWarning, ValueTask>? reportWarning = null,
+        OperationId? operationId = null) =>
+        CreateCoreAsync(
+            TarXzProfile, provider, files, directories, includeDirectories: true, destinationPath,
+            compressionPreset, reportProgress, cancellationToken, beforeWriting, beforeCommit,
+            reportWarning, operationId);
+
+    public Task CreateXzAsync(
+        IArchiveWriterProvider provider,
+        IReadOnlyList<ArchiveCreationFile> files,
+        string destinationPath,
+        ArchiveCompressionPreset compressionPreset,
+        Func<OperationProgress, ValueTask> reportProgress,
+        CancellationToken cancellationToken,
+        Func<ValueTask>? beforeWriting = null,
+        Func<ValueTask>? beforeCommit = null,
+        Func<ArchiveWarning, ValueTask>? reportWarning = null,
+        OperationId? operationId = null) =>
+        CreateCoreAsync(
+            XzProfile, provider, RawArchiveEntryName.Rewrite(files, destinationPath, [".xz"]), [],
+            includeDirectories: false, destinationPath, compressionPreset, reportProgress,
+            cancellationToken, beforeWriting, beforeCommit, reportWarning, operationId);
 
     public Task CreateRarAsync(
         IArchiveWriterProvider provider,

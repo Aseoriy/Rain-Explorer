@@ -69,6 +69,7 @@ public sealed class MainViewModel : ObservableObject
         ToggleSplitCommand = new RelayCommand(_ => ToggleSplit());
         OpenSettingsCommand = new RelayCommand(_ => IsSettingsOpen = true);
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsOpen = false);
+        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsOpen = !IsSettingsOpen);
         NewTabCommand = new RelayCommand(_ => ActivePane.NewTab(activate: true));
         CloseTabCommand = new RelayCommand(_ => ActivePane.CloseTab(ActivePane.SelectedTab));
         NextTabCommand = new RelayCommand(_ => ActivePane.CycleTab(+1));
@@ -624,6 +625,8 @@ public sealed class MainViewModel : ObservableObject
     public ICommand ToggleSplitCommand { get; }
     public ICommand OpenSettingsCommand { get; }
     public ICommand CloseSettingsCommand { get; }
+    /// <summary>The title-bar Settings button: opens Settings, or closes it when it's already open.</summary>
+    public ICommand ToggleSettingsCommand { get; }
     public ICommand NewTabCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand NextTabCommand { get; }

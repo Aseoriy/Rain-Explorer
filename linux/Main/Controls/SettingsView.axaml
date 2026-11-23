@@ -58,6 +58,22 @@
             <Setter Property="Padding" Value="16,4" />
             <Setter Property="Margin" Value="0,10,0,0" />
         </Style>
+        <!-- A card that a search result just jumped to. -->
+        <Style Selector="Border.card.found">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            <Setter Property="Background" Value="{DynamicResource AccentWash}" />
+        </Style>
+        <Style Selector="Button.searchResult /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Glass2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line1}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="16,12" />
+        </Style>
+        <Style Selector="Button.searchResult:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Glass3}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+        </Style>
         <Style Selector="Border.card.first">
             <Setter Property="Margin" Value="0" />
         </Style>
@@ -116,6 +132,9 @@
                         <TextBlock Text="Settings" FontSize="22" FontWeight="Bold" Margin="10,0,0,0"
                                    VerticalAlignment="Center" Foreground="{DynamicResource Text}" />
                     </StackPanel>
+                    <TextBox x:Name="SettingsSearch" Classes="field" Height="34" Width="280" Margin="0,0,130,0"
+                             HorizontalAlignment="Right" VerticalAlignment="Center" Watermark="Search settings…"
+                             AutomationProperties.Name="Search settings" />
                     <Button HorizontalAlignment="Right" VerticalAlignment="Center" Theme="{StaticResource PrimaryButton}"
                             Padding="18,8" Click="Close_Click">
                         <StackPanel Orientation="Horizontal">
@@ -148,6 +167,12 @@
                         <StackPanel Orientation="Horizontal">
                             <c:Icon Kind="file" Width="17" Height="17" Margin="0,0,12,0" />
                             <TextBlock Text="Files" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem>
+                        <StackPanel Orientation="Horizontal">
+                            <c:Icon Kind="hash" Width="17" Height="17" Margin="0,0,12,0" />
+                            <TextBlock Text="Shortcuts" VerticalAlignment="Center" FontWeight="SemiBold" />
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem>
@@ -573,6 +598,35 @@
                     </ScrollViewer>
 
                     <!-- ADVANCED -->
+                    <!-- SEARCH RESULTS (shown while the search box has text) -->
+                    <ScrollViewer x:Name="PaneSearch" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock x:Name="SearchHeading" Classes="sectionLabel first" />
+                            <StackPanel x:Name="SearchResults" Spacing="8" />
+                            <TextBlock x:Name="SearchEmpty" Classes="rowHint" Margin="4,6,0,0" IsVisible="False" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- SHORTCUTS (rows built in code from ShortcutService) -->
+                    <ScrollViewer x:Name="PaneShortcuts" Classes="pane" IsVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="KEYBOARD SHORTCUTS" Classes="sectionLabel first" />
+                            <Border Classes="card first">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="Customize shortcuts" Classes="rowTitle" />
+                                        <TextBlock Text="Pick Change, then press the keys you want. Esc cancels, Backspace turns the shortcut off. Press F1 anywhere to see them all."
+                                                   Classes="rowHint" />
+                                    </StackPanel>
+                                    <Button x:Name="ResetAllShortcutsButton" Grid.Column="1" Content="Reset all"
+                                            Theme="{StaticResource DialogButton}" MinWidth="0" Padding="14,7"
+                                            Click="ResetAllShortcuts_Click" />
+                                </Grid>
+                            </Border>
+                            <StackPanel x:Name="ShortcutRows" />
+                        </StackPanel>
+                    </ScrollViewer>
+
                     <ScrollViewer x:Name="PaneAdvanced" Classes="pane" IsVisible="False">
                         <StackPanel>
                             <TextBlock Text="INTERFACE" Classes="sectionLabel first" />
@@ -652,6 +706,24 @@
                                             Padding="14,7" Click="OpenConfigFolder_Click" />
                                 </Grid>
                             </Border>
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                        <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                            <TextBlock Text="Back up and restore" Classes="rowTitle" />
+                                            <TextBlock Text="Save your settings, pinned places, sidebar lists, tab projects, shortcuts and folder sorting to one file. Restore it after a reinstall or on another PC."
+                                                       Classes="rowHint" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button x:Name="BackupButton" Content="Back up…" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                                    Padding="14,7" Click="BackupSettings_Click" />
+                                            <Button x:Name="RestoreButton" Content="Restore…" Theme="{StaticResource DialogButton}" MinWidth="0"
+                                                    Padding="14,7" Click="RestoreSettings_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock x:Name="BackupStatus" Classes="rowHint" Margin="0,8,0,0" IsVisible="False" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -676,6 +748,17 @@
                                                    Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </StackPanel>
+                            </Border>
+
+                            <Border Classes="card">
+                                <Grid Classes="row" ColumnDefinitions="*,Auto">
+                                    <StackPanel MaxWidth="420" HorizontalAlignment="Left">
+                                        <TextBlock Text="What's new" Classes="rowTitle" />
+                                        <TextBlock Text="See what changed in this version, with shortcuts to each new feature." Classes="rowHint" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" x:Name="WhatsNewButton" Content="What's new" Theme="{StaticResource DialogButton}"
+                                            MinWidth="0" Padding="14,7" Click="WhatsNew_Click" />
+                                </Grid>
                             </Border>
 
                             <TextBlock Text="UPDATES" Classes="sectionLabel" />

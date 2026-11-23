@@ -33,7 +33,9 @@ public sealed class ManagedCreationEndToEndTests
             Assert.IsFalse(capability.CanRebuild, capability.Format.ToString());
             Assert.AreEqual(
                 capability.Format is ManagedArchiveCreationFormat.TarGZip
-                    or ManagedArchiveCreationFormat.TarBZip2,
+                    or ManagedArchiveCreationFormat.TarBZip2
+                    or ManagedArchiveCreationFormat.SevenZip
+                    or ManagedArchiveCreationFormat.TarXz,
                 capability.SupportsTreeCreation,
                 capability.Format.ToString());
             CollectionAssert.AreEqual(

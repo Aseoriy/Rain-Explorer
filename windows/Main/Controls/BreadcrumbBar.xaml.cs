@@ -39,7 +39,21 @@ public partial class BreadcrumbBar : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += (_, _) => Rebuild();
+        // The dropdown closes itself on the press that lands on its own button; remember that, so the
+        // button's click closes it instead of opening it straight back up.
+        ChildPopup.Closed += (_, _) =>
+        {
+            _childClosedAnchor = ChildPopup.PlacementTarget;
+            _childClosedAt = Environment.TickCount64;
+        };
     }
+
+    private UIElement? _childClosedAnchor;
+    private long _childClosedAt;
+
+    /// <summary>True when the dropdown anchored to <paramref name="anchor"/> closed a moment ago.</summary>
+    private bool ChildPopupJustClosed(UIElement anchor) =>
+        ReferenceEquals(anchor, _childClosedAnchor) && Environment.TickCount64 - _childClosedAt < 350;
 
     private TabViewModel? Tab => DataContext as TabViewModel;
 
@@ -233,7 +247,11 @@ public partial class BreadcrumbBar : UserControl
     private void AddOverflow(List<Crumb> hidden)
     {
         var btn = new Button { Content = "…", Style = (Style)FindResource("CrumbButtonStyle") };
-        btn.Click += (_, _) => ShowDropdown(hidden.Select(h => new Suggestion(h.Label, h.Path)), btn);
+        btn.Click += (_, _) =>
+        {
+            if (ChildPopupJustClosed(btn)) return;
+            ShowDropdown(hidden.Select(h => new Suggestion(h.Label, h.Path)), btn);
+        };
         CrumbStrip.Children.Add(btn);
     }
 
@@ -316,7 +334,7 @@ public partial class BreadcrumbBar : UserControl
 
     private void Chevron_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string dir } b) OpenChildPopup(dir, b);
+        if (sender is Button { Tag: string dir } b && !ChildPopupJustClosed(b)) OpenChildPopup(dir, b);
     }
 
     // ===================== Crumb right-click menu =====================

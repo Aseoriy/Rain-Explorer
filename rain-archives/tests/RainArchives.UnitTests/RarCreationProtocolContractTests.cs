@@ -48,9 +48,13 @@ public sealed class RarCreationProtocolContractTests
                 .ToArray(),
             minorTwentyThree);
         var minorTwentyFour = minorTwentyThree.Append(ProtocolFeatures.ExpandedCreationTreeBudget).ToArray();
-        CollectionAssert.AreEqual(minorTwentyFour, ProtocolFeatures.SupportedVersion1.ToArray());
         CollectionAssert.AreEqual(
             minorTwentyFour,
+            ProtocolFeatures.SupportedForMinorVersion(ProtocolConstants.ExpandedCreationTreeBudgetMinorVersion).ToArray());
+        var minorTwentyFive = minorTwentyFour.Append(ProtocolFeatures.SevenZipXzCreation).ToArray();
+        CollectionAssert.AreEqual(minorTwentyFive, ProtocolFeatures.SupportedVersion1.ToArray());
+        CollectionAssert.AreEqual(
+            minorTwentyFive,
             ProtocolFeatures.SupportedForMinorVersion(ProtocolConstants.MinorVersion).ToArray());
     }
 

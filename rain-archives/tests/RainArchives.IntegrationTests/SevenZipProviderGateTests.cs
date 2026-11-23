@@ -14,9 +14,12 @@ public sealed class SevenZipProviderGateTests
     {
         var provider = new SevenZipProviderGate(gateApproved: false);
 
-        Assert.IsFalse(
+        // Since protocol 1.25 the pinned official 7z.dll ships for 7z/XZ *creation*. Its presence must
+        // not open the native *read* gate: reading stays on the managed provider until that audit is done.
+        Assert.IsTrue(
             provider.LibraryPresent,
-            "The managed-only test output must not carry the gated native 7z.dll asset.");
+            "The bundled 7-Zip writer engine should be in the app-private native folder.");
+        Assert.IsTrue(SevenZipNativeLibrary.TryInitialize(), "The bundled 7z.dll must match the pinned official build.");
 
         var sevenZip = provider.Probe(
             [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C],

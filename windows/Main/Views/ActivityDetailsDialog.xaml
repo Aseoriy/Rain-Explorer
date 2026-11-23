@@ -24,62 +24,66 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}"
-            BorderThickness="1" CornerRadius="12" Padding="18">
-        <Border.Effect>
-            <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="32" ShadowDepth="5" />
-        </Border.Effect>
-        <DockPanel>
-            <StackPanel DockPanel.Dock="Top" MouseLeftButtonDown="Title_Drag" Background="Transparent">
-                <TextBlock x:Name="TitleText" FontSize="15" FontWeight="SemiBold" />
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0" />
-                    <TextBlock x:Name="StatusText" FontSize="12" Foreground="{StaticResource TextMuted}" />
-                </StackPanel>
-            </StackPanel>
-
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <TextBlock x:Name="CopiedText" Text="Copied" Foreground="{StaticResource TextMuted}"
-                           VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" />
-                <Button Content="Copy details" Style="{StaticResource GhostButton}" Click="Copy_Click" Margin="0,0,8,0" />
-                <Button Content="Close" Style="{StaticResource PrimaryButton}" IsDefault="True" IsCancel="True"
-                        Click="Close_Click" />
-            </StackPanel>
-
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <TextBlock Text="WHAT HAPPENED" Style="{StaticResource Section}" />
-                    <TextBox x:Name="SummaryText" Style="{StaticResource Selectable}" />
-                    <StackPanel x:Name="AdvicePanel">
-                        <TextBlock Text="WHAT TO TRY" Style="{StaticResource Section}" />
-                        <TextBox x:Name="AdviceText" Style="{StaticResource Selectable}"
-                                 Foreground="{StaticResource TextDim}" />
-                    </StackPanel>
-
-                    <TextBlock Text="DETAILS" Style="{StaticResource Section}" />
-                    <Grid x:Name="Facts">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="110" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                    </Grid>
-
-                    <StackPanel x:Name="MessagePanel">
-                        <TextBlock Text="SYSTEM MESSAGE" Style="{StaticResource Section}" />
-                        <Border Background="{DynamicResource Glass2}" BorderBrush="{StaticResource Line1}"
-                                BorderThickness="1" CornerRadius="8" Padding="10,8">
-                            <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
-                                <TextBox x:Name="MessageText" Style="{StaticResource Selectable}"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="11.5"
-                                         Foreground="{StaticResource TextDim}" />
-                            </ScrollViewer>
-                        </Border>
-                        <TextBlock x:Name="ShortenedNote" Foreground="{StaticResource TextFaint}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"
-                                   Text="This entry was saved before detailed history was on, so the message may be shortened." />
+    <Grid>
+        <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+        <Border IsHitTestVisible="False" Background="{DynamicResource MenuBg}" CornerRadius="12">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="32" ShadowDepth="5" />
+            </Border.Effect>
+        </Border>
+        <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="12" Padding="18">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" MouseLeftButtonDown="Title_Drag" Background="Transparent">
+                    <TextBlock x:Name="TitleText" FontSize="15" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0" />
+                        <TextBlock x:Name="StatusText" FontSize="12" Foreground="{StaticResource TextMuted}" />
                     </StackPanel>
                 </StackPanel>
-            </ScrollViewer>
-        </DockPanel>
-    </Border>
+    
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <TextBlock x:Name="CopiedText" Text="Copied" Foreground="{StaticResource TextMuted}"
+                               VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" />
+                    <Button Content="Copy details" Style="{StaticResource GhostButton}" Click="Copy_Click" Margin="0,0,8,0" />
+                    <Button Content="Close" Style="{StaticResource PrimaryButton}" IsDefault="True" IsCancel="True"
+                            Click="Close_Click" />
+                </StackPanel>
+    
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="WHAT HAPPENED" Style="{StaticResource Section}" />
+                        <TextBox x:Name="SummaryText" Style="{StaticResource Selectable}" />
+                        <StackPanel x:Name="AdvicePanel">
+                            <TextBlock Text="WHAT TO TRY" Style="{StaticResource Section}" />
+                            <TextBox x:Name="AdviceText" Style="{StaticResource Selectable}"
+                                     Foreground="{StaticResource TextDim}" />
+                        </StackPanel>
+    
+                        <TextBlock Text="DETAILS" Style="{StaticResource Section}" />
+                        <Grid x:Name="Facts">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+    
+                        <StackPanel x:Name="MessagePanel">
+                            <TextBlock Text="SYSTEM MESSAGE" Style="{StaticResource Section}" />
+                            <Border Background="{DynamicResource Glass2}" BorderBrush="{StaticResource Line1}"
+                                    BorderThickness="1" CornerRadius="8" Padding="10,8">
+                                <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
+                                    <TextBox x:Name="MessageText" Style="{StaticResource Selectable}"
+                                             FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                             Foreground="{StaticResource TextDim}" />
+                                </ScrollViewer>
+                            </Border>
+                            <TextBlock x:Name="ShortenedNote" Foreground="{StaticResource TextFaint}" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"
+                                       Text="This entry was saved before detailed history was on, so the message may be shortened." />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
 </Window>

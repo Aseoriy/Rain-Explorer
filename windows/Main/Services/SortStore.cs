@@ -87,6 +87,7 @@ public sealed class SortStore
 
     private void Save()
     {
+        if (SettingsStore.Instance.IsFrozen) return;   // a restored backup is waiting for the restart
         lock (_saveGate)
         {
             string? tmp = null;

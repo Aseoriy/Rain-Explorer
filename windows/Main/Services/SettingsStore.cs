@@ -13,20 +13,24 @@ public sealed class SettingsStore
 {
     public static SettingsStore Instance { get; } = new();
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-        // Be forgiving on read: a single stray comma, comment, casing difference, or
-        // BOM must NOT throw — a parse failure used to silently reset every setting
-        // (including pinned Quick Access items) back to defaults on the next launch.
-        PropertyNameCaseInsensitive = true,
-        AllowTrailingCommas = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-    };
+    private static JsonSerializerOptions JsonOpts => SettingsJson.Options;
+
+    /// <summary>The options settings.json is read and written with (shared with backups).</summary>
+    internal static JsonSerializerOptions JsonOptions => SettingsJson.Options;
 
     private readonly string _path;
     private readonly object _saveGate = new();
+    private volatile bool _frozen;
+
+    /// <summary>The folder holding settings.json and Rain's other small data files.</summary>
+    public string ConfigDir => Path.GetDirectoryName(_path)!;
+
+    /// <summary>True after a restore wrote new files: nothing may save over them before Rain restarts.</summary>
+    public bool IsFrozen => _frozen;
+
+    /// <summary>Stop saving (a backup was just restored and Rain is about to restart).</summary>
+    public void Freeze() => _frozen = true;
+
     public AppSettings Settings { get; }
 
     private SettingsStore()
@@ -100,7 +104,7 @@ public sealed class SettingsStore
         // would overwrite a file we never successfully loaded — clobbering whatever pins
         // it holds with our empty in-memory defaults. Refuse: the user's data on disk
         // (and the .corrupt copy) stays intact until a clean run can read it.
-        if (LoadFailed) return;
+        if (LoadFailed || _frozen) return;
 
         lock (_saveGate)
         {
@@ -149,6 +153,8 @@ public sealed class SettingsStore
         settings.QuickAccessName ??= "Quick access";
         settings.DrivesName ??= "Drives";
         settings.SkippedUpdateVersion ??= string.Empty;
+        settings.LastWhatsNewShown ??= string.Empty;
+        settings.ShortcutOverrides ??= new();
 
         foreach (var group in settings.CustomGroups)
         {
@@ -177,4 +183,21 @@ public sealed class SettingsStore
             session.RightTabGroupNames ??= new();
         }
     }
+}
+
+/// <summary>The options settings.json is read and written with. A separate class, so backups (and tests)
+/// can use them without loading the settings file.</summary>
+internal static class SettingsJson
+{
+    internal static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+        // Be forgiving on read: a single stray comma, comment, casing difference, or
+        // BOM must NOT throw — a parse failure used to silently reset every setting
+        // (including pinned Quick Access items) back to defaults on the next launch.
+        PropertyNameCaseInsensitive = true,
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+    };
 }

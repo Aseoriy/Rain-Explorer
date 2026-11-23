@@ -38,31 +38,35 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}"
-            BorderThickness="1" CornerRadius="12" Padding="18">
-        <Border.Effect>
-            <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="32" ShadowDepth="5" />
-        </Border.Effect>
-        <StackPanel>
-            <TextBlock Text="Choose an icon" FontSize="15" FontWeight="SemiBold"
-                       MouseLeftButtonDown="Title_Drag" />
-            <ListBox x:Name="IconList" Margin="0,14,0,0" Background="Transparent" BorderThickness="0"
-                     MaxHeight="300" ItemContainerStyle="{StaticResource IconSwatch}"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     MouseDoubleClick="IconList_MouseDoubleClick">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-            </ListBox>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <Button Content="Cancel" Style="{StaticResource DialogButton}" IsCancel="True"
-                        Click="Cancel_Click" Margin="0,0,8,0" />
-                <Button Content="Use icon" Style="{StaticResource PrimaryButton}" IsDefault="True"
-                        Click="Ok_Click" />
+    <Grid>
+        <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+        <Border IsHitTestVisible="False" Background="{DynamicResource MenuBg}" CornerRadius="12">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.62" BlurRadius="32" ShadowDepth="5" />
+            </Border.Effect>
+        </Border>
+        <Border Background="{DynamicResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="12" Padding="18">
+            <StackPanel>
+                <TextBlock Text="Choose an icon" FontSize="15" FontWeight="SemiBold"
+                           MouseLeftButtonDown="Title_Drag" />
+                <ListBox x:Name="IconList" Margin="0,14,0,0" Background="Transparent" BorderThickness="0"
+                         MaxHeight="300" ItemContainerStyle="{StaticResource IconSwatch}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         MouseDoubleClick="IconList_MouseDoubleClick">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <Button Content="Cancel" Style="{StaticResource DialogButton}" IsCancel="True"
+                            Click="Cancel_Click" Margin="0,0,8,0" />
+                    <Button Content="Use icon" Style="{StaticResource PrimaryButton}" IsDefault="True"
+                            Click="Ok_Click" />
+                </StackPanel>
             </StackPanel>
-        </StackPanel>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

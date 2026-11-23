@@ -234,8 +234,12 @@ public sealed class UndoService : ObservableObject
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
-    public string UndoText => _undo.Count > 0 ? $"Undo {_undo[^1].Label} (Ctrl+Z)" : "Nothing to undo";
-    public string RedoText => _redo.Count > 0 ? $"Redo {_redo[^1].Label} (Ctrl+Y)" : "Nothing to redo";
+    public string UndoText => _undo.Count > 0 ? $"Undo {_undo[^1].Label}{Keys("edit.undo")}" : "Nothing to undo";
+    public string RedoText => _redo.Count > 0 ? $"Redo {_redo[^1].Label}{Keys("edit.redo")}" : "Nothing to redo";
+
+    /// <summary>" (Ctrl+Z)" with the current key from Settings → Shortcuts, or "" when it has none.</summary>
+    private static string Keys(string actionId) =>
+        ShortcutService.Hint(actionId) is { Length: > 0 } keys ? $" ({keys})" : string.Empty;
 
     /// <summary>Record a completed operation so it can be undone.</summary>
     public void Push(UndoAction action)

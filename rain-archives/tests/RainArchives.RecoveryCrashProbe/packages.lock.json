@@ -15,7 +15,10 @@
         "type": "Project",
         "dependencies": {
           "RainArchives.Contracts": "[1.0.0, )",
-          "RainArchives.Core": "[1.0.0, )"
+          "RainArchives.Core": "[1.0.0, )",
+          "RainArchives.Providers.SharpCompress": "[1.0.0, )",
+          "SharpCompress": "[0.50.4, )",
+          "SharpSevenZip": "[2.0.109, )"
         }
       },
       "rainarchives.providers.sharpcompress": {
@@ -65,6 +68,12 @@
         "requested": "[0.50.4, )",
         "resolved": "0.50.4",
         "contentHash": "/hxjUR7DEX6mky8/LQXyrnrKioOL6D6veAID1EZpro+q4s02x5dHEYBV3qjEN6lDYYilDoQQ76BcmQj+lRx51w=="
+      },
+      "SharpSevenZip": {
+        "type": "CentralTransitive",
+        "requested": "[2.0.109, )",
+        "resolved": "2.0.109",
+        "contentHash": "x4ybTBzv5/4fPnQXIKZjL3iKgsuCXkB2ZbkYHBPEQSh26p+su5dWsnl0B3TIsFzs/lfYlCmJPvwoguO0pd44pA=="
       }
     },
     "net10.0-windows7.0/win-x64": {}

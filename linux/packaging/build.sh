@@ -46,7 +46,7 @@ if command -v dpkg-deb >/dev/null && [[ "$RID" == linux-x64 || "$RID" == linux-a
     RID="$RID" "$ROOT/packaging/build-deb.sh" "$OUT"
     DEB_VERSION="${VERSION/-linux-/~linux.}"; DEB_VERSION="${DEB_VERSION/-beta-/~beta.}"
     case "$RID" in linux-x64) DEB_ARCH=amd64 ;; linux-arm64) DEB_ARCH=arm64 ;; esac
-    PACKAGES+=("rain-explorer_${DEB_VERSION}_${DEB_ARCH}.deb")
+    PACKAGES+=("rain-explorer_${DEB_VERSION//\~/.}_${DEB_ARCH}.deb")   # file name as on GitHub (see build-deb.sh)
 else
     echo "Skipping .deb (requires dpkg-deb and a linux-x64 or linux-arm64 release)."
 fi

@@ -223,6 +223,14 @@ internal sealed class WorkerHost : IAsyncDisposable
             new BuiltInBzip2ArchiveWriterProvider(),
         };
 
+        // 7z / TAR.XZ / XZ exist only when the bundled official 7-Zip engine passes its hash check.
+        if (SevenZipNativeLibrary.TryInitialize())
+        {
+            providers.Add(new SevenZipArchiveWriterProvider());
+            providers.Add(new SevenZipTarXzArchiveWriterProvider());
+            providers.Add(new SevenZipXzArchiveWriterProvider());
+        }
+
         if (WinRarArchiveWriterProvider.TryCreateInstalled(
                 out var rarProvider,
                 out _)
@@ -825,6 +833,14 @@ internal sealed class WorkerHost : IAsyncDisposable
             throw new InvalidDataException(
                 "Client enabled managed write capabilities without every managed creation dependency.");
         }
+
+        if (enabled.Contains(ProtocolFeatures.SevenZipXzCreation)
+            && ProtocolFeatures.SevenZipXzCreationDependencies.Any(
+                dependency => !enabled.Contains(dependency)))
+        {
+            throw new InvalidDataException(
+                "Client enabled 7z/XZ creation without managed write capabilities, TAR trees and request cancellation.");
+        }
     }
 
     private async Task DispatchAsync(
@@ -898,6 +914,13 @@ internal sealed class WorkerHost : IAsyncDisposable
                     break;
                 case ProtocolMessageKinds.StartBZip2Creation:
                     await StartBZip2CreationAsync(frame, cancellationToken).ConfigureAwait(false);
+                    break;
+                case ProtocolMessageKinds.StartSevenZipCreation:
+                case ProtocolMessageKinds.StartSevenZipTreeCreation:
+                case ProtocolMessageKinds.StartTarXzCreation:
+                case ProtocolMessageKinds.StartTarXzTreeCreation:
+                case ProtocolMessageKinds.StartXzCreation:
+                    await StartSevenZipXzCreationAsync(frame, cancellationToken).ConfigureAwait(false);
                     break;
                 case ProtocolMessageKinds.StartZipRebuildCopy:
                     await StartZipRebuildCopyAsync(frame, cancellationToken).ConfigureAwait(false);
@@ -2493,6 +2516,85 @@ internal sealed class WorkerHost : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    // Protocol 1.25: 7z (files / tree), TAR.XZ (files / tree) and raw XZ through the bundled
+    // 7-Zip engine. Same validation and staged, read-back-checked creation as the other formats.
+    private async Task StartSevenZipXzCreationAsync(
+        ProtocolFrame frame,
+        CancellationToken cancellationToken)
+    {
+        EnsureManagedCreationFeature(
+            ProtocolFeatures.SevenZipXzCreation,
+            ProtocolFeatures.SevenZipXzCreationDependencies,
+            "7z/XZ creation");
+        switch (frame.Kind)
+        {
+            case ProtocolMessageKinds.StartSevenZipCreation:
+            {
+                var request = frame.ReadPayload<StartSevenZipCreationRequest>();
+                ValidateManagedTarCreationRequest(request.DestinationPath, request.Files,
+                    request.CompressionPreset, gzip: true, "7z.creation_invalid_request");
+                await StartCreationOperationAsync(frame, operation => RunArchiveCreationCoreAsync(
+                    operation, request.Files, [], includeDirectories: false, request.DestinationPath,
+                    request.CompressionPreset, format: "7z"), cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            case ProtocolMessageKinds.StartSevenZipTreeCreation:
+            {
+                var request = frame.ReadPayload<StartSevenZipTreeCreationRequest>();
+                ValidateManagedTarTreeCreationRequest(request.DestinationPath, request.Files,
+                    request.Directories, request.CompressionPreset, gzip: true, "7z.creation_invalid_request");
+                await StartCreationOperationAsync(frame, operation => RunArchiveCreationCoreAsync(
+                    operation, request.Files, request.Directories, includeDirectories: true,
+                    request.DestinationPath, request.CompressionPreset, format: "7z"),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            case ProtocolMessageKinds.StartTarXzCreation:
+            {
+                var request = frame.ReadPayload<StartTarXzCreationRequest>();
+                ValidateManagedTarCreationRequest(request.DestinationPath, request.Files,
+                    request.CompressionPreset, gzip: true, "tar.xz.creation_invalid_request");
+                await StartCreationOperationAsync(frame, operation => RunArchiveCreationCoreAsync(
+                    operation, request.Files, [], includeDirectories: false, request.DestinationPath,
+                    request.CompressionPreset, format: "tar.xz"), cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            case ProtocolMessageKinds.StartTarXzTreeCreation:
+            {
+                var request = frame.ReadPayload<StartTarXzTreeCreationRequest>();
+                ValidateManagedTarTreeCreationRequest(request.DestinationPath, request.Files,
+                    request.Directories, request.CompressionPreset, gzip: true, "tar.xz.creation_invalid_request");
+                await StartCreationOperationAsync(frame, operation => RunArchiveCreationCoreAsync(
+                    operation, request.Files, request.Directories, includeDirectories: true,
+                    request.DestinationPath, request.CompressionPreset, format: "tar.xz"),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            default:
+            {
+                var request = frame.ReadPayload<StartXzCreationRequest>();
+                if (!IsValidCreationDestination(request.DestinationPath)
+                    || string.IsNullOrWhiteSpace(request.SourcePath)
+                    || request.SourcePath.Length > ProtocolConstants.MaximumPathCharacters
+                    || !Path.IsPathFullyQualified(request.SourcePath)
+                    || !Enum.IsDefined(request.CompressionPreset)
+                    || !request.DestinationPath.EndsWith(".xz", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArchiveProviderException(
+                        ArchiveErrorCategory.InvalidRequest,
+                        "xz.creation_invalid_request",
+                        "The raw XZ request requires one ordinary source and a new .xz destination.");
+                }
+
+                await StartCreationOperationAsync(frame, operation => RunArchiveCreationCoreAsync(
+                    operation, [new ArchiveCreationFile(request.SourcePath, "content")], [],
+                    includeDirectories: false, request.DestinationPath, request.CompressionPreset,
+                    format: "xz"), cancellationToken).ConfigureAwait(false);
+                break;
+            }
+        }
+    }
+
     private async Task StartCreationOperationAsync(
         ProtocolFrame frame,
         Func<WorkerOperation, Task> run,
@@ -3219,8 +3321,8 @@ internal sealed class WorkerHost : IAsyncDisposable
 
         var gzipPresets = Enum.GetValues<ArchiveCompressionPreset>();
         var bzip2Presets = new[] { ArchiveCompressionPreset.Balanced };
-        var response = new GetManagedWriteCapabilitiesResponse(
-        [
+        var capabilities = new List<ManagedWriteCapability>
+        {
             CreateManagedCapability(
                 ManagedArchiveCreationFormat.TarGZip,
                 "tar.gz",
@@ -3249,7 +3351,35 @@ internal sealed class WorkerHost : IAsyncDisposable
                 supportsTreeCreation: false,
                 ProtocolConstants.MaximumRawCreationEntries,
                 ProtocolConstants.MaximumRawCreationSourceBytes),
-        ]);
+        };
+        // Clients that negotiated 1.25 also learn about the bundled 7-Zip formats; older clients
+        // keep receiving exactly the four formats they validate against.
+        if (_enabledFeatures.Contains(ProtocolFeatures.SevenZipXzCreation))
+        {
+            capabilities.Add(CreateManagedCapability(
+                ManagedArchiveCreationFormat.SevenZip,
+                "7z",
+                gzipPresets,
+                supportsTreeCreation: true,
+                ProtocolConstants.MaximumTarCreationEntries,
+                ProtocolConstants.MaximumTarCreationSourceBytes));
+            capabilities.Add(CreateManagedCapability(
+                ManagedArchiveCreationFormat.TarXz,
+                "tar.xz",
+                gzipPresets,
+                supportsTreeCreation: true,
+                ProtocolConstants.MaximumTarCreationEntries,
+                ProtocolConstants.MaximumTarCreationSourceBytes));
+            capabilities.Add(CreateManagedCapability(
+                ManagedArchiveCreationFormat.Xz,
+                "xz",
+                gzipPresets,
+                supportsTreeCreation: false,
+                ProtocolConstants.MaximumRawCreationEntries,
+                ProtocolConstants.MaximumRawCreationSourceBytes));
+        }
+
+        var response = new GetManagedWriteCapabilitiesResponse(capabilities);
         await SendResponseAsync(frame, response, cancellationToken).ConfigureAwait(false);
     }
 
@@ -4659,6 +4789,21 @@ internal sealed class WorkerHost : IAsyncDisposable
                     provider, files, destinationPath, compressionPreset, progress,
                     operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
                 ("bzip2", false) => _creationWriter.CreateBZip2Async(
+                    provider, files, destinationPath, compressionPreset, progress,
+                    operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
+                ("7z", false) => _creationWriter.CreateSevenZipAsync(
+                    provider, files, destinationPath, compressionPreset, progress,
+                    operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
+                ("7z", true) => _creationWriter.CreateSevenZipTreeAsync(
+                    provider, files, directories, destinationPath, compressionPreset, progress,
+                    operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
+                ("tar.xz", false) => _creationWriter.CreateTarXzAsync(
+                    provider, files, destinationPath, compressionPreset, progress,
+                    operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
+                ("tar.xz", true) => _creationWriter.CreateTarXzTreeAsync(
+                    provider, files, directories, destinationPath, compressionPreset, progress,
+                    operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
+                ("xz", false) => _creationWriter.CreateXzAsync(
                     provider, files, destinationPath, compressionPreset, progress,
                     operation.Cancellation.Token, beforeWriting, beforeCommit, reportWarning, operation.Id),
                 _ => throw new ArchiveProviderException(

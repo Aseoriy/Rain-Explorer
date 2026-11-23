@@ -222,6 +222,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// (a manual "Check for updates" still surfaces it).</summary>
     public string SkippedUpdateVersion { get => _skippedUpdateVersion; set => Set(ref _skippedUpdateVersion, value); }
 
+    private string _lastWhatsNewShown = "";
+    /// <summary>The release whose "What's new" screen was last shown (e.g. "2.0"); it appears once per release.</summary>
+    public string LastWhatsNewShown { get => _lastWhatsNewShown; set => Set(ref _lastWhatsNewShown, value); }
+
     private bool _rememberActivity = true;
     /// <summary>Persist the activity center log across restarts. When off, the log is
     /// in-memory only and resets every launch.</summary>
@@ -235,6 +239,31 @@ public sealed class AppSettings : INotifyPropertyChanged
     private int _activityRetentionDays = 7;
     /// <summary>How long detailed history is kept; 0 means until it's cleared.</summary>
     public int ActivityRetentionDays { get => _activityRetentionDays; set => Set(ref _activityRetentionDays, value); }
+
+    /// <summary>Custom keyboard shortcuts: action id → gestures joined by "|" (empty = turned off).
+    /// Actions not listed use their defaults (Services/ShortcutService).</summary>
+    public Dictionary<string, string> ShortcutOverrides { get; set; } = new();
+
+    private bool _activityCenterPinned;
+    /// <summary>The activity flyout stays open when you click elsewhere.</summary>
+    public bool ActivityCenterPinned { get => _activityCenterPinned; set => Set(ref _activityCenterPinned, value); }
+
+    private bool _activityCenterPoppedOut;
+    /// <summary>The activity center lives in its own movable window instead of the title-bar flyout.</summary>
+    public bool ActivityCenterPoppedOut { get => _activityCenterPoppedOut; set => Set(ref _activityCenterPoppedOut, value); }
+
+    private bool _activityWindowOpen;
+    /// <summary>The pop-out activity window was open when Rain last closed (it reopens at startup).</summary>
+    public bool ActivityWindowOpen { get => _activityWindowOpen; set => Set(ref _activityWindowOpen, value); }
+
+    private bool _activityWindowTopmost = true;
+    /// <summary>The pop-out activity window stays above other windows.</summary>
+    public bool ActivityWindowTopmost { get => _activityWindowTopmost; set => Set(ref _activityWindowTopmost, value); }
+
+    public double? ActivityWindowLeft { get; set; }
+    public double? ActivityWindowTop { get; set; }
+    public double ActivityWindowWidth { get; set; } = 420;
+    public double ActivityWindowHeight { get; set; } = 520;
 
     private bool _openActivityOnFailure;
     /// <summary>Open the activity center when an action fails.</summary>

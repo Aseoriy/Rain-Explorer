@@ -14,6 +14,10 @@ public enum ArchiveCreationOutputFormat
     GZip,
     BZip2,
     Rar,
+    // Protocol 1.25, written by the bundled official 7-Zip engine. Appended so stored values never shift.
+    SevenZip,
+    TarXz,
+    Xz,
 }
 
 public sealed record PlannedArchiveCreationFile(
@@ -121,9 +125,12 @@ public sealed class ArchiveCreationPolicy
             files = RawArchiveEntryName.Rewrite(
                 files,
                 destinationPath,
-                outputFormat == ArchiveCreationOutputFormat.GZip
-                    ? [".gz", ".gzip"]
-                    : [".bz2", ".bzip2"]);
+                outputFormat switch
+                {
+                    ArchiveCreationOutputFormat.GZip => [".gz", ".gzip"],
+                    ArchiveCreationOutputFormat.Xz => [".xz"],
+                    _ => [".bz2", ".bzip2"],
+                });
         }
         var limits = GetLimits(outputFormat);
         if (IsRawCompression(outputFormat) && files.Count != 1)
@@ -1036,14 +1043,21 @@ public sealed class ArchiveCreationPolicy
             ArchiveCreationOutputFormat.Tar => EstimateMaximumTarOutputBytes(
                 files,
                 directories ?? []),
-            ArchiveCreationOutputFormat.TarGZip or ArchiveCreationOutputFormat.TarBZip2 =>
+            ArchiveCreationOutputFormat.TarGZip
+                or ArchiveCreationOutputFormat.TarBZip2
+                or ArchiveCreationOutputFormat.TarXz =>
                 EstimateMaximumCompressedTarOutputBytes(
                     files,
                     sourceBytes,
                     directories ?? []),
-            ArchiveCreationOutputFormat.GZip or ArchiveCreationOutputFormat.BZip2 =>
+            ArchiveCreationOutputFormat.GZip
+                or ArchiveCreationOutputFormat.BZip2
+                or ArchiveCreationOutputFormat.Xz =>
                 EstimateMaximumRawCompressedOutputBytes(files, sourceBytes),
-            ArchiveCreationOutputFormat.Rar => EstimateMaximumRarOutputBytes(
+            // 7-Zip stores incompressible LZMA2 chunks instead of expanding them, like the RAR
+            // encoder, so the same conservative data-plus-metadata allowance applies.
+            ArchiveCreationOutputFormat.Rar
+                or ArchiveCreationOutputFormat.SevenZip => EstimateMaximumRarOutputBytes(
                 files,
                 sourceBytes,
                 directories),
@@ -1236,9 +1250,12 @@ public sealed class ArchiveCreationPolicy
             ArchiveCreationOutputFormat.Zip => ZipLimits,
             ArchiveCreationOutputFormat.Tar
                 or ArchiveCreationOutputFormat.TarGZip
-                or ArchiveCreationOutputFormat.TarBZip2 => TarLimits,
+                or ArchiveCreationOutputFormat.TarBZip2
+                or ArchiveCreationOutputFormat.TarXz
+                or ArchiveCreationOutputFormat.SevenZip => TarLimits,
             ArchiveCreationOutputFormat.GZip
-                or ArchiveCreationOutputFormat.BZip2 => RawCompressionLimits,
+                or ArchiveCreationOutputFormat.BZip2
+                or ArchiveCreationOutputFormat.Xz => RawCompressionLimits,
             ArchiveCreationOutputFormat.Rar => RarLimits,
             _ => throw new ArgumentOutOfRangeException(nameof(outputFormat)),
         };
@@ -1247,7 +1264,9 @@ public sealed class ArchiveCreationPolicy
         GetLimits(outputFormat) with { MaximumEntries = _maximumTreeEntries };
 
     private static bool IsRawCompression(ArchiveCreationOutputFormat outputFormat) =>
-        outputFormat is ArchiveCreationOutputFormat.GZip or ArchiveCreationOutputFormat.BZip2;
+        outputFormat is ArchiveCreationOutputFormat.GZip
+            or ArchiveCreationOutputFormat.BZip2
+            or ArchiveCreationOutputFormat.Xz;
 
     private sealed record DirectoryRootDefinition(
         string SourcePath,

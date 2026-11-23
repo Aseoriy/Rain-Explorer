@@ -435,20 +435,26 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="bg" Background="{TemplateBinding Background}"
-                            BorderBrush="#29FFFFFF" BorderThickness="1"
-                            CornerRadius="10" Padding="{TemplateBinding Padding}">
-                        <Border.Effect>
-                            <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="14"
-                                              ShadowDepth="0" Opacity="0.45" />
-                        </Border.Effect>
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          RecognizesAccessKey="True" />
-                    </Border>
+                    <Grid>
+                        <!-- Glow on its own layer: under an effect the button text would render soft. -->
+                        <Border x:Name="glow" IsHitTestVisible="False" CornerRadius="10"
+                                Background="{TemplateBinding Background}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="14"
+                                                  ShadowDepth="0" Opacity="0.45" />
+                            </Border.Effect>
+                        </Border>
+                        <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                BorderBrush="#29FFFFFF" BorderThickness="1"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bg" Property="Background" Value="{DynamicResource GradientAccentHover}" />
-                            <Setter TargetName="bg" Property="Effect">
+                            <Setter TargetName="glow" Property="Effect">
                                 <Setter.Value>
                                     <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="24" ShadowDepth="0" Opacity="0.7" />
                                 </Setter.Value>
@@ -474,17 +480,20 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
-                    <Border x:Name="menuSurface" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                            CornerRadius="10" Padding="5" Opacity="0">
-                        <Border.RenderTransform>
+                    <Grid x:Name="menuSurface" Opacity="0">
+                        <Grid.RenderTransform>
                             <TranslateTransform Y="-6" />
-                        </Border.RenderTransform>
-                        <Border.Effect>
-                            <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="24" ShadowDepth="4" />
-                        </Border.Effect>
-                        <ItemsPresenter />
-                    </Border>
+                        </Grid.RenderTransform>
+                        <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+                        <Border IsHitTestVisible="False" Background="{TemplateBinding Background}" CornerRadius="10">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="24" ShadowDepth="4" />
+                            </Border.Effect>
+                        </Border>
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="5">
+                            <ItemsPresenter />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <EventTrigger RoutedEvent="FrameworkElement.Loaded">
                             <BeginStoryboard>
@@ -543,16 +552,19 @@
                                HorizontalOffset="-6" VerticalOffset="-6" Focusable="False"
                                PopupAnimation="Fade" AllowDrop="False"
                                IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
-                            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}"
-                                    BorderThickness="1" CornerRadius="10" Padding="5" Margin="6"
-                                    MinWidth="200">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="24" ShadowDepth="4" />
-                                </Border.Effect>
-                                <ScrollViewer MaxHeight="560">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </Border>
+                            <Grid Margin="6" MinWidth="200">
+                                <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+                                <Border IsHitTestVisible="False" Background="{DynamicResource MenuBg}" CornerRadius="10">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="Black" Opacity="0.55" BlurRadius="24" ShadowDepth="4" />
+                                    </Border.Effect>
+                                </Border>
+                                <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                                    <ScrollViewer MaxHeight="560">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -692,17 +704,20 @@
                         <Popup IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
                                AllowsTransparency="True" Placement="Bottom" Focusable="False"
                                PopupAnimation="Fade">
-                            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}"
-                                    BorderThickness="1" CornerRadius="8" Margin="0,4,0,0" Padding="4"
-                                    MinWidth="{Binding ActualWidth,
+                            <Grid Margin="0,4,0,0" MinWidth="{Binding ActualWidth,
                                         RelativeSource={RelativeSource TemplatedParent}}">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="20" ShadowDepth="3" />
-                                </Border.Effect>
-                                <ScrollViewer MaxHeight="240">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </Border>
+                                <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+                                <Border IsHitTestVisible="False" Background="{DynamicResource MenuBg}" CornerRadius="8">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="20" ShadowDepth="3" />
+                                    </Border.Effect>
+                                </Border>
+                                <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1" CornerRadius="8" Padding="4">
+                                    <ScrollViewer MaxHeight="240">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
                         </Popup>
                     </Grid>
                 </ControlTemplate>

@@ -401,6 +401,25 @@ public sealed class ArchiveCreationService : IAsyncDisposable
                         ".bz2",
                         ProtocolFeatures.BZip2Creation,
                         null),
+                    // Bundled official 7-Zip engine (protocol 1.25): one feature covers all three.
+                    ManagedArchiveCreationFormat.SevenZip => (
+                        ArchiveWriteFormat.SevenZip,
+                        "7Z",
+                        ".7z",
+                        ProtocolFeatures.SevenZipXzCreation,
+                        ProtocolFeatures.SevenZipXzCreation),
+                    ManagedArchiveCreationFormat.TarXz => (
+                        ArchiveWriteFormat.TarXz,
+                        "TAR.XZ",
+                        ".tar.xz",
+                        ProtocolFeatures.SevenZipXzCreation,
+                        ProtocolFeatures.SevenZipXzCreation),
+                    ManagedArchiveCreationFormat.Xz => (
+                        ArchiveWriteFormat.Xz,
+                        "XZ",
+                        ".xz",
+                        ProtocolFeatures.SevenZipXzCreation,
+                        null),
                     _ => throw new InvalidDataException("The Worker returned an unknown managed format."),
                 };
             if (!client.SupportsFeature(feature)) continue;
@@ -464,6 +483,21 @@ public sealed class ArchiveCreationService : IAsyncDisposable
                 request.CompressionPreset,
                 cancellationToken),
             ArchiveWriteFormat.BZip2 => client.StartBZip2CreationAsync(
+                request.DestinationPath,
+                files.Single().SourcePath,
+                request.CompressionPreset,
+                cancellationToken),
+            ArchiveWriteFormat.SevenZip when directories.Length == 0 =>
+                client.StartSevenZipCreationAsync(
+                    request.DestinationPath, files, request.CompressionPreset, cancellationToken),
+            ArchiveWriteFormat.SevenZip => client.StartSevenZipTreeCreationAsync(
+                request.DestinationPath, files, directories, request.CompressionPreset, cancellationToken),
+            ArchiveWriteFormat.TarXz when directories.Length == 0 =>
+                client.StartTarXzCreationAsync(
+                    request.DestinationPath, files, request.CompressionPreset, cancellationToken),
+            ArchiveWriteFormat.TarXz => client.StartTarXzTreeCreationAsync(
+                request.DestinationPath, files, directories, request.CompressionPreset, cancellationToken),
+            ArchiveWriteFormat.Xz => client.StartXzCreationAsync(
                 request.DestinationPath,
                 files.Single().SourcePath,
                 request.CompressionPreset,
@@ -1102,7 +1136,7 @@ internal static class ArchiveWriteValidation
         bool hasDirectory = request.Sources.Any(
             source => source.Kind == ArchiveCreationSourceKind.Directory);
         if (hasDirectory && option?.SupportsDirectories == false) return false;
-        if (request.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2
+        if (request.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 or ArchiveWriteFormat.Xz
             && (request.Sources.Count != 1
                 || request.Sources[0].Kind != ArchiveCreationSourceKind.File))
             return false;
@@ -1222,6 +1256,9 @@ internal static class ArchiveWriteValidation
         ArchiveWriteFormat.GZip => ".gz",
         ArchiveWriteFormat.BZip2 => ".bz2",
         ArchiveWriteFormat.Rar => ".rar",
+        ArchiveWriteFormat.SevenZip => ".7z",
+        ArchiveWriteFormat.TarXz => ".tar.xz",
+        ArchiveWriteFormat.Xz => ".xz",
         _ => throw new ArgumentOutOfRangeException(nameof(format)),
     };
 }

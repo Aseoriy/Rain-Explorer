@@ -11,6 +11,10 @@ public enum ArchiveWriteFormat
     GZip,
     BZip2,
     Rar,
+    // Written by the bundled official 7-Zip engine (Rain Archives protocol 1.25).
+    SevenZip,
+    TarXz,
+    Xz,
 }
 
 public enum ArchiveWriteCapabilityState

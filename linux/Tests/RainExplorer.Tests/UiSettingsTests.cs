@@ -14,7 +14,7 @@ namespace RainExplorer.Tests;
 public sealed partial class UiTests
 {
     private static readonly string[] SettingsSections =
-        ["PaneAppearance", "PaneBrowsing", "PaneFiles", "PaneAdvanced", "PaneAbout"];
+        ["PaneAppearance", "PaneBrowsing", "PaneFiles", "PaneShortcuts", "PaneAdvanced", "PaneAbout"];
 
     [AvaloniaFact]
     public async Task EverySettingsSectionCanScrollItsLastCardFullyIntoView()
@@ -35,7 +35,9 @@ public sealed partial class UiTests
                     var scroll = settings.FindControl<ScrollViewer>(SettingsSections[i])!;
                     scroll.Offset = new Vector(0, double.MaxValue);
                     await RenderFor(60);
-                    var last = ((StackPanel)scroll.Content!).Children.OfType<Border>().Last();
+                    // The last card anywhere on the page (Shortcuts builds its cards inside a list panel).
+                    var last = ((StackPanel)scroll.Content!).GetVisualDescendants().OfType<Border>()
+                        .Last(b => b.Classes.Contains("card") && b.IsEffectivelyVisible);
                     var presenter = scroll.GetVisualDescendants().OfType<ScrollContentPresenter>()
                         .First(p => ReferenceEquals(p.TemplatedParent, scroll));
                     var origin = last.TranslatePoint(default, presenter)!.Value;
@@ -215,5 +217,62 @@ public sealed partial class UiTests
     {
         Assert.Equal(1, surface.Opacity);
         Assert.Null(surface.RenderTransform);
+    }
+}
+
+public sealed partial class UiTests
+{
+    [AvaloniaFact]
+    public void SettingsSearchFindsSettingsOnEveryPageAndJumpsToThem()
+    {
+        var (window, vm, _) = Boot();
+        try
+        {
+            vm.IsSettingsOpen = true;
+            var settings = window.FindControl<SettingsView>("SettingsOverlay")!;
+            var search = settings.FindControl<TextBox>("SettingsSearch")!;
+            var results = settings.FindControl<StackPanel>("SearchResults")!;
+
+            search.Text = "smooth";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(settings.FindControl<ScrollViewer>("PaneSearch")!.IsVisible);
+            var titles = results.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+            Assert.Contains("Smooth scrolling", titles);
+            Assert.Contains("Always smooth animations", titles);
+            Snapshot(window, "97-settings-search");
+
+            search.Text = "ctrl+t";            // shortcuts are searchable by key too
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Contains("New tab", results.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+
+            search.Text = "delete";            // jump to a result on the Files page
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var hit = results.Children.OfType<Button>().First(b =>
+                b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "When deleting items"));
+            hit.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Settle();
+            Assert.Equal("", search.Text);
+            Assert.True(settings.FindControl<ScrollViewer>("PaneFiles")!.IsVisible);
+            Assert.False(settings.FindControl<ScrollViewer>("PaneSearch")!.IsVisible);
+            Assert.Contains(settings.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("found"));
+
+            search.Text = "zzzz nothing";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(settings.FindControl<TextBlock>("SearchEmpty")!.IsVisible);
+
+            // Escape clears the search first, then closes Settings.
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Settle();
+            Assert.Equal("", search.Text);
+            Assert.True(vm.IsSettingsOpen);
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Settle();
+            Assert.False(vm.IsSettingsOpen);
+        }
+        finally
+        {
+            vm.IsSettingsOpen = false;
+            window.Close();
+        }
     }
 }

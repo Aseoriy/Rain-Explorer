@@ -29,14 +29,73 @@ public partial class App : Application
     private const string PipeName = "RainExplorer.Forward.v1";
     private static Mutex? _instanceMutex;
 
+    static App()
+    {
+        // Sharp text everywhere, not just in the main window. WPF's default "Ideal" text layout places
+        // glyphs at fractional pixels, which looks soft at 125%/150% scaling next to other apps. The main
+        // window sets Display mode itself, but dialogs, the What's new / shortcut sheets, context menus and
+        // tooltips are their own roots and never inherited it. Layout rounding keeps those windows'
+        // edges and text baselines on whole pixels too.
+        foreach (var type in new[] { typeof(Window), typeof(System.Windows.Controls.ContextMenu), typeof(System.Windows.Controls.ToolTip) })
+        {
+            System.Windows.Media.TextOptions.TextFormattingModeProperty.OverrideMetadata(type,
+                new FrameworkPropertyMetadata(System.Windows.Media.TextFormattingMode.Display,
+                    FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender
+                    | FrameworkPropertyMetadataOptions.Inherits));
+            FrameworkElement.UseLayoutRoundingProperty.OverrideMetadata(type,
+                new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsMeasure
+                    | FrameworkPropertyMetadataOptions.Inherits));
+        }
+    }
+
+    /// <summary>Start Rain again once this instance has exited (after restoring a settings backup).</summary>
+    public static bool RestartOnExit { get; set; }
+
+    /// <summary>Passed to the restarted instance with this process id: it waits for us to exit first,
+    /// because only one Rain runs at a time.</summary>
+    internal const string RestartAfterSwitch = "--restart-after";
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        base.OnExit(e);
+        if (!RestartOnExit || Environment.ProcessPath is not { } exe) return;
+        try
+        {
+            var start = new ProcessStartInfo(exe) { UseShellExecute = false };
+            start.ArgumentList.Add(RestartAfterSwitch);
+            start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Process.Start(start)?.Dispose();
+        }
+        catch (Exception ex) { LogCrash(ex); }
+    }
+
+    /// <summary>Remove "--restart-after &lt;pid&gt;" from the arguments, waiting for that process to exit.</summary>
+    private static string[] WaitForRestart(string[] args)
+    {
+        int index = Array.FindIndex(args, a => string.Equals(a, RestartAfterSwitch, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return args;
+        if (index + 1 < args.Length && int.TryParse(args[index + 1], out int pid))
+        {
+            try
+            {
+                using var previous = Process.GetProcessById(pid);
+                previous.WaitForExit(15000);
+            }
+            catch (ArgumentException) { /* already gone */ }
+            catch (InvalidOperationException) { }
+        }
+        return args.Where((_, i) => i != index && i != index + 1).ToArray();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        string[] args = WaitForRestart(e.Args);
 
         // The uninstaller runs this to undo every shell change Rain made (default file manager, Open in
         // Rain Explorer, the Rain Archives menu, archive associations). The older switch name from the
         // first beta-2 builds does the same, so their uninstallers clean up fully too.
-        if (e.Args.Any(arg => string.Equals(arg, UninstallCleanupSwitch, StringComparison.OrdinalIgnoreCase)
+        if (args.Any(arg => string.Equals(arg, UninstallCleanupSwitch, StringComparison.OrdinalIgnoreCase)
                               || string.Equals(arg, ArchiveContextMenuService.UnregisterSwitch,
                                   StringComparison.OrdinalIgnoreCase)))
         {
@@ -51,7 +110,7 @@ public partial class App : Application
         _instanceMutex = new Mutex(initiallyOwned: true, MutexName, out bool isFirstInstance);
         if (!isFirstInstance)
         {
-            ForwardArgsToRunningInstance(e.Args);
+            ForwardArgsToRunningInstance(args);
             Shutdown();
             return;
         }
@@ -70,7 +129,7 @@ public partial class App : Application
         // Interpret what the shell handed us. If it's a virtual location we can't
         // render (This PC, Recycle Bin, Control Panel, …) this forwards to Windows
         // Explorer and asks us to bow out.
-        if (!ResolveLaunchTarget(e.Args))
+        if (!ResolveLaunchTarget(args))
         {
             Shutdown();
             return;
@@ -100,6 +159,20 @@ public partial class App : Application
         // Create the main window explicitly (no StartupUri) — see App.xaml.
         var window = new MainWindow();
         window.Show();
+
+        // Reopen the pop-out activity window if it was open when Rain closed.
+        if (settings.ActivityCenterPoppedOut && settings.ActivityWindowOpen)
+            window.ContentRendered += (_, _) => ActivityWindow.ShowOrActivate(window);
+
+        // After an update, show what's new once (not on a fresh install).
+        if (WhatsNewDialog.ShouldShowAfterUpdate(SettingsStore.Instance.IsFirstRun))
+        {
+            window.ContentRendered += async (_, _) =>
+            {
+                await Task.Delay(700);
+                if (window.IsVisible) window.ShowWhatsNew();
+            };
+        }
         if (_launchMenuCommand is { } command) QueueArchiveMenuCommand(command.Verb, command.Path);
 
         // Quietly check GitHub for a newer release shortly after launch (if enabled).

@@ -15,10 +15,11 @@ public static class PathUtil
         "file://" + string.Join('/', Path.GetFullPath(path).Split('/').Select(Uri.EscapeDataString));
 
     /// <summary>Full path without a trailing separator ("/" stays "/").</summary>
+    /// <remarks>Never trims spaces: on Linux "Season 01 " (trailing space) is a real, different name.</remarks>
     public static string Normalize(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return string.Empty;
-        string full = Path.GetFullPath(path.Trim());
+        string full = Path.GetFullPath(path);
         return full.Length > 1 ? full.TrimEnd(Path.DirectorySeparatorChar) : full;
     }
 

@@ -5,7 +5,9 @@ using System.ComponentModel;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -15,6 +17,7 @@ using RainExplorer.Helpers;
 using RainExplorer.Models;
 using RainExplorer.Services;
 using RainExplorer.ViewModels;
+using RainExplorer.Views;
 
 namespace RainExplorer.Controls;
 
@@ -45,10 +48,14 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
-        _panes = [PaneAppearance, PaneBrowsing, PaneFiles, PaneAdvanced, PaneAbout];
+        _panes = [PaneAppearance, PaneBrowsing, PaneFiles, PaneShortcuts, PaneAdvanced, PaneAbout];
         DataContext = S;
 
-        SectionList.SelectionChanged += (_, _) => ShowSection(SectionList.SelectedIndex);
+        SectionList.SelectionChanged += (_, _) =>
+        {
+            if (_searching) SettingsSearch.Text = string.Empty;
+            ShowSection(SectionList.SelectedIndex);
+        };
         ThemeList.ItemsSource = ThemeService.Names.Select(n => new ThemeSwatch(n, ThemeService.Swatch(n))).ToList();
         ThemeList.SelectionChanged += (_, _) =>
         {
@@ -78,6 +85,9 @@ public partial class SettingsView : UserControl
             [ScrollSpeed.Slow] = "Slow", [ScrollSpeed.Normal] = "Normal", [ScrollSpeed.Fast] = "Fast",
         });
         BindRetention();
+        BuildShortcutRows();
+        SettingsSearch.TextChanged += (_, _) => RunSearch();
+        ShortcutService.Changed += BuildShortcutRows;
         BindEnum(SizeFormatBox, nameof(AppSettings.SizeFormat), new Dictionary<SizeFormat, string>
         {
             [SizeFormat.Binary] = "Binary (KiB)", [SizeFormat.Decimal] = "Decimal (KB)",
@@ -271,6 +281,7 @@ public partial class SettingsView : UserControl
 
     private void ImportFont_Click(object? sender, RoutedEventArgs e)
     {
+        if (ButtonToggle.JustClosed(ImportFontButton)) return;
         var menu = new ContextMenu
         {
             ItemsSource = new Control[]
@@ -281,6 +292,7 @@ public partial class SettingsView : UserControl
                 MenuFactory.Item("Open fonts folder", "folder-open", OpenFontsFolder),
             },
         };
+        ButtonToggle.Track(menu, ImportFontButton);
         menu.Open(ImportFontButton);
     }
 
@@ -364,6 +376,307 @@ public partial class SettingsView : UserControl
             FontSearch.Text = result.Families[0];
         }
     }
+
+    // ---- Search -------------------------------------------------------------------------------------
+
+    private static readonly string[] PageNames = ["Appearance", "Browsing", "Files", "Shortcuts", "Advanced", "About"];
+    private bool _searching;
+
+    private sealed record SearchHit(int Page, Border Card, string Title, string Where, string Hint);
+
+    /// <summary>Every settings card on every page, with its title, hints and section, for searching.</summary>
+    private List<SearchHit> IndexCards()
+    {
+        var hits = new List<SearchHit>();
+        for (int page = 0; page < _panes.Length; page++)
+        {
+            if (_panes[page].Content is not Control root) continue;
+            string section = "";
+            foreach (var control in root.GetLogicalDescendants().OfType<Control>())
+            {
+                if (control is TextBlock { Classes: var c } label && c.Contains("sectionLabel"))
+                {
+                    section = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase((label.Text ?? "").ToLowerInvariant());
+                    continue;
+                }
+                if (control is not Border card || !card.Classes.Contains("card")) continue;
+                var texts = card.GetLogicalDescendants().OfType<TextBlock>().Where(t => !string.IsNullOrWhiteSpace(t.Text)).ToList();
+                string title = texts.FirstOrDefault(t => t.Classes.Contains("rowTitle"))?.Text ?? texts.FirstOrDefault()?.Text ?? "";
+                if (title.Length == 0) continue;
+                string hint = string.Join(" ", texts.Where(t => t.Classes.Contains("rowHint")).Select(t => t.Text));
+                string where = section.Length > 0 ? $"{PageNames[page]} › {section}" : PageNames[page];
+                // Shortcut cards also match their keys ("ctrl+t").
+                string keys = string.Join(" ", texts.Where(t => !t.Classes.Contains("rowTitle") && !t.Classes.Contains("rowHint")).Select(t => t.Text));
+                hits.Add(new SearchHit(page, card, title, where, (hint + " " + keys).Trim()));
+            }
+        }
+        return hits;
+    }
+
+    private void RunSearch()
+    {
+        string query = SettingsSearch.Text?.Trim() ?? "";
+        _searching = query.Length > 0;
+        if (!_searching)
+        {
+            PaneSearch.IsVisible = false;
+            int page = Math.Max(0, SectionList.SelectedIndex);
+            for (int i = 0; i < _panes.Length; i++) _panes[i].IsVisible = i == page;
+            return;
+        }
+
+        string[] words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var matches = IndexCards()
+            .Select(h => (Hit: h, Score: Score(h, words)))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .Select(x => x.Hit)
+            .ToList();
+
+        foreach (var pane in _panes) pane.IsVisible = false;
+        PaneSearch.IsVisible = true;
+        SearchResults.Children.Clear();
+        SearchHeading.Text = matches.Count == 1 ? "1 RESULT" : $"{matches.Count} RESULTS";
+        foreach (var hit in matches) SearchResults.Children.Add(ResultButton(hit));
+        SearchEmpty.Text = $"Nothing matches “{query}”. Try a shorter word.";
+        SearchEmpty.IsVisible = matches.Count == 0;
+        PaneSearch.Offset = default;
+    }
+
+    /// <summary>Every word must appear somewhere; title matches rank first.</summary>
+    private static int Score(SearchHit hit, string[] words)
+    {
+        int score = 0;
+        foreach (string word in words)
+        {
+            var forms = WordForms(word);
+            if (forms.Any(f => hit.Title.Contains(f, StringComparison.CurrentCultureIgnoreCase))) score += 3;
+            else if (forms.Any(f => hit.Where.Contains(f, StringComparison.CurrentCultureIgnoreCase))) score += 2;
+            else if (forms.Any(f => hit.Hint.Contains(f, StringComparison.CurrentCultureIgnoreCase))) score += 1;
+            else return 0;
+        }
+        return score;
+    }
+
+    /// <summary>"delete" also finds "deleting", "themes" finds "theme", "scrolling" finds "scroll".</summary>
+    internal static string[] WordForms(string word)
+    {
+        var forms = new List<string> { word };
+        void Add(string stem) { if (stem.Length >= 3) forms.Add(stem); }
+        if (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase)) Add(word[..^3]);
+        if (word.EndsWith("es", StringComparison.OrdinalIgnoreCase)) Add(word[..^2]);
+        if (word.EndsWith('s')) Add(word[..^1]);
+        if (word.EndsWith('e')) Add(word[..^1]);
+        if (word.EndsWith("ed", StringComparison.OrdinalIgnoreCase)) Add(word[..^2]);
+        return forms.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private Button ResultButton(SearchHit hit)
+    {
+        var content = new StackPanel();
+        content.Children.Add(new TextBlock { Text = hit.Title, Classes = { "rowTitle" } });
+        var where = new TextBlock { Text = hit.Where, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) };
+        where.Bind(TextBlock.ForegroundProperty, where.GetResourceObservable("AccentBright"));
+        content.Children.Add(where);
+        if (hit.Hint.Length > 0)
+            content.Children.Add(new TextBlock { Text = hit.Hint, Classes = { "rowHint" }, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis });
+        var button = new Button { Content = content, Classes = { "searchResult" }, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
+        button.Theme = (Avalonia.Styling.ControlTheme?)this.FindResourceOrDefault("BareButton");
+        Avalonia.Automation.AutomationProperties.SetName(button, $"{hit.Title}, in {hit.Where}");
+        button.Click += (_, _) => GoTo(hit);
+        return button;
+    }
+
+    /// <summary>Leave search, open the page and point at the setting.</summary>
+    private void GoTo(SearchHit hit)
+    {
+        // Leave search mode right here (not via the search box's change event), so the page is visible
+        // before the card is scrolled to.
+        _searching = false;
+        SettingsSearch.Text = string.Empty;
+        PaneSearch.IsVisible = false;
+        OpenPage(hit.Page);
+        for (int i = 0; i < _panes.Length; i++) _panes[i].IsVisible = i == hit.Page;
+        _selectedSection = hit.Page;
+        Dispatcher.UIThread.Post(() =>
+        {
+            hit.Card.BringIntoView();
+            hit.Card.Classes.Add("found");
+            DispatcherTimer.RunOnce(() => hit.Card.Classes.Remove("found"), TimeSpan.FromMilliseconds(1600));
+        }, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Jump to the best match for <paramref name="query"/> ("Show me" in What's new). Empty: focus search.</summary>
+    public bool Reveal(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            Dispatcher.UIThread.Post(FocusSearch, DispatcherPriority.Loaded);
+            return true;
+        }
+        string[] words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var best = IndexCards().Select(h => (Hit: h, Score: Score(h, words)))
+            .Where(x => x.Score > 0).OrderByDescending(x => x.Score).Select(x => x.Hit).FirstOrDefault();
+        if (best is null)
+        {
+            SettingsSearch.Text = query;
+            return false;
+        }
+        GoTo(best);
+        return true;
+    }
+
+    /// <summary>Ctrl+F while Settings is open.</summary>
+    public void FocusSearch()
+    {
+        SettingsSearch.Focus();
+        SettingsSearch.SelectAll();
+    }
+
+    /// <summary>Escape: clear the search first; returns false when there was nothing to clear.</summary>
+    public bool HandleEscape()
+    {
+        if (ShortcutService.IsRecording) return true;
+        if (string.IsNullOrEmpty(SettingsSearch.Text)) return false;
+        SettingsSearch.Text = string.Empty;
+        return true;
+    }
+
+    // ---- Shortcuts page ----------------------------------------------------------------------------
+
+    /// <summary>The Settings page index of each section, for code that opens a page directly.</summary>
+    public const int ShortcutsPage = 3;
+
+    private string? _recordingId;
+    private TextBlock? _recordingHint;
+
+    private void BuildShortcutRows()
+    {
+        ShortcutRows.Children.Clear();
+        foreach (var group in ShortcutService.Actions.GroupBy(a => a.Group))
+        {
+            ShortcutRows.Children.Add(new TextBlock { Text = group.Key.ToUpperInvariant(), Classes = { "sectionLabel" } });
+            bool first = true;
+            foreach (var action in group)
+            {
+                var card = new Border { Classes = { "card" } };
+                if (first) card.Classes.Add("first");
+                first = false;
+                card.Child = ShortcutRow(action);
+                ShortcutRows.Children.Add(card);
+            }
+        }
+        ResetAllShortcutsButton.IsEnabled = ShortcutService.Actions.Any(a => ShortcutService.IsCustomized(a.Id));
+    }
+
+    private Grid ShortcutRow(ShortcutAction action)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Classes = { "row" } };
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock { Text = action.Name, Classes = { "rowTitle" } });
+        var keys = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var gestures = ShortcutService.GesturesFor(action.Id);
+        if (gestures.Count == 0) keys.Children.Add(new TextBlock { Text = "None", Classes = { "rowHint" } });
+        foreach (var gesture in gestures)
+        {
+            var chip = Views.ShortcutsSheet.KeyChip(ShortcutService.Describe(gesture));
+            chip.Margin = new Thickness(0, 0, 6, 0);
+            keys.Children.Add(chip);
+        }
+        text.Children.Add(keys);
+        var hint = new TextBlock { Classes = { "rowHint" }, IsVisible = false, Margin = new Thickness(0, 6, 0, 0) };
+        text.Children.Add(hint);
+        row.Children.Add(text);
+
+        var buttons = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        if (ShortcutService.IsCustomized(action.Id))
+        {
+            var reset = new Button { Content = "Reset", MinWidth = 0, Padding = new Thickness(12, 7) };
+            reset.Theme = (Avalonia.Styling.ControlTheme?)this.FindResourceOrDefault("GhostButton");
+            ToolTip.SetTip(reset, "Back to " + string.Join(", ", action.Defaults.Select(d =>
+                ShortcutService.TryParse(d, out var g) ? ShortcutService.Describe(g) : d)));
+            reset.Click += (_, _) => ShortcutService.Reset(action.Id);
+            buttons.Children.Add(reset);
+        }
+        var change = new Button { Content = "Change", MinWidth = 0, Padding = new Thickness(14, 7) };
+        change.Theme = (Avalonia.Styling.ControlTheme?)this.FindResourceOrDefault("DialogButton");
+        Avalonia.Automation.AutomationProperties.SetName(change, "Change the shortcut for " + action.Name);
+        change.Click += (_, _) => StartRecording(action.Id, hint, change);
+        buttons.Children.Add(change);
+        Grid.SetColumn(buttons, 1);
+        row.Children.Add(buttons);
+        return row;
+    }
+
+    private void StartRecording(string id, TextBlock hint, Button change)
+    {
+        StopRecording();
+        _recordingId = id;
+        _recordingHint = hint;
+        hint.Text = "Press the new shortcut… (Esc cancels, Backspace turns it off)";
+        hint.IsVisible = true;
+        change.Content = "Listening…";
+        ShortcutService.Recorder = e => RecordShortcut_KeyDown(this, e);
+        ShortcutService.IsRecording = true;
+    }
+
+    private void StopRecording()
+    {
+        ShortcutService.IsRecording = false;
+        ShortcutService.Recorder = null;
+        bool wasRecording = _recordingId is not null;
+        _recordingId = null;
+        _recordingHint = null;
+        if (wasRecording) BuildShortcutRows();
+    }
+
+    private async void RecordShortcut_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_recordingId is not { } id) return;
+        e.Handled = true;
+        if (e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt
+            or Key.LWin or Key.RWin or Key.System) return;   // wait for the actual key
+        var mods = e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Alt | KeyModifiers.Meta);
+        if (e.Key == Key.Escape && mods == KeyModifiers.None) { StopRecording(); return; }
+        if (e.Key == Key.Back && mods == KeyModifiers.None)
+        {
+            ShortcutService.IsRecording = false;
+            ShortcutService.Recorder = null;
+            _recordingId = null;
+            ShortcutService.Set(id, null);
+            return;
+        }
+
+        var gesture = new KeyGesture(e.Key == Key.Return ? Key.Enter : e.Key, mods);
+        if (ShortcutService.Validate(gesture) is { } problem)
+        {
+            if (_recordingHint is { } hint) hint.Text = "⚠️ " + problem + " Try another, or Esc to cancel.";
+            return;
+        }
+        ShortcutService.IsRecording = false;
+        ShortcutService.Recorder = null;
+        _recordingId = null;
+        if (ShortcutService.ConflictFor(id, gesture) is { } other)
+        {
+            string key = ShortcutService.Describe(gesture);
+            bool move = await Views.ConfirmDialog.Ask(TopLevel.GetTopLevel(this) as Window, "Shortcut already in use",
+                $"{key} is already the shortcut for “{other.Name}”. Use it for “{ShortcutService.Find(id)?.Name}” instead? " +
+                $"“{other.Name}” will lose {key}.", "Use it here", "Cancel");
+            if (!move) { BuildShortcutRows(); return; }
+            ShortcutService.RemoveGesture(other.Id, gesture);
+        }
+        ShortcutService.Set(id, gesture);
+    }
+
+    private async void ResetAllShortcuts_Click(object? sender, RoutedEventArgs e)
+    {
+        if (await Views.ConfirmDialog.Ask(TopLevel.GetTopLevel(this) as Window, "Reset all shortcuts",
+                "Put every keyboard shortcut back to Rain's defaults?", "Reset all", "Cancel"))
+            ShortcutService.ResetAll();
+    }
+
+    /// <summary>Open a given page (used by the shortcuts sheet's Customize button).</summary>
+    public void OpenPage(int index) => SectionList.SelectedIndex = index;
 
     private static readonly (int Days, string Label)[] RetentionChoices =
     [
@@ -482,6 +795,85 @@ public partial class SettingsView : UserControl
 
     private void NewList_Click(object? sender, RoutedEventArgs e) => MainViewModel.AddCustomGroup();
 
+    private void ShowBackupStatus(string text)
+    {
+        BackupStatus.Text = text;
+        BackupStatus.IsVisible = true;
+    }
+
+    private async void BackupSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanSave: true } storage) return;
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Back up Rain Explorer settings",
+            SuggestedFileName = $"rain-explorer-{DateTime.Now:yyyy-MM-dd}.{SettingsBackupService.FileExtension}",
+            DefaultExtension = SettingsBackupService.FileExtension,
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Rain Explorer backup") { Patterns = [$"*.{SettingsBackupService.FileExtension}"] },
+            ],
+        });
+        if (file is null) return;
+        try
+        {
+            SettingsStore.Instance.Flush();
+            string json = SettingsBackupService.Create(S, SettingsStore.Instance.ConfigDir);
+            await using var stream = await file.OpenWriteAsync();
+            await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+            await writer.WriteAsync(json);
+            ShowBackupStatus($"✓ Backed up to {PathUtil.Tildify(file.TryGetLocalPath() ?? file.Name)}.");
+        }
+        catch (Exception ex)
+        {
+            ShowBackupStatus($"⚠️ Couldn't save the backup: {ex.Message}");
+        }
+    }
+
+    private async void RestoreSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner?.StorageProvider is not { CanOpen: true } storage) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Restore Rain Explorer settings",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Rain Explorer backup") { Patterns = [$"*.{SettingsBackupService.FileExtension}", "*.json"] },
+                FilePickerFileTypes.All,
+            ],
+        });
+        if (files.Count == 0) return;
+        try
+        {
+            string json;
+            await using (var stream = await files[0].OpenReadAsync())
+            using (var reader = new StreamReader(stream))
+                json = await reader.ReadToEndAsync();
+            var (settingsJson, sortsJson, summary) = SettingsBackupService.Read(json);
+            bool ok = await Views.ConfirmDialog.Ask(owner, "Restore this backup?",
+                SettingsBackupService.Describe(summary) + "\n\nRestoring replaces all of your current settings, then Rain restarts. " +
+                "Your current settings are kept as settings.json" + SettingsBackupService.BeforeRestoreSuffix + " in the settings folder.",
+                "Restore and restart", "Cancel");
+            if (!ok) return;
+            SettingsStore.Instance.Flush();
+            SettingsBackupService.WriteRestore(SettingsStore.Instance.ConfigDir, settingsJson, sortsJson);
+            SettingsStore.Instance.Freeze();
+            App.RestartOnExit = true;
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowBackupStatus($"⚠️ {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ShowBackupStatus($"⚠️ Couldn't restore the backup: {ex.Message}");
+        }
+    }
+
     private void OpenConfigFolder_Click(object? sender, RoutedEventArgs e)
     {
         string configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RainExplorer");
@@ -491,6 +883,8 @@ public partial class SettingsView : UserControl
             vm.ActivePane.NewTab(configDir, activate: true);
         }
     }
+
+    private void WhatsNew_Click(object? sender, RoutedEventArgs e) => (TopLevel.GetTopLevel(this) as MainWindow)?.ShowWhatsNew();
 
     private async void CheckUpdates_Click(object? sender, RoutedEventArgs e)
     {

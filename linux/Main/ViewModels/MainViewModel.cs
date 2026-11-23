@@ -70,7 +70,7 @@ public sealed class MainViewModel : ObservableObject
         LeftPane.IsActive = true;
 
         ToggleSplitCommand = new RelayCommand(_ => ToggleSplit());
-        OpenSettingsCommand = new RelayCommand(_ => IsSettingsOpen = true);
+        OpenSettingsCommand = new RelayCommand(_ => IsSettingsOpen = !IsSettingsOpen);   // the gear opens and closes
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsOpen = false);
         NewTabCommand = new RelayCommand(_ => ActivePane.NewTab(activate: true));
         CloseTabCommand = new RelayCommand(_ => ActivePane.CloseTab(ActivePane.SelectedTab));

@@ -89,6 +89,10 @@ public enum ManagedArchiveCreationFormat
     TarBZip2,
     GZip,
     BZip2,
+    // Protocol 1.25 (sevenzip-xz-create-v1): written by the bundled official 7-Zip engine.
+    SevenZip,
+    TarXz,
+    Xz,
 }
 
 public enum RarEncoderAvailability
@@ -166,6 +170,33 @@ public sealed record StartGZipCreationRequest(
     ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
 
 public sealed record StartBZip2CreationRequest(
+    string DestinationPath,
+    string SourcePath,
+    ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
+
+public sealed record StartSevenZipCreationRequest(
+    string DestinationPath,
+    IReadOnlyList<ArchiveCreationFile> Files,
+    ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
+
+public sealed record StartSevenZipTreeCreationRequest(
+    string DestinationPath,
+    IReadOnlyList<ArchiveCreationFile> Files,
+    IReadOnlyList<ArchiveCreationDirectory> Directories,
+    ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
+
+public sealed record StartTarXzCreationRequest(
+    string DestinationPath,
+    IReadOnlyList<ArchiveCreationFile> Files,
+    ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
+
+public sealed record StartTarXzTreeCreationRequest(
+    string DestinationPath,
+    IReadOnlyList<ArchiveCreationFile> Files,
+    IReadOnlyList<ArchiveCreationDirectory> Directories,
+    ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);
+
+public sealed record StartXzCreationRequest(
     string DestinationPath,
     string SourcePath,
     ArchiveCompressionPreset CompressionPreset = ArchiveCompressionPreset.Balanced);

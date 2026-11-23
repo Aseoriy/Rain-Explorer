@@ -900,17 +900,45 @@ public sealed class ArchiveClientProtocolTests
         Assert.AreEqual(
             new GetManagedWriteCapabilitiesRequest(),
             capabilityRequest.ReadPayload<GetManagedWriteCapabilitiesRequest>());
-        await harness.RespondAsync(capabilityRequest, CreateManagedCapabilitiesResponse());
+        // The current minor (1.25) negotiates sevenzip-xz-create-v1, so the closed list is the
+        // original four followed by 7z, TAR.XZ and XZ.
+        var sevenZipXz = new[]
+        {
+            (ManagedArchiveCreationFormat.SevenZip, true, ProtocolConstants.MaximumTarCreationEntries, ProtocolConstants.MaximumTarCreationSourceBytes),
+            (ManagedArchiveCreationFormat.TarXz, true, ProtocolConstants.MaximumTarCreationEntries, ProtocolConstants.MaximumTarCreationSourceBytes),
+            (ManagedArchiveCreationFormat.Xz, false, ProtocolConstants.MaximumRawCreationEntries, ProtocolConstants.MaximumRawCreationSourceBytes),
+        };
+        var currentResponse = new GetManagedWriteCapabilitiesResponse(
+            CreateManagedCapabilitiesResponse().Capabilities
+                .Concat(sevenZipXz.Select(item => new ManagedWriteCapability(
+                    item.Item1,
+                    CanCreate: true,
+                    SupportsTreeCreation: item.Item2,
+                    CanRebuild: false,
+                    CompressionPresets: Enum.GetValues<ArchiveCompressionPreset>(),
+                    MaximumEntries: item.Item3,
+                    MaximumSourceBytes: item.Item4,
+                    SupportsEncryption: false,
+                    SupportsFilenameEncryption: false,
+                    SupportsSplitOutput: false,
+                    SupportsExistingDestinationReplacement: false,
+                    SupportsInPlaceUpdate: false)))
+                .ToArray());
+        await harness.RespondAsync(capabilityRequest, currentResponse);
         var capabilities = await capabilityTask;
-        Assert.HasCount(4, capabilities.Capabilities);
-        Assert.AreEqual(ManagedArchiveCreationFormat.TarGZip, capabilities.Capabilities[0].Format);
-        Assert.AreEqual(ManagedArchiveCreationFormat.TarBZip2, capabilities.Capabilities[1].Format);
-        Assert.AreEqual(ManagedArchiveCreationFormat.GZip, capabilities.Capabilities[2].Format);
-        Assert.AreEqual(ManagedArchiveCreationFormat.BZip2, capabilities.Capabilities[3].Format);
-        Assert.IsTrue(capabilities.Capabilities[0].SupportsTreeCreation);
-        Assert.IsTrue(capabilities.Capabilities[1].SupportsTreeCreation);
-        Assert.IsFalse(capabilities.Capabilities[2].SupportsTreeCreation);
-        Assert.IsFalse(capabilities.Capabilities[3].SupportsTreeCreation);
+        Assert.HasCount(7, capabilities.Capabilities);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                ManagedArchiveCreationFormat.TarGZip, ManagedArchiveCreationFormat.TarBZip2,
+                ManagedArchiveCreationFormat.GZip, ManagedArchiveCreationFormat.BZip2,
+                ManagedArchiveCreationFormat.SevenZip, ManagedArchiveCreationFormat.TarXz,
+                ManagedArchiveCreationFormat.Xz,
+            },
+            capabilities.Capabilities.Select(capability => capability.Format).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { true, true, false, false, true, true, false },
+            capabilities.Capabilities.Select(capability => capability.SupportsTreeCreation).ToArray());
     }
 
     [TestMethod]

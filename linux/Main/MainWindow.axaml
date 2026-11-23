@@ -193,100 +193,12 @@
                                HorizontalOffset="12" VerticalOffset="-8" Closed="ActivityPopup_Closed"
                                WindowManagerAddShadowHint="False">
                             <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource Line2}" BorderThickness="1"
-                                    CornerRadius="12" Width="368" Margin="12" Padding="6"
+                                    CornerRadius="12" Width="400" Margin="12" Padding="6"
                                     BoxShadow="{DynamicResource ActivityShadow}" h:Motion.PopupReveal="True">
-                                <DockPanel MaxHeight="480" x:DataType="svc:ActivityService"
-                                           DataContext="{x:Static svc:ActivityService.Instance}">
-                                    <Grid DockPanel.Dock="Top" Margin="8,8,6,8" ColumnDefinitions="*,Auto">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <c:Icon Kind="clock" Width="15" Height="15" Foreground="{DynamicResource AccentBright}"
-                                                    VerticalAlignment="Center" />
-                                            <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
-                                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button Content="Hide" Theme="{StaticResource GhostButton}" MinWidth="0"
-                                                    Padding="12,5" FontSize="12" Click="HideActivity_Click" />
-                                            <Button Content="Clear" Theme="{StaticResource GhostButton}" MinWidth="0"
-                                                    Padding="12,5" FontSize="12" Margin="5,0,0,0" Click="ClearActivity_Click" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
-                                               Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="10,8,0,14"
-                                               IsVisible="{Binding IsEmpty}" />
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding Items}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="m:ActivityEntry">
-                                                    <Border Classes="activityCard" Classes.running="{Binding IsActive}"
-                                                            Background="{DynamicResource Glass2}" CornerRadius="8"
-                                                            BorderBrush="Transparent" BorderThickness="1"
-                                                            Padding="11,9" Margin="2,2,2,5">
-                                                        <Grid ColumnDefinitions="Auto,*,Auto">
-                                                            <c:Icon Grid.Column="0" Width="16" Height="16" Margin="0,1,11,0"
-                                                                    VerticalAlignment="Top" Kind="{Binding IconKey}"
-                                                                    Foreground="{DynamicResource TextMuted}" />
-                                                            <StackPanel Grid.Column="1">
-                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                                           Foreground="{DynamicResource Text}" />
-                                                                <TextBlock Text="{Binding Detail}" FontSize="11"
-                                                                           Foreground="{DynamicResource TextMuted}"
-                                                                           ToolTip.Tip="{Binding Detail}"
-                                                                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
-                                                                <TextBlock Text="{Binding ProgressText}" FontSize="11"
-                                                                           Foreground="{DynamicResource TextMuted}"
-                                                                           TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
-                                                                           IsVisible="{Binding HasProgressText}" />
-                                                                <ProgressBar Theme="{StaticResource UsageBar}" Height="5" Margin="0,7,0,0"
-                                                                             Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
-                                                                             IsVisible="{Binding ShowDeterminateProgress}" />
-                                                                <ProgressBar Height="5" MinHeight="5" Margin="0,7,0,0" IsIndeterminate="True"
-                                                                             Foreground="{DynamicResource Accent}"
-                                                                             Background="{DynamicResource Glass3}"
-                                                                             IsVisible="{Binding ShowIndeterminateProgress}" />
-                                                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                                                    <Button Content="{Binding PauseButtonText}" Theme="{StaticResource GhostButton}"
-                                                                            MinWidth="0" Height="23" Padding="8,1" FontSize="10"
-                                                                            Click="ActivityPause_Click" IsVisible="{Binding CanPause}" />
-                                                                    <Button Content="Cancel" Theme="{StaticResource GhostButton}"
-                                                                            MinWidth="0" Height="23" Padding="8,1" FontSize="10"
-                                                                            Margin="5,0,0,0" Click="ActivityCancel_Click"
-                                                                            IsVisible="{Binding CanCancel}" />
-                                                                    <Button Content="View details" Theme="{StaticResource GhostButton}"
-                                                                            MinWidth="0" Height="23" Padding="8,1" FontSize="10"
-                                                                            Margin="5,0,0,0" Click="ActivityDetails_Click"
-                                                                            AutomationProperties.Name="View activity details"
-                                                                            IsVisible="{Binding DetailedHistory, Source={x:Static svc:ActivityService.Instance}}" />
-                                                                </StackPanel>
-                                                            </StackPanel>
-                                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
-                                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                                                                             Classes="statusDot"
-                                                                             Classes.ok="{Binding IsSuccess}"
-                                                                             Classes.failed="{Binding IsFailed}"
-                                                                             Classes.canceled="{Binding IsCanceled}" />
-                                                                    <TextBlock Text="{Binding StatusText}" FontSize="11" Margin="6,0,0,0"
-                                                                               VerticalAlignment="Center" Classes="statusText"
-                                                                               Classes.ok="{Binding IsSuccess}"
-                                                                               Classes.failed="{Binding IsFailed}"
-                                                                               Classes.canceled="{Binding IsCanceled}" />
-                                                                </StackPanel>
-                                                                <TextBlock FontSize="10" Foreground="{DynamicResource TextFaint}"
-                                                                           HorizontalAlignment="Right" Margin="0,3,0,0"
-                                                                           FontFamily="{DynamicResource MonoFont}">
-                                                                    <Run Text="{Binding DurationText, Mode=OneWay}" />
-                                                                    <Run Text="·" />
-                                                                    <Run Text="{Binding TimeText, Mode=OneWay}" />
-                                                                </TextBlock>
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
-                                </DockPanel>
+                                <c:ActivityCenterView x:Name="ActivityFlyout" MaxHeight="480"
+                                                      HideRequested="ActivityFlyout_HideRequested"
+                                                      PopOutRequested="ActivityFlyout_PopOutRequested"
+                                                      DetailsRequested="ActivityFlyout_DetailsRequested" />
                             </Border>
                         </Popup>
                     </Grid>
@@ -395,8 +307,8 @@
                         </Grid>
 
                         <!-- ===== Settings (full-page overlay — above blurred body) ===== -->
-                        <c:SettingsView x:Name="SettingsOverlay"
-                                        IsVisible="{ReflectionBinding DataContext.IsSettingsOpen, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <!-- Shown/hidden from code so closing can fade out. -->
+                        <c:SettingsView x:Name="SettingsOverlay" IsVisible="False" />
                     </Panel>
                 </Grid>
             </Panel>
@@ -415,33 +327,4 @@
         </Panel>
     </Panel>
 
-    <Window.Styles>
-        <Style Selector="Border.activityCard.running">
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
-        </Style>
-        <Style Selector="Ellipse.statusDot">
-            <Setter Property="Fill" Value="{DynamicResource Warn}" />
-        </Style>
-        <Style Selector="Ellipse.statusDot.ok">
-            <Setter Property="Fill" Value="{DynamicResource Ok}" />
-        </Style>
-        <Style Selector="Ellipse.statusDot.failed">
-            <Setter Property="Fill" Value="{DynamicResource Danger}" />
-        </Style>
-        <Style Selector="Ellipse.statusDot.canceled">
-            <Setter Property="Fill" Value="{DynamicResource TextMuted}" />
-        </Style>
-        <Style Selector="TextBlock.statusText">
-            <Setter Property="Foreground" Value="{DynamicResource Warn}" />
-        </Style>
-        <Style Selector="TextBlock.statusText.ok">
-            <Setter Property="Foreground" Value="{DynamicResource Ok}" />
-        </Style>
-        <Style Selector="TextBlock.statusText.failed">
-            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
-        </Style>
-        <Style Selector="TextBlock.statusText.canceled">
-            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
-        </Style>
-    </Window.Styles>
 </Window>

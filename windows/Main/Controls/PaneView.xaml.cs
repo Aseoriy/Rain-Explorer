@@ -170,7 +170,41 @@ public partial class PaneView : UserControl
         FileList.GiveFeedback += FileList_GiveFeedback;
         Loaded += PaneView_Loaded;
         Unloaded += PaneView_Unloaded;
+
+        CommandBox.GetFolder = () => _tab is { CanUsePhysicalFileCommands: true } tab && Directory.Exists(tab.CurrentPath)
+            ? tab.CurrentPath : null;
+        CommandBox.CloseRequested += (_, _) => SetCommandBoxOpen(false);
+        CommandBox.NavigateRequested += (_, path) => _ = _tab?.NavigateAsync(path, true);
+        CommandBox.CommandFinished += (_, folder) =>
+        {
+            if (_tab is { } tab && string.Equals(tab.CurrentPath, folder, StringComparison.OrdinalIgnoreCase))
+                _ = tab.ReloadAfterOperationAsync();
+        };
     }
+
+    // ---- Command box (Ctrl+`) ------------------------------------------------
+
+    public bool IsCommandBoxOpen => CommandBox.Visibility == Visibility.Visible;
+
+    public void ToggleCommandBox() => SetCommandBoxOpen(!IsCommandBoxOpen);
+
+    public void SetCommandBoxOpen(bool open)
+    {
+        if (open)
+        {
+            CommandBox.Visibility = Visibility.Visible;
+            CommandBox.RefreshFolder();
+            CommandBox.FocusInput();
+        }
+        else
+        {
+            CommandBox.Stop();
+            CommandBox.Visibility = Visibility.Collapsed;
+            FileList.Focus();
+        }
+    }
+
+    private void MenuCommandBox_Click(object sender, RoutedEventArgs e) => SetCommandBoxOpen(true);
 
     private void PaneView_Loaded(object sender, RoutedEventArgs e)
     {
@@ -199,6 +233,7 @@ public partial class PaneView : UserControl
         ClearTabDragPreview();
         _pendingTabLayoutBefore = null;
         _tabLayoutAnimationScheduled = false;
+        CommandBox.Stop();
         SettingsStore.Instance.Settings.PropertyChanged -= OnSettingChanged;
         _previewTimer?.Stop();
         Preview?.Clear();
@@ -326,7 +361,7 @@ public partial class PaneView : UserControl
     {
         var flyout = sender == SortButton ? SortPopup : sender == LayoutButton ? LayoutPopup : null;
         if (flyout is null) return;
-        if (flyout.Visibility == Visibility.Visible)
+        if (flyout.Visibility == Visibility.Visible && !IsFadingOut(flyout))
         {
             SetToolbarFlyoutOpen(flyout, false);
             return;
@@ -335,16 +370,54 @@ public partial class PaneView : UserControl
         SetToolbarFlyoutOpen(flyout, true);
     }
 
-    private static void SetToolbarFlyoutOpen(Border flyout, bool open)
+    /// <summary>Per-flyout animation state: the version is bumped on every open/close so a finishing
+    /// fade-out can tell it was superseded.</summary>
+    private sealed class FlyoutState
     {
+        public int Version;
+        public bool Closing;
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, FlyoutState> FlyoutStates = new();
+
+    /// <summary>True while a flyout plays its closing fade (a click on its button then reopens it).</summary>
+    private static bool IsFadingOut(FrameworkElement flyout) => FlyoutStates.TryGetValue(flyout, out var state) && state.Closing;
+
+    private static void SetToolbarFlyoutOpen(FrameworkElement flyout, bool open)
+    {
+        var version = FlyoutStates.GetOrCreateValue(flyout);
+        int current = ++version.Version;
+        version.Closing = false;
+        double from = flyout.Opacity;
         flyout.BeginAnimation(OpacityProperty, null);
         if (flyout.RenderTransform is not TranslateTransform transform) return;
         transform.BeginAnimation(TranslateTransform.YProperty, null);
         if (!open)
         {
-            flyout.Visibility = Visibility.Collapsed;
-            flyout.Opacity = 0;
-            transform.Y = -6;
+            if (flyout.Visibility != Visibility.Visible) return;
+            if (!SystemParameters.ClientAreaAnimation)
+            {
+                flyout.Visibility = Visibility.Collapsed;
+                flyout.Opacity = 0;
+                transform.Y = -6;
+                return;
+            }
+            // Fade out (clicking the button again, or anywhere else), then hide.
+            version.Closing = true;
+            var fade = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(110));
+            fade.Completed += (_, _) =>
+            {
+                if (version.Version != current) return;
+                version.Closing = false;
+                flyout.Visibility = Visibility.Collapsed;
+                flyout.BeginAnimation(OpacityProperty, null);
+                flyout.Opacity = 0;
+                transform.BeginAnimation(TranslateTransform.YProperty, null);
+                transform.Y = -6;
+            };
+            flyout.Opacity = from;
+            flyout.BeginAnimation(OpacityProperty, fade);
+            transform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(transform.Y, -6, TimeSpan.FromMilliseconds(110)));
             return;
         }
 
@@ -694,12 +767,15 @@ public partial class PaneView : UserControl
         ListTransform.Y = 0;
         TrySelectPendingItem();
         RefreshSortIndicators();
+        if (IsCommandBoxOpen) CommandBox.RefreshFolder();
     }
 
     private void OnTabPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(TabViewModel.SortKey) or nameof(TabViewModel.SortDir))
             RefreshSortIndicators();
+        else if (e.PropertyName is nameof(TabViewModel.CurrentPath) or nameof(TabViewModel.IsFolderView) && IsCommandBoxOpen)
+            CommandBox.RefreshFolder();
     }
 
     // Show a ▲/▼ arrow on the active sort column.
@@ -718,21 +794,79 @@ public partial class PaneView : UserControl
     private void Root_PreviewMouseDown(object sender, MouseButtonEventArgs e) =>
         _vm?.ActivateCommand.Execute(null);
 
-    // ---- Ctrl+L focuses the address bar in raw-edit mode (browser-style) ----
+    // ---- Keys that aren't customizable shortcuts ----------------------------
     private void Root_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.L && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        // Escape in the search box clears it and returns to the list.
+        if (e.Key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None && ReferenceEquals(e.OriginalSource, SearchBox)
+            && _tab is not null && !string.IsNullOrEmpty(SearchBox.Text))
         {
-            AddressBar.BeginEdit();
+            SearchBox.Text = string.Empty;
+            FileList.Focus();
             e.Handled = true;
         }
-        // Ctrl+F: jump to the search box for the current folder. The recursive toggle
-        // beside it chooses "this folder only" vs "include subfolders".
-        else if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+    }
+
+    public void FocusSearch()
+    {
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    /// <summary>
+    /// Run a pane shortcut (Services/ShortcutService), routed here by the window for the active pane.
+    /// File shortcuts only act while the file list has keyboard focus, so Delete or Enter in the sidebar
+    /// or a dialog never touches the selected files. True when it was handled.
+    /// </summary>
+    public bool RunShortcut(string id)
+    {
+        if (_tab is null) return false;
+        bool inList = FileList.IsKeyboardFocusWithin && Keyboard.FocusedElement is not TextBox
+                      && _tab.Items.All(item => !item.IsEditing);
+        switch (id)
         {
-            SearchBox.Focus();
-            SearchBox.SelectAll();
-            e.Handled = true;
+            case "nav.back": _tab.BackCommand.Execute(null); return true;
+            case "nav.forward": _tab.ForwardCommand.Execute(null); return true;
+            case "nav.up": _tab.UpCommand.Execute(null); return true;
+            case "nav.home": _ = _tab.NavigateAsync(TabViewModel.HomeToken, true); return true;
+            case "nav.refresh": _tab.RefreshCommand.Execute(null); return true;
+            case "nav.address": AddressBar.BeginEdit(); return true;
+            case "nav.search": FocusSearch(); return true;
+            case "view.split":
+                (Window.GetWindow(this)?.DataContext as MainViewModel)?.ToggleSplitCommand.Execute(null);
+                return true;
+            case "file.newFolder": NewFolder_Click(this, new RoutedEventArgs()); return true;
+            case "app.terminal": OpenTerminal_Click(this, new RoutedEventArgs()); return true;
+            case "app.commandBox": ToggleCommandBox(); return true;
+        }
+        if (!inList) return false;
+        switch (id)
+        {
+            case "view.preview":
+                SettingsStore.Instance.Settings.ShowPreviewPane = !SettingsStore.Instance.Settings.ShowPreviewPane;
+                return true;
+            case "file.properties": OpenSelectedProperties(); return true;
+            case "file.contextMenu":
+                // Archive entries keep the WPF menu; physical folders/files use the native Windows menu.
+                if (_tab.IsArchiveView || _tab.IsNetworkServer)
+                {
+                    if (FileList.ContextMenu is { } menu) menu.IsOpen = true;
+                }
+                else ShowNativeMenu();
+                return true;
+            case "file.copyPath": CopyPath_Click(this, new RoutedEventArgs()); return true;
+            case "file.copy": ClipboardPut(cut: false); return true;
+            case "file.cut": ClipboardPut(cut: true); return true;
+            case "file.paste": PasteFromClipboard(); return true;
+            case "file.selectAll": FileList.SelectAll(); return true;
+            case "file.delete": DeleteSelected(); return true;
+            case "file.deletePermanent": DeleteSelected(forcePermanent: true); return true;
+            case "file.rename": BeginRename(); return true;
+            case "file.batchRename": BatchRename(SelectedItems()); return true;
+            case "file.open":
+                if (FileList.SelectedItem is FileItem openItem) OpenItem(openItem);
+                return true;
+            default: return false;
         }
     }
 
@@ -1311,7 +1445,7 @@ public partial class PaneView : UserControl
     private void ProjectsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_vm is null) return;
-        if (ProjectsFlyout.Visibility == Visibility.Visible)
+        if (ProjectsFlyout.Visibility == Visibility.Visible && !_projectsClosing)
         {
             SetProjectsFlyoutOpen(false);
             return;
@@ -1321,9 +1455,13 @@ public partial class PaneView : UserControl
         SetProjectsFlyoutOpen(true);
     }
 
+    private bool _projectsClosing;
+
     private void SetProjectsFlyoutOpen(bool open)
     {
         int version = ++_projectsAnimationVersion;
+        _projectsClosing = false;
+        double from = ProjectsFlyout.Opacity;
         ProjectsFlyout.BeginAnimation(OpacityProperty, null);
         ProjectsFlyoutTransform.BeginAnimation(TranslateTransform.YProperty, null);
 
@@ -1342,10 +1480,13 @@ public partial class PaneView : UserControl
         }
 
         if (ProjectsFlyout.Visibility != Visibility.Visible) return;
-        var fade = new DoubleAnimation(ProjectsFlyout.Opacity, 0, TimeSpan.FromMilliseconds(110));
+        _projectsClosing = true;
+        ProjectsFlyout.Opacity = from;
+        var fade = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(110));
         fade.Completed += (_, _) =>
         {
             if (version != _projectsAnimationVersion) return;
+            _projectsClosing = false;
             ProjectsFlyout.Visibility = Visibility.Collapsed;
             ProjectsFlyout.Opacity = 0;
             ProjectsFlyoutTransform.Y = -6;
@@ -1790,9 +1931,19 @@ public partial class PaneView : UserControl
             Padding = new Thickness(11, 7, 13, 7),
             Child = row,
             SnapsToDevicePixels = true,
+        };
+        // Shadow on its own layer, so the name isn't drawn through the effect (it came out soft).
+        var shadow = new Border
+        {
+            Background = (Brush)FindResource("Glass4"),
+            CornerRadius = new CornerRadius(8),
+            IsHitTestVisible = false,
             Effect = new DropShadowEffect { Color = Colors.Black, Opacity = 0.5, BlurRadius = 16, ShadowDepth = 3 },
         };
-        return card;
+        var ghost = new Grid();
+        ghost.Children.Add(shadow);
+        ghost.Children.Add(card);
+        return ghost;
     }
 
     // ---- Rubber-band marquee selection (drag over empty space) -------------
@@ -2994,14 +3145,18 @@ public partial class PaneView : UserControl
         bool singleDir = n == 1 && items[0].IsDirectory;
         bool singleFile = n == 1 && !items[0].IsDirectory;
         bool anyDir = items.Any(i => i.IsDirectory);
-        bool physicalArchiveSelection = physical
+        // Extract items appear only when every selected item is an archive file. The file name is just
+        // a hint for the menu: the isolated worker still checks each file's real content before extracting.
+        bool allArchiveFiles = physical
             && has
             && !anyDir
+            && items.All(item => ArchiveFileTypes.IsSupportedPath(item.FullPath));
+        bool physicalArchiveSelection = allArchiveFiles
             && n <= PhysicalArchiveExtractionService.MaximumArchiveCount;
         bool archive = _tab?.IsArchiveView == true;
 
         _tab?.UpdateArchiveSelection(items);
-        MenuArchiveOperationSeparator.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
+        UpdateRainArchivesMenu(items, physical && has, allArchiveFiles, physicalArchiveSelection, archive);
         MenuArchiveIntegrity.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
         MenuArchiveExtract.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
         MenuArchiveRebuildCopy.Visibility = archive ? Visibility.Visible : Visibility.Collapsed;
@@ -3017,6 +3172,8 @@ public partial class PaneView : UserControl
         MenuOpenNewTab.IsEnabled = singleDir && TryGetTabTarget(items[0], out _);
         MenuOpenWith.IsEnabled = physical && singleFile;
         MenuOpenTerminal.IsEnabled = physical;
+        MenuCommandBox.Visibility = !has && _tab?.CanUsePhysicalFileCommands == true
+            ? Visibility.Visible : Visibility.Collapsed;
 
         BuildPinMenu(items.Where(i => i.IsDirectory && i.HasPhysicalPath).ToList());
         MenuCut.IsEnabled = physical && has;
@@ -3024,13 +3181,14 @@ public partial class PaneView : UserControl
         MenuCopyPath.IsEnabled = has && items.All(item => item.HasPhysicalPath);
         MenuPaste.IsEnabled = physical && ClipboardHasFiles();
         MenuCreateArchive.IsEnabled = physical && has;
-        // Every bounded ordinary-file selection reaches Worker content detection.
-        // A filename extension is neither required nor trusted as archive authority.
+        // Worker content detection stays the authority on what is an archive; the extension only
+        // decides whether the extract items are offered (see allArchiveFiles above).
         MenuExtract.IsEnabled = physicalArchiveSelection;
         MenuExtractTo.IsEnabled = physicalArchiveSelection;
         MenuShortcut.IsEnabled = physical && has;
         MenuPin.IsEnabled = physical && singleDir;
-        MenuRename.IsEnabled = physical && n == 1;
+        MenuRename.IsEnabled = physical && has;
+        MenuRename.Header = n > 1 ? "Rename several…" : "Rename";
         MenuDelete.IsEnabled = physical && has;
         MenuNewFolder.IsEnabled = physical;
         MenuNewFile.IsEnabled = physical;
@@ -3044,6 +3202,185 @@ public partial class PaneView : UserControl
         // Native shell items are prepared only if the user opens "Show more options".
         // Shell extensions can do arbitrary work in-process, so loading them for every
         // ordinary right-click made the main menu slower and exposed it to extension faults.
+    }
+
+    /// <summary>
+    /// Shows only the Rain Archives items that fit the selection: extract items for archive files,
+    /// "Add to archive" for any physical files or folders, and the in-archive tools while browsing
+    /// inside an archive. The submenu itself hides when nothing in it applies.
+    /// </summary>
+    private void UpdateRainArchivesMenu(
+        IReadOnlyList<FileItem> items,
+        bool canAdd,
+        bool allArchiveFiles,
+        bool canExtract,
+        bool insideArchive)
+    {
+        static Visibility Show(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+
+        MenuExtract.Visibility = Show(allArchiveFiles);
+        MenuExtractTo.Visibility = Show(allArchiveFiles);
+        MenuExtract.Header = ArchiveFileTypes.ExtractToOwnFolderHeader(
+            items.Select(item => item.FullPath).ToList());
+        MenuExtract.ToolTip = allArchiveFiles && !canExtract
+            ? $"Select up to {PhysicalArchiveExtractionService.MaximumArchiveCount} archives at a time."
+            : null;
+        MenuCreateArchive.Visibility = Show(canAdd);
+        // "Compress to …" items are added when the submenu opens (they need the Worker's format list).
+        RemoveCompressItems();
+        _compressSources = canAdd
+            && ArchiveWriteValidation.TryBuildSources(
+                items.Select(item => (item.FullPath, item.IsDirectory)),
+                out IReadOnlyList<ArchiveCreationSource> sources)
+            && ArchiveWriteValidation.TryValidateSourceRoots(sources)
+                ? sources
+                : null;
+        MenuArchiveAddSeparator.Visibility = Show(allArchiveFiles && canAdd);
+        MenuArchiveOperationSeparator.Visibility = Show(insideArchive && (allArchiveFiles || canAdd));
+        MenuRainArchives.Visibility = Show(allArchiveFiles || canAdd || insideArchive);
+    }
+
+    // ---- One-click "Compress to "name.ext"" items in the Rain Archives submenu ----
+    // The Worker decides which formats it can write (RAR only with a verified WinRAR, GZ/BZ2 only for one
+    // file), so the items come from its capability list. The last list is kept so the items appear at once
+    // on later opens; it is refreshed every time the submenu opens.
+    private static ArchiveCreationCapabilitySnapshot? s_lastCreationCapabilities;
+    private IReadOnlyList<ArchiveCreationSource>? _compressSources;
+    private readonly List<Control> _compressItems = new();
+
+    // Most-used first: ZIP and 7z, then the TAR family, RAR, and the single-file formats.
+    private static readonly ArchiveWriteFormat[] CompressMenuOrder =
+    [
+        ArchiveWriteFormat.Zip, ArchiveWriteFormat.SevenZip, ArchiveWriteFormat.TarGZip, ArchiveWriteFormat.TarXz,
+        ArchiveWriteFormat.TarBZip2, ArchiveWriteFormat.Tar, ArchiveWriteFormat.Rar, ArchiveWriteFormat.GZip,
+        ArchiveWriteFormat.Xz, ArchiveWriteFormat.BZip2,
+    ];
+
+    private sealed record CompressTarget(
+        IReadOnlyList<ArchiveCreationSource> Sources,
+        ArchiveCreationFormatOption Format,
+        string Stem);
+
+    private void RemoveCompressItems()
+    {
+        foreach (Control item in _compressItems) MenuRainArchives.Items.Remove(item);
+        _compressItems.Clear();
+    }
+
+    private async void RainArchivesMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, MenuRainArchives)) return;
+        if (_compressSources is not { } sources || _tab is not { CanUsePhysicalFileCommands: true } tab) return;
+
+        if (s_lastCreationCapabilities is { IsReady: true } known) ShowCompressItems(known, sources, tab.CurrentPath);
+        else ShowCompressPlaceholder();
+
+        if (_fileOperationInProgress) return;   // don't query the Worker mid-operation; the cached list will do
+        try
+        {
+            ArchiveCreationCapabilitySnapshot fresh = await tab.LoadArchiveCreationCapabilitiesAsync();
+            s_lastCreationCapabilities = fresh;
+            if (MenuRainArchives.IsSubmenuOpen && ReferenceEquals(_compressSources, sources) && ReferenceEquals(_tab, tab))
+                ShowCompressItems(fresh, sources, tab.CurrentPath);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void ShowCompressPlaceholder()
+    {
+        RemoveCompressItems();
+        InsertCompressItem(new MenuItem { Header = "Checking formats…", IsEnabled = false });
+    }
+
+    private void ShowCompressItems(
+        ArchiveCreationCapabilitySnapshot capabilities,
+        IReadOnlyList<ArchiveCreationSource> sources,
+        string folder)
+    {
+        RemoveCompressItems();
+        IReadOnlyList<ArchiveCreationFormatOption> formats = CreateArchiveDialog.CompatibleFormats(capabilities, sources)
+            .OrderBy(option => Array.IndexOf(CompressMenuOrder, option.Format) is var at && at < 0 ? int.MaxValue : at)
+            .ToList();
+        if (formats.Count == 0)
+        {
+            InsertCompressItem(new MenuItem { Header = "No formats available right now", IsEnabled = false });
+            return;
+        }
+        foreach (ArchiveCreationFormatOption format in formats)
+        {
+            string stem = ArchiveFileTypes.SuggestedArchiveStem(sources, folder, format.Format);
+            var icon = new System.Windows.Shapes.Path { Width = 15, Height = 15 };
+            icon.SetResourceReference(StyleProperty, "IconPath");
+            icon.SetResourceReference(System.Windows.Shapes.Path.DataProperty, "Ic.package");
+            icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "TextMuted");
+            var item = new MenuItem
+            {
+                Header = ArchiveFileTypes.CompressToHeader(stem, format.Extension),
+                Icon = icon,
+                Tag = new CompressTarget(sources, format, stem),
+            };
+            System.Windows.Automation.AutomationProperties.SetHelpText(item,
+                $"Create a new {format.Name} archive next to the selection through the isolated archive worker. Existing files are never overwritten.");
+            item.Click += CompressTo_Click;
+            InsertCompressItem(item);
+        }
+    }
+
+    private void InsertCompressItem(Control item)
+    {
+        int index = MenuRainArchives.Items.IndexOf(MenuCreateArchive) + 1 + _compressItems.Count;
+        MenuRainArchives.Items.Insert(index, item);
+        _compressItems.Add(item);
+    }
+
+    private async void CompressTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: CompressTarget target }
+            || _tab is not { CanUsePhysicalFileCommands: true } tab
+            || _fileOperationInProgress)
+            return;
+
+        // Re-read the selection so a stale menu can't compress something else.
+        if (!ArchiveWriteValidation.TryBuildSources(
+                SelectedItems().Select(item => (item.FullPath, item.IsDirectory)),
+                out IReadOnlyList<ArchiveCreationSource> newest)
+            || !newest.SequenceEqual(target.Sources))
+        {
+            SetStatus("⚠️ The selection changed. Right-click it again to compress.");
+            return;
+        }
+
+        ArchiveCreationFormatOption format = target.Format;
+        RainArchives.Contracts.ArchiveCompressionPreset preset = format.CompressionPresets.Contains(RainArchives.Contracts.ArchiveCompressionPreset.Balanced)
+            ? RainArchives.Contracts.ArchiveCompressionPreset.Balanced
+            : format.CompressionPresets.FirstOrDefault();
+        string destination = ArchiveFileTypes.FreeArchivePath(tab.CurrentPath, target.Stem, format.Extension);
+        var request = new ArchiveCreationRequest(destination, target.Sources, format.Format, preset);
+        if (!ArchiveWriteValidation.TryValidateCreationRequest(request, format, out string canonical))
+        {
+            SetStatus($"⚠️ Can't create {Path.GetFileName(destination)} here. Use Add to archive… to pick another place.");
+            return;
+        }
+
+        _fileOperationInProgress = true;
+        try
+        {
+            tab.BeginKnownFileOperation();
+            SetStatus($"Compressing to {Path.GetFileName(canonical)}…");
+            ArchiveOperationResult result = await tab.CreateArchiveAsync(request with { DestinationPath = canonical });
+            if (!ReferenceEquals(_tab, tab)) return;
+            SetStatus(ArchiveWriteOperationStatus(result, rebuild: false));
+            if (result.Succeeded) _ = tab.ReloadAfterOperationAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            if (ReferenceEquals(_tab, tab))
+                SetStatus("Archive creation cancelled; no retry was started.");
+        }
+        finally
+        {
+            _fileOperationInProgress = false;
+        }
     }
 
     private void BuildPinMenu(IReadOnlyList<FileItem> dirs)
@@ -3166,7 +3503,7 @@ public partial class PaneView : UserControl
     // ---- Delete (Recycle Bin) ----
     private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
 
-    private async void DeleteSelected()
+    private async void DeleteSelected(bool forcePermanent = false)
     {
         if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress) return;
         var tab = _tab;
@@ -3179,7 +3516,7 @@ public partial class PaneView : UserControl
 
         // Decide recycle vs permanent based on the setting (prompt / always recycle / always permanent).
         bool permanent;
-        switch (SettingsStore.Instance.Settings.DeleteBehavior)
+        switch (forcePermanent ? DeleteBehavior.Permanent : SettingsStore.Instance.Settings.DeleteBehavior)
         {
             case DeleteBehavior.Recycle: permanent = false; break;
             case DeleteBehavior.Permanent: permanent = true; break;
@@ -3239,52 +3576,14 @@ public partial class PaneView : UserControl
             completed, completed.Count == 1 ? "Delete" : $"Delete ({completed.Count} items)"));
     }
 
-    // ---- Keyboard shortcuts, scoped to the file list (so typing in text boxes is unaffected) ----
+    // ---- Archive-only keys, scoped to the file list. Customizable shortcuts are in RunShortcut. ----
     private void FileList_KeyDown(object sender, KeyEventArgs e)
     {
-        // Editing keys belong to the rename box. In particular, Space must type a
-        // space instead of bubbling here and toggling the preview pane.
         if (e.OriginalSource is TextBox || _tab?.Items.Any(item => item.IsEditing) == true) return;
-
-        if (_tab is null) return;
+        if (_tab is null || !_tab.IsArchiveView) return;
         if (Keyboard.FocusedElement is TextBox) return;   // inline-rename in progress
 
-        // Alt+Enter -> Properties (Alt makes the real key arrive as SystemKey).
-        if (e.Key == Key.System && e.SystemKey == Key.Enter)
-        {
-            OpenSelectedProperties();
-            e.Handled = true;
-            return;
-        }
-
-        // Shift+F10 -> keep archive entries in the WPF menu; physical folders/files
-        // continue using the native Windows shell menu.
-        if (e.Key == Key.F10 && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-        {
-            if (_tab.IsArchiveView || _tab.IsNetworkServer)
-            {
-                if (FileList.ContextMenu is { } menu)
-                    menu.IsOpen = true;
-            }
-            else
-            {
-                ShowNativeMenu();
-            }
-            e.Handled = true;
-            return;
-        }
-
-        if (Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            switch (e.Key)
-            {
-                case Key.C: ClipboardPut(cut: false); e.Handled = true; break;
-                case Key.X: ClipboardPut(cut: true); e.Handled = true; break;
-                case Key.V: PasteFromClipboard(); e.Handled = true; break;
-            }
-        }
-        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)
-                 && _tab.IsArchiveView)
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             switch (e.Key)
             {
@@ -3302,22 +3601,8 @@ public partial class PaneView : UserControl
         {
             switch (e.Key)
             {
-                case Key.Enter:
-                    if (FileList.SelectedItem is FileItem openItem) OpenItem(openItem);
-                    e.Handled = true;
-                    break;
-                case Key.Delete: DeleteSelected(); e.Handled = true; break;
-                case Key.F2: BeginRename(); e.Handled = true; break;
-                case Key.Back: _tab.UpCommand.Execute(null); e.Handled = true; break;
-                case Key.PageUp when _tab.IsArchiveView:
-                    _tab.MoveArchivePage(-1); e.Handled = true; break;
-                case Key.PageDown when _tab.IsArchiveView:
-                    _tab.MoveArchivePage(1); e.Handled = true; break;
-                case Key.Space:
-                    SettingsStore.Instance.Settings.ShowPreviewPane =
-                        !SettingsStore.Instance.Settings.ShowPreviewPane;
-                    e.Handled = true;
-                    break;
+                case Key.PageUp: _tab.MoveArchivePage(-1); e.Handled = true; break;
+                case Key.PageDown: _tab.MoveArchivePage(1); e.Handled = true; break;
             }
         }
     }
@@ -3341,6 +3626,11 @@ public partial class PaneView : UserControl
 
     private async void BeginRename()
     {
+        if (FileList.SelectedItems.Count > 1)
+        {
+            BatchRename(SelectedItems());   // several selected: rename them together
+            return;
+        }
         if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress
             || FileList.SelectedItems.Count != 1) return;
         var tab = _tab;
@@ -3390,6 +3680,44 @@ public partial class PaneView : UserControl
                 }
             }
         }
+    }
+
+    // ---- Rename several files (batch rename, one undo step) ----
+    private async void BatchRename(List<FileItem> selected)
+    {
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress) return;
+        selected = selected.Where(i => i.HasPhysicalPath).ToList();
+        if (selected.Count == 0) return;
+        var tab = _tab;
+        var owner = Window.GetWindow(this);
+        var plan = BatchRenameDialog.Ask(owner, selected.Select(i => (i.FullPath, i.IsDirectory)).ToList());
+        if (plan is null) return;
+        var changing = plan.Where(p => p.Changes).ToList();
+        if (changing.Count == 0) return;
+
+        if (SettingsStore.Instance.Settings.WarnOnExtensionChange)
+        {
+            int extChanges = changing.Count(p => !p.IsDirectory
+                && !string.Equals(Path.GetExtension(p.OldName), Path.GetExtension(p.NewName), StringComparison.OrdinalIgnoreCase));
+            if (extChanges > 0 && !ConfirmDialog.Ask(owner, "Change file extensions",
+                    $"{extChanges} file{(extChanges == 1 ? "" : "s")} will get a different extension, which might make " +
+                    $"{(extChanges == 1 ? "it" : "them")} unusable. Continue?", "Change", "Cancel", danger: true))
+                return;
+        }
+
+        var act = Activity.Begin("Rename", $"{changing.Count} item{(changing.Count == 1 ? "" : "s")}", "pencil");
+        tab.BeginKnownFileOperation();
+        _fileOperationInProgress = true;
+        List<(string From, string To)> done;
+        string? error;
+        try { (done, error) = await Task.Run(() => BatchRenameService.Execute(plan)); }
+        finally { _fileOperationInProgress = false; }
+        Activity.Complete(act, error is null, error);
+        if (done.Count > 0) UndoService.Instance.Push(new BatchRenameAction(done));
+        SetStatus(error is null
+            ? $"Renamed {done.Count} item{(done.Count == 1 ? "" : "s")}."
+            : $"⚠️ {error}");
+        await tab.ReloadAfterOperationAsync();
     }
 
     // ---- New folder (dialog or inline, per Settings) ----
@@ -3955,13 +4283,10 @@ public partial class PaneView : UserControl
                 return;
             }
 
-            string baseName = initialSources.Count == 1
-                ? Path.GetFileNameWithoutExtension(initialSources[0].ArchivePath)
-                : Path.GetFileName(tab.CurrentPath.TrimEnd(Path.DirectorySeparatorChar));
-            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Archive";
-            string suggested = FileOperationsService.UniquePath(Path.Combine(
+            string suggested = ArchiveFileTypes.FreeArchivePath(
                 tab.CurrentPath,
-                baseName + formats[0].Extension));
+                ArchiveFileTypes.SuggestedArchiveStem(initialSources, tab.CurrentPath, formats[0].Format),
+                formats[0].Extension);
             var dialog = new CreateArchiveDialog(capabilities, initialSources, suggested)
             {
                 Owner = Window.GetWindow(this),

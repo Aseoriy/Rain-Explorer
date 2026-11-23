@@ -1,0 +1,38 @@
+7-Zip engine (7z.dll) bundled with Rain Archives / Rain Explorer
+================================================================
+
+File:     worker\native\win-x64\7z.dll
+Version:  7-Zip 26.02, official x64 build, unmodified
+SHA-256:  69FD4DF057985C40E510E2FAC182881C7F85E90AA13EC703F763A8FDB2CE61F8
+Size:     1,906,688 bytes
+
+Copyright (C) 1999-2026 Igor Pavlov.
+
+7-Zip is free software. Most of the code in 7z.dll is licensed under the
+GNU Lesser General Public License (LGPL), version 2.1 or later. Some parts
+are under the BSD 2-clause and BSD 3-clause licenses, and some RAR decoding
+code is under the "unRAR license restriction": that code may not be used to
+develop a RAR (WinRAR) compatible archiver. Rain does not use it for that;
+Rain creates RAR archives only with a separately installed copy of WinRAR.
+
+Rain uses 7z.dll only to create .7z, .xz and .tar.xz archives. It loads the
+DLL from its own private folder, and only when its bytes match the SHA-256
+above.
+
+You may replace 7z.dll with another build of 7-Zip's 7z.dll (for example a
+newer official release or one you built yourself); Rain will then report the
+7z/XZ formats as unavailable until its pinned hash is updated.
+
+Included in this folder:
+  7-Zip-License.txt        7-Zip's license (from https://www.7-zip.org/license.txt)
+  LGPL-2.1.txt             GNU Lesser General Public License 2.1 (7-Zip's main license)
+  SharpSevenZip-LICENSE.txt  GNU Lesser General Public License 3.0 (the .NET wrapper)
+  GPL-3.0.txt              GNU General Public License 3.0 (which LGPL 3.0 builds on)
+
+Official 7-Zip source code: https://www.7-zip.org/download.html
+                            (7-Zip 26.02 source: 7z2602-src.7z)
+
+The .NET wrapper that drives 7z.dll, SharpSevenZip 2.0.109, is a separate,
+replaceable file (worker\SharpSevenZip.dll) under the GNU LGPL 3.0 or later;
+see SharpSevenZip-LICENSE.txt. Source:
+https://github.com/JeremyAnsel/SharpSevenZip/tree/105964f1c060481a17d20d084aacaecace92ffab

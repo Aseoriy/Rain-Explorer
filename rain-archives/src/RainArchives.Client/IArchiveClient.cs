@@ -147,6 +147,43 @@ public interface IArchiveClient : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("BZIP2 creation is not implemented by this client.");
 
+    Task<StartOperationResponse> StartSevenZipCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("7z creation is not implemented by this client.");
+
+    Task<StartOperationResponse> StartSevenZipTreeCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("7z directory creation is not implemented by this client.");
+
+    Task<StartOperationResponse> StartTarXzCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("TAR.XZ creation is not implemented by this client.");
+
+    Task<StartOperationResponse> StartTarXzTreeCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("TAR.XZ directory creation is not implemented by this client.");
+
+    Task<StartOperationResponse> StartXzCreationAsync(
+        string destinationPath,
+        string sourcePath,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("XZ creation is not implemented by this client.");
+
     Task<StartOperationResponse> StartZipRebuildCopyAsync(
         ArchiveSessionId sessionId,
         string destinationPath,

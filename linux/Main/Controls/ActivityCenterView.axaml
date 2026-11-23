@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:RainExplorer.Controls"
+             xmlns:m="using:RainExplorer.Models"
+             xmlns:svc="using:RainExplorer.Services"
+             x:Class="RainExplorer.Controls.ActivityCenterView"
+             x:DataType="svc:ActivityService">
+    <UserControl.Styles>
+        <Style Selector="Border.activityCard.running">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot">
+            <Setter Property="Fill" Value="{DynamicResource Warn}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.ok">
+            <Setter Property="Fill" Value="{DynamicResource Ok}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.failed">
+            <Setter Property="Fill" Value="{DynamicResource Danger}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.canceled">
+            <Setter Property="Fill" Value="{DynamicResource TextMuted}" />
+        </Style>
+        <Style Selector="TextBlock.statusText">
+            <Setter Property="Foreground" Value="{DynamicResource Warn}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.ok">
+            <Setter Property="Foreground" Value="{DynamicResource Ok}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.failed">
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
+        </Style>
+        <Style Selector="TextBlock.statusText.canceled">
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+        </Style>
+        <!-- Header toggles (Pin / On top): a ghost button that stays lit while on. -->
+        <Style Selector="ToggleButton.headerToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleButton.headerToggle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Glass3}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+        <Style Selector="ToggleButton.headerToggle:checked">
+            <Setter Property="Background" Value="{DynamicResource AccentWash}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBright}" />
+        </Style>
+        <Style Selector="Button.headerButton">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel DataContext="{x:Static svc:ActivityService.Instance}">
+        <Grid x:Name="HeaderRow" DockPanel.Dock="Top" Margin="8,8,6,8" ColumnDefinitions="*,Auto" Background="Transparent">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <c:Icon Kind="clock" Width="15" Height="15" Foreground="{DynamicResource AccentBright}"
+                        VerticalAlignment="Center" />
+                <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                <!-- Flyout: Pin keeps it open; Pop out moves it into its own window. -->
+                <ToggleButton x:Name="PinToggle" Classes="headerToggle" Content="Pin"
+                              ToolTip.Tip="Keep the activity center open while you work"
+                              AutomationProperties.Name="Pin the activity center" />
+                <Button x:Name="PopOutButton" Content="Pop out" Theme="{StaticResource GhostButton}" Classes="headerButton"
+                        ToolTip.Tip="Move the activity center into its own window" Click="PopOut_Click" />
+                <!-- Window: On top keeps the window above other apps; Dock puts it back in the flyout. -->
+                <ToggleButton x:Name="OnTopToggle" Classes="headerToggle" Content="On top" IsVisible="False"
+                              ToolTip.Tip="Keep this window above other windows"
+                              AutomationProperties.Name="Keep the activity window on top" />
+                <Button x:Name="DockButton" Content="Dock" Theme="{StaticResource GhostButton}" Classes="headerButton"
+                        IsVisible="False" ToolTip.Tip="Put the activity center back in the main window" Click="Dock_Click" />
+                <Button x:Name="HideButton" Content="Hide" Theme="{StaticResource GhostButton}" Classes="headerButton"
+                        Click="Hide_Click" />
+                <Button Content="Clear" Theme="{StaticResource GhostButton}" Classes="headerButton" Click="Clear_Click" />
+            </StackPanel>
+        </Grid>
+        <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
+                   Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="10,8,0,14"
+                   IsVisible="{Binding IsEmpty}" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="m:ActivityEntry">
+                        <Border Classes="activityCard" Classes.running="{Binding IsActive}"
+                                Background="{DynamicResource Glass2}" CornerRadius="8"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                Padding="11,9" Margin="2,2,2,5">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <c:Icon Grid.Column="0" Width="16" Height="16" Margin="0,1,11,0"
+                                        VerticalAlignment="Top" Kind="{Binding IconKey}"
+                                        Foreground="{DynamicResource TextMuted}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text}" />
+                                    <TextBlock Text="{Binding Detail}" FontSize="11"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               ToolTip.Tip="{Binding Detail}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                    <TextBlock Text="{Binding ProgressText}" FontSize="11"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
+                                               IsVisible="{Binding HasProgressText}" />
+                                    <ProgressBar Theme="{StaticResource UsageBar}" Height="5" Margin="0,7,0,0"
+                                                 Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                                 IsVisible="{Binding ShowDeterminateProgress}" />
+                                    <ProgressBar Height="5" MinHeight="5" Margin="0,7,0,0" IsIndeterminate="True"
+                                                 Foreground="{DynamicResource Accent}"
+                                                 Background="{DynamicResource Glass3}"
+                                                 IsVisible="{Binding ShowIndeterminateProgress}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="{Binding PauseButtonText}" Theme="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Click="Pause_Click" IsVisible="{Binding CanPause}" />
+                                        <Button Content="Cancel" Theme="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Margin="5,0,0,0" Click="Cancel_Click"
+                                                IsVisible="{Binding CanCancel}" />
+                                        <Button Content="View details" Theme="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Margin="5,0,0,0" Click="Details_Click"
+                                                AutomationProperties.Name="View activity details"
+                                                IsVisible="{Binding DetailedHistory, Source={x:Static svc:ActivityService.Instance}}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                 Classes="statusDot"
+                                                 Classes.ok="{Binding IsSuccess}"
+                                                 Classes.failed="{Binding IsFailed}"
+                                                 Classes.canceled="{Binding IsCanceled}" />
+                                        <TextBlock Text="{Binding StatusText}" FontSize="11" Margin="6,0,0,0"
+                                                   VerticalAlignment="Center" Classes="statusText"
+                                                   Classes.ok="{Binding IsSuccess}"
+                                                   Classes.failed="{Binding IsFailed}"
+                                                   Classes.canceled="{Binding IsCanceled}" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="10" Foreground="{DynamicResource TextFaint}"
+                                               HorizontalAlignment="Right" Margin="0,3,0,0"
+                                               FontFamily="{DynamicResource MonoFont}">
+                                        <Run Text="{Binding DurationText, Mode=OneWay}" />
+                                        <Run Text="·" />
+                                        <Run Text="{Binding TimeText, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

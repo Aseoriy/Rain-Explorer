@@ -60,9 +60,18 @@
              Properties="Configuration=$(Configuration)" />
     <ItemGroup>
       <_RainArchivesWorkerFiles Include="$(_RainArchivesWorkerOutput)\*.*" />
+      <!-- The bundled official 7-Zip engine lives in the Worker's private native folder. -->
+      <_RainArchivesWorkerNativeFiles Include="$(_RainArchivesWorkerOutput)\native\**\*.*" />
+      <_RainArchivesWorkerLicenseFiles Include="$(_RainArchivesWorkerOutput)\licenses\**\*.*" />
     </ItemGroup>
+    <Copy SourceFiles="@(_RainArchivesWorkerLicenseFiles)"
+          DestinationFiles="@(_RainArchivesWorkerLicenseFiles->'$(OutDir)worker\licenses\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_RainArchivesWorkerFiles)"
           DestinationFiles="@(_RainArchivesWorkerFiles->'$(OutDir)worker\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_RainArchivesWorkerNativeFiles)"
+          DestinationFiles="@(_RainArchivesWorkerNativeFiles->'$(OutDir)worker\native\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
     <Error Condition="!Exists('$(OutDir)worker\RainArchives.Worker.exe')"
            Text="The Rain Archives Worker build did not produce RainArchives.Worker.exe." />

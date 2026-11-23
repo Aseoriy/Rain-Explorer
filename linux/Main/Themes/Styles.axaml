@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:RainExplorer.Services"
         xmlns:c="using:RainExplorer.Controls"
         xmlns:h="using:RainExplorer.Helpers"
         xmlns:vm="using:RainExplorer.ViewModels">
@@ -736,7 +737,7 @@
                                             Margin="0,0,6,0" VerticalAlignment="Center"
                                             Foreground="{DynamicResource TextMuted}" />
                                     <Button Name="close" DockPanel.Dock="Right" Theme="{StaticResource TabCloseButton}"
-                                            Margin="4,0,0,0" Classes="tabClose" ToolTip.Tip="Close tab (Ctrl+W)"
+                                            Margin="4,0,0,0" Classes="tabClose" ToolTip.Tip="{ReflectionBinding [tab.close], Source={x:Static svc:ShortcutHints.Instance}}"
                                             AutomationProperties.Name="Close tab"
                                             IsVisible="{Binding !IsGroupLeader}" />
                                     <Button Name="groupClose" DockPanel.Dock="Right" Theme="{StaticResource TabCloseButton}"
@@ -825,7 +826,7 @@
                                         Margin="0,0,5,0" VerticalAlignment="Center" Foreground="{DynamicResource TextMuted}" />
                                 <Button Name="close" DockPanel.Dock="Right" Theme="{StaticResource TabCloseButton}"
                                         Width="17" Height="17" Margin="4,0,0,0" Classes="tabClose"
-                                        ToolTip.Tip="Close tab (Ctrl+W)" AutomationProperties.Name="Close tab" />
+                                        ToolTip.Tip="{ReflectionBinding [tab.close], Source={x:Static svc:ShortcutHints.Instance}}" AutomationProperties.Name="Close tab" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </DockPanel>
                         </Border>

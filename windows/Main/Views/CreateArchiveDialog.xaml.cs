@@ -44,14 +44,16 @@ public partial class CreateArchiveDialog : Window
         CapabilitySummaryText.Text = format.Format switch
         {
             ArchiveWriteFormat.Rar => "RAR uses your separately installed, verified WinRAR encoder.",
-            ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 =>
+            ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 or ArchiveWriteFormat.Xz =>
                 "Compresses one file only. To include folders, choose ZIP or a TAR format.",
             ArchiveWriteFormat.Tar => "TAR bundles files and folders without compression.",
+            ArchiveWriteFormat.SevenZip or ArchiveWriteFormat.TarXz =>
+                "Best compression. Written by the bundled official 7-Zip engine.",
             _ => "Includes selected files and everything inside selected folders.",
         };
         int maximumEntries = _sources.Any(source => source.Kind == ArchiveCreationSourceKind.Directory)
             ? format.MaximumTreeEntries : format.MaximumEntries;
-        string entries = format.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2
+        string entries = format.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 or ArchiveWriteFormat.Xz
             ? "One file"
             : $"Up to {maximumEntries:N0} files and folders";
         CapabilityLimitText.Text =
@@ -70,7 +72,7 @@ public partial class CreateArchiveDialog : Window
         return capabilities.Formats.Where(option =>
                 sources.Count <= option.MaximumEntries
                 && (!hasDirectory || option.SupportsDirectories)
-                && (option.Format is not (ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2)
+                && (option.Format is not (ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 or ArchiveWriteFormat.Xz)
                     || rawShape))
             .ToArray();
     }
@@ -88,7 +90,7 @@ public partial class CreateArchiveDialog : Window
         var choices = capabilities.Formats.Select(option =>
         {
             bool isCompatible = compatible.Contains(option.Format);
-            bool singleFileOnly = option.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2;
+            bool singleFileOnly = option.Format is ArchiveWriteFormat.GZip or ArchiveWriteFormat.BZip2 or ArchiveWriteFormat.Xz;
             string availability = isCompatible
                 ? "Available for this selection"
                 : singleFileOnly

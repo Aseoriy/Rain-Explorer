@@ -38,7 +38,7 @@ public sealed partial class UiTests
             vm.IsSettingsOpen = otherVm.IsSettingsOpen = true;
             var page = window.FindControl<SettingsView>("SettingsOverlay")!;
             var other = otherWindow.FindControl<SettingsView>("SettingsOverlay")!;
-            page.FindControl<ListBox>("SectionList")!.SelectedIndex = 3;
+            page.FindControl<ListBox>("SectionList")!.SelectedIndex = 4;   // Advanced
             await RenderFor(250);
             var button = page.FindControl<Button>("DefaultFileManagerButton")!;
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

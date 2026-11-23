@@ -34,20 +34,7 @@ public sealed class GestureTextConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is not Avalonia.Input.KeyGesture gesture) return null;
-        string key = gesture.Key switch
-        {
-            Avalonia.Input.Key.Delete => "Del",
-            Avalonia.Input.Key.Return => "Enter",
-            Avalonia.Input.Key.OemComma => ",",
-            _ => gesture.Key.ToString(),
-        };
-        var parts = new List<string>();
-        if (gesture.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)) parts.Add("Ctrl");
-        if (gesture.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Shift)) parts.Add("Shift");
-        if (gesture.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt)) parts.Add("Alt");
-        parts.Add(key);
-        return string.Join('+', parts);
+        return value is Avalonia.Input.KeyGesture gesture ? Services.ShortcutService.Describe(gesture) : null;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

@@ -5,5 +5,31 @@
   <ItemGroup>
     <ProjectReference Include="../RainArchives.Contracts/RainArchives.Contracts.csproj" />
     <ProjectReference Include="../RainArchives.Core/RainArchives.Core.csproj" />
+    <ProjectReference Include="../RainArchives.Providers.SharpCompress/RainArchives.Providers.SharpCompress.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- LGPL-3.0 wrapper, shipped as its own replaceable SharpSevenZip.dll (see THIRD-PARTY-NOTICES.md).
+         Its build step is excluded so it can't drop x86/x64 7z.dll at the output root. -->
+    <PackageReference Include="SharpSevenZip" ExcludeAssets="build" GeneratePathProperty="true" />
+    <PackageReference Include="SharpCompress" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Official 7-Zip 26.02 x64 7z.dll from the pinned package, hash-checked at load time by
+         SevenZipNativeLibrary. App-private location only; never the output root, PATH or a system install. -->
+    <None Include="$(PkgSharpSevenZip)\build\x64\7z.dll"
+          Link="native\win-x64\7z.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+    <!-- License notices travel with the bundled files (Worker output -> Rain Explorer worker\licenses). -->
+    <None Include="..\..\licenses\7-Zip-NOTICE.txt" Link="licenses\7-Zip-NOTICE.txt"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\licenses\SharpSevenZip-LICENSE.txt" Link="licenses\SharpSevenZip-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\licenses\7-Zip-License.txt" Link="licenses\7-Zip-License.txt"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\licenses\LGPL-2.1.txt" Link="licenses\LGPL-2.1.txt"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\licenses\GPL-3.0.txt" Link="licenses\GPL-3.0.txt"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 </Project>

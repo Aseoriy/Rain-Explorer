@@ -91,7 +91,7 @@ public partial class PaneView : UserControl
     // File context menu (one static menu; items are enabled/disabled per selection)
     private ContextMenu _fileMenu = null!;
     private MenuItem _menuRestore = null!, _menuOpen = null!, _menuOpenNewTab = null!, _menuOpenWith = null!,
-        _menuOpenTerminal = null!, _menuCut = null!, _menuCopy = null!, _menuCopyPath = null!, _menuPaste = null!,
+        _menuOpenTerminal = null!, _menuCommandBox = null!, _menuCut = null!, _menuCopy = null!, _menuCopyPath = null!, _menuPaste = null!,
         _menuShortcut = null!, _menuPin = null!, _menuRename = null!, _menuDelete = null!, _menuNewFolder = null!,
         _menuNewFile = null!, _menuProperties = null!, _menuShowMore = null!;
     private Separator _restoreSeparator = null!;
@@ -112,6 +112,15 @@ public partial class PaneView : UserControl
             EndTabDrag(cancelled: true);
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
+
+        CommandBox.GetFolder = () => _tab is { IsFolderView: true, IsTrashView: false } tab
+            && !string.IsNullOrEmpty(tab.CurrentPath) && Directory.Exists(tab.CurrentPath) ? tab.CurrentPath : null;
+        CommandBox.CloseRequested += (_, _) => SetCommandBoxOpen(false);
+        CommandBox.NavigateRequested += (_, path) => { if (_tab is not null) _ = _tab.NavigateAsync(path, true); };
+        CommandBox.CommandFinished += (_, folder) =>
+        {
+            if (_tab is { } tab && tab.CurrentPath == folder) _ = tab.ReloadAfterOperationAsync();
+        };
 
         FileList.AddHandler(PointerPressedEvent, FileList_PointerPressed, RoutingStrategies.Tunnel);
         FileList.AddHandler(PointerMovedEvent, FileList_PointerMoved, RoutingStrategies.Tunnel);
@@ -229,6 +238,7 @@ public partial class PaneView : UserControl
             _tab.ContentsChanged += OnTabContentsChanged;
         }
         FileList.ItemsSource = _tab?.Items;
+        if (CommandBox.IsVisible) CommandBox.RefreshFolder();
         RefreshSortIndicators();
         ApplyLayout();
         UpdatePreview();
@@ -246,6 +256,10 @@ public partial class PaneView : UserControl
                 break;
             case nameof(TabViewModel.IsSearchView):
                 ApplyLayout();
+                break;
+            case nameof(TabViewModel.CurrentPath):
+            case nameof(TabViewModel.IsFolderView):
+                if (CommandBox.IsVisible) CommandBox.RefreshFolder();
                 break;
         }
     }
@@ -460,6 +474,7 @@ public partial class PaneView : UserControl
 
     private static void OpenToolbarMenu(Control anchor, List<Control> items, double minWidth)
     {
+        if (ButtonToggle.JustClosed(anchor)) return;   // this click closed it
         var menu = new ContextMenu
         {
             ItemsSource = items,
@@ -467,11 +482,15 @@ public partial class PaneView : UserControl
             Placement = PlacementMode.BottomEdgeAlignedRight,
             PlacementTarget = anchor,
         };
+        ButtonToggle.Track(menu, anchor);
         menu.Open(anchor);
     }
 
     // ---- Tab projects ---------------------------------------------------------
-    private void ProjectsButton_Click(object? sender, RoutedEventArgs e) => OpenProjectsMenu(manage: false);
+    private void ProjectsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (!ButtonToggle.JustClosed(ProjectsButton)) OpenProjectsMenu(manage: false);
+    }
 
     private void OpenProjectsMenu(bool manage)
     {
@@ -536,6 +555,7 @@ public partial class PaneView : UserControl
         }
 
         menu.ItemsSource = items;
+        ButtonToggle.Track(menu, ProjectsButton);
         menu.Open(ProjectsButton);
         RefreshProjectsButton();
     }
@@ -881,11 +901,11 @@ public partial class PaneView : UserControl
         if (_vm is null || TabFromSource(e.Source) is not null) return;
         var items = new List<Control>
         {
-            MenuFactory.Item("New tab", null, () => _vm.NewTab(activate: true), "Ctrl+T"),
+            ShortcutHints.Bind(MenuFactory.Item("New tab", null, () => _vm.NewTab(activate: true)), "tab.new"),
         };
         if (_vm.HasActiveGroup) items.Add(MenuFactory.Item("New tab in active group", null, () => _vm.NewTabInActiveGroup()));
         items.Add(new Separator());
-        items.Add(MenuFactory.Item("Reopen last closed tab", null, () => _vm.ReopenClosedTab(), "Ctrl+Shift+T",
+        items.Add(MenuFactory.Item("Reopen last closed tab", null, () => _vm.ReopenClosedTab(), ShortcutHints.GestureFor("tab.reopen")?.ToString(),
             enabled: _vm.HasClosedTabs));
         new ContextMenu { ItemsSource = items }.Open(TabStrip);
         e.Handled = true;
@@ -897,7 +917,7 @@ public partial class PaneView : UserControl
         var items = new List<Control>
         {
             MenuFactory.Item("Duplicate tab", null, () => _vm.DuplicateTab(tab), enabled: tab.CanDuplicate),
-            MenuFactory.Item("Reload", null, () => _ = tab.ReloadAsync(), "F5"),
+            ShortcutHints.Bind(MenuFactory.Item("Reload", null, () => _ = tab.ReloadAsync()), "nav.refresh"),
             MenuFactory.Item(tab.IsPinned ? "Unpin tab" : "Pin tab", null, () => _vm.TogglePin(tab)),
         };
         if (tab.IsGrouped)
@@ -914,7 +934,7 @@ public partial class PaneView : UserControl
             items.Add(MenuFactory.Item("Close tab group", null, () => _vm.CloseGroup(tab)));
         }
         items.Add(new Separator());
-        items.Add(MenuFactory.Item("Close tab", null, () => _vm.CloseTab(tab), "Ctrl+W"));
+        items.Add(ShortcutHints.Bind(MenuFactory.Item("Close tab", null, () => _vm.CloseTab(tab)), "tab.close"));
         items.Add(MenuFactory.Item("Close other tabs", null, () => _vm.CloseOtherTabs(tab),
             enabled: _vm.Tabs.Any(t => t != tab && !t.IsPinned)));
         int index = _vm.Tabs.IndexOf(tab);
@@ -1015,105 +1035,61 @@ public partial class PaneView : UserControl
     }
 
     /// <summary>Pane-level shortcuts, routed here by the window for the active pane.</summary>
-    public bool HandleGlobalKey(KeyEventArgs e)
+    /// <summary>Run a pane shortcut (Services/ShortcutService). True when it was handled.</summary>
+    public bool RunShortcut(string id)
     {
         if (_tab is null) return false;
-        var mods = e.KeyModifiers;
-        bool ctrl = mods.HasFlag(KeyModifiers.Control);
-        bool shift = mods.HasFlag(KeyModifiers.Shift);
-        bool alt = mods.HasFlag(KeyModifiers.Alt);
-        bool inText = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
-
-        if (alt && !ctrl)
+        switch (id)
         {
-            switch (e.Key)
-            {
-                case Key.Left: _tab.BackCommand.Execute(null); return true;
-                case Key.Right: _tab.ForwardCommand.Execute(null); return true;
-                case Key.Up: _tab.UpCommand.Execute(null); return true;
-                case Key.Home: _ = _tab.NavigateAsync(XdgDirs.Home, true); return true;
-                case Key.Enter when !inText: OpenSelectedProperties(); return true;
-                case Key.D: BeginAddressEdit(); return true;
-            }
-        }
-        switch (e.Key)
-        {
-            case Key.F5:
-            case Key.R when ctrl && !shift:
-                _tab.RefreshCommand.Execute(null);
-                return true;
-            case Key.L when ctrl:
-            case Key.F6:
-                BeginAddressEdit();
-                return true;
-            case Key.F when ctrl:
-                FocusSearch();
-                return true;
-            case Key.F3:
-                MainVm?.ToggleSplitCommand.Execute(null);
-                return true;
-            case Key.N when ctrl && shift:
-                _ = CreateNew(folder: true);
-                return true;
-            case Key.F4 when shift:
-                OpenTerminalHere();
-                return true;
-            case Key.F10 when shift && !inText:
-            case Key.Apps when !inText:
+            case "nav.back": _tab.BackCommand.Execute(null); return true;
+            case "nav.forward": _tab.ForwardCommand.Execute(null); return true;
+            case "nav.up": _tab.UpCommand.Execute(null); return true;
+            case "nav.home": _ = _tab.NavigateAsync(XdgDirs.Home, true); return true;
+            case "nav.refresh": _tab.RefreshCommand.Execute(null); return true;
+            case "nav.address": BeginAddressEdit(); return true;
+            case "nav.search": FocusSearch(); return true;
+            case "view.split": MainVm?.ToggleSplitCommand.Execute(null); return true;
+            case "view.preview": Settings.ShowPreviewPane = !Settings.ShowPreviewPane; return true;
+            case "file.newFolder": _ = CreateNew(folder: true); return true;
+            case "app.terminal": OpenTerminalHere(); return true;
+            case "app.commandBox": ToggleCommandBox(); return true;
+            case "file.properties": OpenSelectedProperties(); return true;
+            case "file.contextMenu":
                 FileList.Focus();
                 _fileMenu.Open(FileList);
                 return true;
-        }
-
-        if (inText)
-        {
-            if (e.Key == Key.Escape && ReferenceEquals(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement(), SearchBox))
-            {
-                _tab.Filter = string.Empty;
-                FileList.Focus();
-                return true;
-            }
-            return false;
-        }
-
-        if (ctrl && !alt)
-        {
-            switch (e.Key)
-            {
-                case Key.C when shift: CopyPaths(); return true;
-                case Key.C: _ = ClipboardPut(cut: false); return true;
-                case Key.X: _ = ClipboardPut(cut: true); return true;
-                case Key.V: _ = PasteFromClipboard(); return true;
-                case Key.A: FileList.SelectAll(); return true;
-            }
-            return false;
-        }
-
-        if (alt) return false;
-        switch (e.Key)
-        {
-            case Key.Enter:
+            case "file.copyPath": CopyPaths(); return true;
+            case "file.copy": _ = ClipboardPut(cut: false); return true;
+            case "file.cut": _ = ClipboardPut(cut: true); return true;
+            case "file.paste": _ = PasteFromClipboard(); return true;
+            case "file.selectAll": FileList.SelectAll(); return true;
+            case "file.delete": _ = DeleteSelected(); return true;
+            case "file.deletePermanent": _ = DeleteSelected(forcePermanent: true); return true;
+            case "file.rename": _ = BeginRename(); return true;
+            case "file.batchRename": _ = BatchRename(SelectedItems()); return true;
+            case "file.open":
                 var selected = SelectedItems();
                 if (selected.Count == 1) OpenItem(selected[0]);
                 else foreach (var item in selected.Where(i => i.IsDirectory)) OpenItem(item, newTab: true);
                 return selected.Count > 0;
-            case Key.Delete:
-                _ = DeleteSelected(forcePermanent: shift);
-                return true;
-            case Key.F2:
-                _ = BeginRename();
-                return true;
-            case Key.Back:
-                _tab.UpCommand.Execute(null);
-                return true;
-            case Key.Space when !shift:
-                Settings.ShowPreviewPane = !Settings.ShowPreviewPane;
-                return true;
-            case Key.Escape when FileList.SelectedItems?.Count > 0:
-                FileList.SelectedItems?.Clear();
-                return true;
+            default: return false;
         }
-        return false;
+    }
+
+    /// <summary>Keys that aren't customizable shortcuts: Escape clears the search box or the selection.</summary>
+    public bool HandleGlobalKey(KeyEventArgs e)
+    {
+        if (_tab is null || e.Key != Key.Escape || e.KeyModifiers != KeyModifiers.None) return false;
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        if (ReferenceEquals(focused, SearchBox))
+        {
+            _tab.Filter = string.Empty;
+            FileList.Focus();
+            return true;
+        }
+        if (focused is TextBox || !(FileList.SelectedItems?.Count > 0)) return false;
+        FileList.SelectedItems?.Clear();
+        return true;
     }
 
     private void FileList_KeyDown(object? sender, KeyEventArgs e)
@@ -1143,28 +1119,30 @@ public partial class PaneView : UserControl
         });
         _menuOpenWith = MenuFactory.Item("Open with…", "external-link", () => _ = OpenWith());
         _menuOpenTerminal = MenuFactory.Item("Open in Terminal", "terminal", () => OpenTerminalHere());
-        _menuCut = MenuFactory.Item("Cut", "scissors", () => _ = ClipboardPut(cut: true), "Ctrl+X");
-        _menuCopy = MenuFactory.Item("Copy", "copy", () => _ = ClipboardPut(cut: false), "Ctrl+C");
+        _menuCommandBox = ShortcutHints.Bind(MenuFactory.Item("Run a command here", "zap", () => SetCommandBoxOpen(true)), "app.commandBox");
+        _menuCut = ShortcutHints.Bind(MenuFactory.Item("Cut", "scissors", () => _ = ClipboardPut(cut: true)), "file.cut");
+        _menuCopy = ShortcutHints.Bind(MenuFactory.Item("Copy", "copy", () => _ = ClipboardPut(cut: false)), "file.copy");
         _menuCopyPath = MenuFactory.Item("Copy as path", "hash", CopyPaths);
         _menuPaste = MenuFactory.Item("Paste", "clipboard", () =>
         {
             var only = SelectedItems() is [{ IsDirectory: true } dir] ? dir.FullPath : null;
             _ = PasteFromClipboard(only);
-        }, "Ctrl+V");
+        });
+        ShortcutHints.Bind(_menuPaste, "file.paste");
         _menuShortcut = MenuFactory.Item("Create link", "link", () => _ = CreateLinks());
         _menuPin = MenuFactory.Item("Pin to Quick Access", "star", () => { }, iconBrush: "AccentBright");
-        _menuRename = MenuFactory.Item("Rename", "pencil", () => _ = BeginRename(), "F2");
-        _menuDelete = MenuFactory.Item("Delete", "trash", () => _ = DeleteSelected(), "Delete", iconBrush: "Danger");
+        _menuRename = ShortcutHints.Bind(MenuFactory.Item("Rename", "pencil", () => _ = BeginRename()), "file.rename");
+        _menuDelete = ShortcutHints.Bind(MenuFactory.Item("Delete", "trash", () => _ = DeleteSelected(), iconBrush: "Danger"), "file.delete");
         _menuNewFolder = MenuFactory.Item("New folder", "folder-plus", () => _ = CreateNew(folder: true), iconBrush: "AccentBright");
         _menuNewFile = MenuFactory.Item("New text file", "file-plus", () => _ = CreateNew(folder: false));
-        _menuProperties = MenuFactory.Item("Properties", "info", OpenSelectedProperties, "Alt+Enter");
+        _menuProperties = ShortcutHints.Bind(MenuFactory.Item("Properties", "info", OpenSelectedProperties), "file.properties");
         _menuShowMore = MenuFactory.Submenu("Show more options", "list", Array.Empty<Control>());
 
         _fileMenu = new ContextMenu();
         foreach (Control item in new Control[]
                  {
                      _menuRestore, _restoreSeparator,
-                     _menuOpen, _menuOpenNewTab, _menuOpenWith, _menuOpenTerminal,
+                     _menuOpen, _menuOpenNewTab, _menuOpenWith, _menuOpenTerminal, _menuCommandBox,
                      _archiveSeparator, _menuArchiveOpen, _menuExtract, _menuCompress,
                      new Separator(),
                      _menuCut, _menuCopy, _menuCopyPath, _menuPaste,
@@ -1187,6 +1165,7 @@ public partial class PaneView : UserControl
 
     private async void FileContextMenu_Opening(object? sender, CancelEventArgs e)
     {
+        ShortcutHints.Refresh(_fileMenu.Items);
         var items = SelectedItems();
         int n = items.Count;
         bool has = n > 0;
@@ -1203,6 +1182,7 @@ public partial class PaneView : UserControl
         _menuOpenNewTab.IsEnabled = singleDir;
         _menuOpenWith.IsEnabled = physical && singleFile && !trash;
         _menuOpenTerminal.IsEnabled = physical && !trash;
+        _menuCommandBox.IsVisible = n == 0 && physical && !trash;
         UpdateArchiveMenu(items, physical, trash);
         UpdateGitMenu(physical, trash);
 
@@ -1212,7 +1192,8 @@ public partial class PaneView : UserControl
         _menuCopyPath.IsEnabled = has && items.All(item => item.HasPhysicalPath);
         _menuPaste.IsEnabled = physical && !trash && await ClipboardService.HasFilesAsync(TopLevel.GetTopLevel(this));
         _menuShortcut.IsEnabled = physical && has && !trash;
-        _menuRename.IsEnabled = physical && n == 1 && !trash;
+        _menuRename.IsEnabled = physical && n >= 1 && !trash;
+        _menuRename.Header = n > 1 ? $"Rename {n} items…" : "Rename";
         _menuDelete.IsEnabled = physical && has;
         _menuDelete.Header = trash ? "Delete permanently" : "Delete";
         _menuNewFolder.IsEnabled = physical && !trash;
@@ -1229,7 +1210,7 @@ public partial class PaneView : UserControl
         if (items.Count > 0)
         {
             list.Add(MenuFactory.Item(trash ? "Delete permanently" : "Delete permanently", "trash",
-                () => _ = DeleteSelected(forcePermanent: true), "Shift+Delete", iconBrush: "Danger"));
+                () => _ = DeleteSelected(forcePermanent: true), ShortcutHints.GestureFor("file.deletePermanent")?.ToString(), iconBrush: "Danger"));
             list.Add(MenuFactory.Item(items.Count == 1 ? "Copy name" : "Copy names", "copy", () =>
                 _ = ClipboardService.SetTextAsync(TopLevel.GetTopLevel(this), string.Join('\n', items.Select(i => i.Name)))));
             if (items.All(i => !i.IsDirectory) && !trash)
@@ -1244,7 +1225,7 @@ public partial class PaneView : UserControl
             if (list.Count > 0) list.Add(new Separator());
             list.Add(MenuFactory.Check("Show hidden files", Settings.ShowHiddenFiles,
                 () => Settings.ShowHiddenFiles = !Settings.ShowHiddenFiles));
-            list.Add(MenuFactory.Item("Refresh", "refresh", () => _tab.RefreshCommand.Execute(null), "F5"));
+            list.Add(ShortcutHints.Bind(MenuFactory.Item("Refresh", "refresh", () => _tab.RefreshCommand.Execute(null)), "nav.refresh"));
             if (trash) list.Add(MenuFactory.Item("Empty trash…", "trash", EmptyTrash, iconBrush: "Danger"));
         }
         return list;
@@ -1426,6 +1407,26 @@ public partial class PaneView : UserControl
         if (changed && tab is not null) await tab.ReloadAfterOperationAsync();
     }
 
+    public bool IsCommandBoxOpen => CommandBox.IsVisible;
+
+    /// <summary>Ctrl+` (or the menu): open the command box, or close it when it's open.</summary>
+    public void ToggleCommandBox() => SetCommandBoxOpen(!CommandBox.IsVisible);
+
+    public void SetCommandBoxOpen(bool open)
+    {
+        if (open)
+        {
+            CommandBox.IsVisible = true;
+            CommandBox.RefreshFolder();
+            CommandBox.FocusInput();
+            return;
+        }
+        if (!CommandBox.IsVisible) return;
+        CommandBox.Stop();
+        CommandBox.IsVisible = false;
+        FileList.Focus();
+    }
+
     private void OpenTerminalHere(string? dir = null)
     {
         dir ??= SelectedItems() is [{ IsDirectory: true } only] ? only.FullPath : _tab?.CurrentPath;
@@ -1574,7 +1575,12 @@ public partial class PaneView : UserControl
     {
         if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress || _tab.IsTrashView) return;
         var selected = SelectedItems();
-        if (selected.Count != 1) return;
+        if (selected.Count == 0) return;
+        if (selected.Count > 1)
+        {
+            await BatchRename(selected);
+            return;
+        }
         var tab = _tab;
         var item = selected[0];
 
@@ -1668,6 +1674,44 @@ public partial class PaneView : UserControl
         UndoService.Instance.Push(new RenameAction(newPath, oldPath));
         tab.ApplyLocalRename(item, newPath);
         FileList.SelectedItem = item;
+    }
+
+    // ===================== Rename several files =====================
+
+    private async Task BatchRename(List<FileItem> selected)
+    {
+        if (_tab is null || !_tab.CanUsePhysicalFileCommands || _fileOperationInProgress || _tab.IsTrashView) return;
+        selected = selected.Where(i => i.HasPhysicalPath).ToList();
+        if (selected.Count == 0) return;
+        var tab = _tab;
+        var plan = await BatchRenameDialog.Ask(OwnerWindow, selected.Select(i => (i.FullPath, i.IsDirectory)).ToList());
+        if (plan is null) return;
+        var changing = plan.Where(p => p.Changes).ToList();
+        if (changing.Count == 0) return;
+
+        if (Settings.WarnOnExtensionChange)
+        {
+            int extChanges = changing.Count(p => !p.IsDirectory
+                && !string.Equals(Path.GetExtension(p.OldName), Path.GetExtension(p.NewName), StringComparison.Ordinal));
+            if (extChanges > 0 && !await ConfirmDialog.Ask(OwnerWindow, "Change file extensions",
+                    $"{extChanges} file{(extChanges == 1 ? "" : "s")} will get a different extension, which might make " +
+                    $"{(extChanges == 1 ? "it" : "them")} unusable. Continue?", "Change", "Cancel", danger: true))
+                return;
+        }
+
+        var act = Activity.Begin("Rename", $"{changing.Count} item{(changing.Count == 1 ? "" : "s")}", "pencil");
+        tab.BeginKnownFileOperation();
+        _fileOperationInProgress = true;
+        List<(string From, string To)> done;
+        string? error;
+        try { (done, error) = await Task.Run(() => BatchRenameService.Execute(plan)); }
+        finally { _fileOperationInProgress = false; }
+        Activity.Complete(act, error is null, error);
+        if (done.Count > 0) UndoService.Instance.Push(new BatchRenameAction(done));
+        SetStatus(error is null
+            ? $"Renamed {done.Count} item{(done.Count == 1 ? "" : "s")}."
+            : $"⚠️ {error}");
+        await tab.ReloadAfterOperationAsync();
     }
 
     // ===================== New folder / file =====================
@@ -1998,6 +2042,7 @@ public partial class PaneView : UserControl
         if (ActiveTabDragOwner?._tabDragReceiver == this) ActiveTabDragOwner.EndTabDrag(cancelled: true);
         Settings.PropertyChanged -= OnSettingChanged;
         ClipboardService.Changed -= OnClipboardChanged;
+        CommandBox.Stop();
         EndTabDrag(cancelled: true);
         ClearTabPreviewMotions();
         Motion.Cancel(FileList);

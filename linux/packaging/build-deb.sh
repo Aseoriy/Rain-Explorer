@@ -19,7 +19,9 @@ command -v dpkg-deb >/dev/null || { echo "dpkg-deb is required to build a .deb."
 mkdir -p "$ROOT/dist"
 STAGE="$(mktemp -d "$ROOT/dist/.rain-deb-XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
-OUTPUT="$ROOT/dist/rain-explorer_${DEB_VERSION}_${ARCH}.deb"
+# GitHub turns "~" into "." in uploaded file names, so the file uses "." to match the release page and the
+# .sha256; the package version inside keeps "~" so a beta still sorts before the stable release.
+OUTPUT="$ROOT/dist/rain-explorer_${DEB_VERSION//\~/.}_${ARCH}.deb"
 mkdir -p "$STAGE/DEBIAN" "$STAGE/opt/rain-explorer" "$STAGE/usr/bin" \
     "$STAGE/usr/share/applications" "$STAGE/usr/share/doc/rain-explorer"
 cp -a "$PUBLISH/app/." "$STAGE/opt/rain-explorer/"

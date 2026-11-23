@@ -1475,6 +1475,100 @@ public sealed partial class ArchiveClient : IArchiveClient
             gzip: false,
             cancellationToken);
 
+    // ---- Protocol 1.25: bundled 7-Zip formats (sevenzip-xz-create-v1) ----
+
+    public Task<StartOperationResponse> StartSevenZipCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureSevenZipXzFeature();
+        ValidateManagedTarCreationArguments(destinationPath, files, compressionPreset, gzip: true);
+        return StartOperationAsync(
+            ProtocolMessageKinds.StartSevenZipCreation,
+            new StartSevenZipCreationRequest(destinationPath, files.ToArray(), compressionPreset),
+            passwordSlotId: null,
+            cancellationToken);
+    }
+
+    public Task<StartOperationResponse> StartSevenZipTreeCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureSevenZipXzFeature();
+        ValidateManagedTarTreeCreationArguments(destinationPath, files, directories, compressionPreset, gzip: true);
+        return StartOperationAsync(
+            ProtocolMessageKinds.StartSevenZipTreeCreation,
+            new StartSevenZipTreeCreationRequest(destinationPath, files.ToArray(), directories.ToArray(), compressionPreset),
+            passwordSlotId: null,
+            cancellationToken);
+    }
+
+    public Task<StartOperationResponse> StartTarXzCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureSevenZipXzFeature();
+        ValidateManagedTarCreationArguments(destinationPath, files, compressionPreset, gzip: true);
+        return StartOperationAsync(
+            ProtocolMessageKinds.StartTarXzCreation,
+            new StartTarXzCreationRequest(destinationPath, files.ToArray(), compressionPreset),
+            passwordSlotId: null,
+            cancellationToken);
+    }
+
+    public Task<StartOperationResponse> StartTarXzTreeCreationAsync(
+        string destinationPath,
+        IReadOnlyList<ArchiveCreationFile> files,
+        IReadOnlyList<ArchiveCreationDirectory> directories,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureSevenZipXzFeature();
+        ValidateManagedTarTreeCreationArguments(destinationPath, files, directories, compressionPreset, gzip: true);
+        return StartOperationAsync(
+            ProtocolMessageKinds.StartTarXzTreeCreation,
+            new StartTarXzTreeCreationRequest(destinationPath, files.ToArray(), directories.ToArray(), compressionPreset),
+            passwordSlotId: null,
+            cancellationToken);
+    }
+
+    public Task<StartOperationResponse> StartXzCreationAsync(
+        string destinationPath,
+        string sourcePath,
+        ArchiveCompressionPreset compressionPreset = ArchiveCompressionPreset.Balanced,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureSevenZipXzFeature();
+        ValidatePathArgument(destinationPath, nameof(destinationPath));
+        ValidatePathArgument(sourcePath, nameof(sourcePath));
+        if (!Path.IsPathFullyQualified(destinationPath)
+            || !Path.IsPathFullyQualified(sourcePath)
+            || !Enum.IsDefined(compressionPreset)
+            || !destinationPath.EndsWith(".xz", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("XZ creation requires one full source path and a new .xz destination.");
+        }
+
+        return StartOperationAsync(
+            ProtocolMessageKinds.StartXzCreation,
+            new StartXzCreationRequest(destinationPath, sourcePath, compressionPreset),
+            passwordSlotId: null,
+            cancellationToken);
+    }
+
+    private void EnsureSevenZipXzFeature() =>
+        EnsureManagedCreationFeature(
+            ProtocolFeatures.SevenZipXzCreation,
+            ProtocolFeatures.SevenZipXzCreationDependencies,
+            "7z/XZ creation");
+
     public Task<StartOperationResponse> StartZipRebuildCopyAsync(
         ArchiveSessionId sessionId,
         string destinationPath,
@@ -2012,7 +2106,9 @@ public sealed partial class ArchiveClient : IArchiveClient
                 cancelRemoteRequest: true,
                 remoteCancellationAbortAfter: TimeSpan.FromSeconds(2))
             .ConfigureAwait(false);
-        ValidateManagedWriteCapabilitiesResponse(response);
+        ValidateManagedWriteCapabilitiesResponse(
+            response,
+            _enabledFeatures.Contains(ProtocolFeatures.SevenZipXzCreation));
         cancellationToken.ThrowIfCancellationRequested();
         return response;
     }
@@ -3403,16 +3499,31 @@ public sealed partial class ArchiveClient : IArchiveClient
     }
 
     private static void ValidateManagedWriteCapabilitiesResponse(
-        GetManagedWriteCapabilitiesResponse? response)
+        GetManagedWriteCapabilitiesResponse? response,
+        bool includesSevenZipXz)
     {
+        // Exactly the four original formats, plus the three bundled 7-Zip formats when 1.25
+        // (sevenzip-xz-create-v1) was negotiated.
+        int expectedCount = includesSevenZipXz ? ProtocolConstants.MaximumManagedWriteCapabilityFormats : 4;
         if (response?.Capabilities is null
-            || response.Capabilities.Count != ProtocolConstants.MaximumManagedWriteCapabilityFormats)
+            || response.Capabilities.Count != expectedCount)
         {
             throw new InvalidDataException(
                 "The worker returned invalid managed write capability bounds.");
         }
 
-        var expected = new[]
+        var allPresets = (IReadOnlyList<ArchiveCompressionPreset>)Enum.GetValues<ArchiveCompressionPreset>();
+        var sevenZipXz = new[]
+        {
+            (ManagedArchiveCreationFormat.SevenZip, allPresets, true,
+                ProtocolConstants.MaximumTarCreationEntries, ProtocolConstants.MaximumTarCreationSourceBytes),
+            (ManagedArchiveCreationFormat.TarXz, allPresets, true,
+                ProtocolConstants.MaximumTarCreationEntries, ProtocolConstants.MaximumTarCreationSourceBytes),
+            (ManagedArchiveCreationFormat.Xz, allPresets, false,
+                ProtocolConstants.MaximumRawCreationEntries, ProtocolConstants.MaximumRawCreationSourceBytes),
+        };
+
+        var original = new[]
         {
             (ManagedArchiveCreationFormat.TarGZip,
                 (IReadOnlyList<ArchiveCompressionPreset>)Enum.GetValues<ArchiveCompressionPreset>(),
@@ -3435,6 +3546,7 @@ public sealed partial class ArchiveClient : IArchiveClient
                 ProtocolConstants.MaximumRawCreationEntries,
                 ProtocolConstants.MaximumRawCreationSourceBytes),
         };
+        var expected = includesSevenZipXz ? original.Concat(sevenZipXz).ToArray() : original;
 
         for (var index = 0; index < expected.Length; index++)
         {
@@ -4543,6 +4655,11 @@ public sealed partial class ArchiveClient : IArchiveClient
             or ProtocolMessageKinds.StartTarBZip2TreeCreation
             or ProtocolMessageKinds.StartGZipCreation
             or ProtocolMessageKinds.StartBZip2Creation
+            or ProtocolMessageKinds.StartSevenZipCreation
+            or ProtocolMessageKinds.StartSevenZipTreeCreation
+            or ProtocolMessageKinds.StartTarXzCreation
+            or ProtocolMessageKinds.StartTarXzTreeCreation
+            or ProtocolMessageKinds.StartXzCreation
             or ProtocolMessageKinds.StartZipRebuildCopy
             or ProtocolMessageKinds.StartZipRebuildRename
             or ProtocolMessageKinds.StartZipRebuildTreeEdit

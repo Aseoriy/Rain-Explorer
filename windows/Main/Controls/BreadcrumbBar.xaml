@@ -187,27 +187,35 @@
         <!-- Subfolder list anchored to a crumb chevron (PlacementTarget set in code) -->
         <Popup x:Name="ChildPopup" Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
                PopupAnimation="Fade" VerticalOffset="4">
-            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
-                    CornerRadius="10" Padding="5" MinWidth="220" MaxWidth="440">
-                <Border.Effect>
-                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-                </Border.Effect>
-                <ListBox x:Name="ChildList" Style="{StaticResource DropListStyle}" MaxHeight="360"
-                         PreviewMouseLeftButtonDown="ChildList_MouseDown" />
-            </Border>
+            <Grid MinWidth="220" MaxWidth="440">
+                <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+                <Border IsHitTestVisible="False" Background="{StaticResource MenuBg}" CornerRadius="10">
+                    <Border.Effect>
+                        <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                    </Border.Effect>
+                </Border>
+                <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                    <ListBox x:Name="ChildList" Style="{StaticResource DropListStyle}" MaxHeight="360"
+                             PreviewMouseLeftButtonDown="ChildList_MouseDown" />
+                </Border>
+            </Grid>
         </Popup>
 
         <!-- Autocomplete suggestions under the edit box -->
         <Popup x:Name="AcPopup" PlacementTarget="{Binding ElementName=EditHost}" Placement="Bottom"
                StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" VerticalOffset="4">
-            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1"
-                    CornerRadius="10" Padding="5" MinWidth="300" MaxWidth="640">
-                <Border.Effect>
-                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-                </Border.Effect>
-                <ListBox x:Name="AcList" Style="{StaticResource DropListStyle}" MaxHeight="320"
-                         PreviewMouseLeftButtonDown="AcList_MouseDown" />
-            </Border>
+            <Grid MinWidth="300" MaxWidth="640">
+                <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+                <Border IsHitTestVisible="False" Background="{StaticResource MenuBg}" CornerRadius="10">
+                    <Border.Effect>
+                        <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                    </Border.Effect>
+                </Border>
+                <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                    <ListBox x:Name="AcList" Style="{StaticResource DropListStyle}" MaxHeight="320"
+                             PreviewMouseLeftButtonDown="AcList_MouseDown" />
+                </Border>
+            </Grid>
         </Popup>
     </Grid>
 </UserControl>

@@ -1,0 +1,191 @@
+<UserControl
+    x:Class="RainExplorer.Controls.ActivityCenterView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:svc="clr-namespace:RainExplorer.Services"
+    DataContext="{x:Static svc:ActivityService.Instance}">
+    <!-- The activity center's header and list, shared by the title-bar flyout and the pop-out window. -->
+    <UserControl.Resources>
+        <!-- Header toggles (Pin / On top): a ghost-style button that stays lit while on. -->
+        <Style x:Key="HeaderToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Margin" Value="5,0,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="7" BorderBrush="Transparent"
+                                BorderThickness="1" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource Glass3}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Text}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource AccentBright}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource AccentWash}" />
+                                <Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBright}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel LastChildFill="True">
+        <Grid x:Name="HeaderRow" DockPanel.Dock="Top" Margin="8,8,6,8" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                      Data="{StaticResource Ic.clock}" Stroke="{DynamicResource AccentBright}"
+                      VerticalAlignment="Center" />
+                <TextBlock Text="Activity" FontSize="14" FontWeight="Bold" Margin="9,0,0,0"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <!-- Flyout: Pin keeps it open; Pop out moves it into its own window. -->
+                <ToggleButton x:Name="PinToggle" Content="Pin" Style="{StaticResource HeaderToggle}"
+                              ToolTip="Keep the activity center open while you work"
+                              AutomationProperties.Name="Pin the activity center"
+                              Click="PinToggle_Click" />
+                <Button x:Name="PopOutButton" Content="Pop out" Style="{StaticResource GhostButton}"
+                        MinWidth="0" Padding="12,5" FontSize="12" Margin="5,0,0,0"
+                        ToolTip="Move the activity center into its own window" Click="PopOut_Click" />
+                <!-- Window: On top keeps the window above other apps; Dock puts it back in the flyout. -->
+                <ToggleButton x:Name="OnTopToggle" Content="On top" Style="{StaticResource HeaderToggle}"
+                              Visibility="Collapsed" ToolTip="Keep this window above other windows"
+                              AutomationProperties.Name="Keep the activity window on top"
+                              Click="OnTopToggle_Click" />
+                <Button x:Name="DockButton" Content="Dock" Style="{StaticResource GhostButton}"
+                        MinWidth="0" Padding="12,5" FontSize="12" Margin="5,0,0,0" Visibility="Collapsed"
+                        ToolTip="Put the activity center back in the main window" Click="Dock_Click" />
+                <Button x:Name="HideButton" Content="Hide" Style="{StaticResource GhostButton}"
+                        MinWidth="0" Padding="12,5" FontSize="12" Margin="5,0,0,0"
+                        Click="Hide_Click" />
+                <Button Content="Clear" Style="{StaticResource GhostButton}"
+                        MinWidth="0" Padding="12,5" FontSize="12" Margin="5,0,0,0"
+                        Click="Clear_Click" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock DockPanel.Dock="Top" Text="No recent activity yet."
+                   Foreground="{DynamicResource TextFaint}" FontSize="12" Margin="10,8,0,14"
+                   Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="activityCard" Background="{DynamicResource Glass2}" CornerRadius="8"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                Padding="11,9" Margin="2,2,2,5">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Path Grid.Column="0" Style="{StaticResource IconPath}"
+                                      Width="16" Height="16" Margin="0,1,11,0"
+                                      VerticalAlignment="Top"
+                                      Data="{Binding IconKey, Converter={StaticResource IconGeom}}"
+                                      Stroke="{DynamicResource TextMuted}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text}" />
+                                     <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                Foreground="{DynamicResource TextMuted}"
+                                                ToolTip="{Binding Detail}"
+                                                AutomationProperties.LiveSetting="Polite"
+                                                TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                    <TextBlock Text="{Binding ProgressText}" FontSize="11"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding HasProgressText,
+                                                   Converter={StaticResource BoolToVis}}" />
+                                    <ProgressBar x:Name="activityProgress" Height="5" Margin="0,7,0,0"
+                                                 Minimum="0" Maximum="1"
+                                                 Value="{Binding Progress, Mode=OneWay}"
+                                                 Visibility="{Binding ShowDeterminateProgress,
+                                                     Converter={StaticResource BoolToVis}}" />
+                                    <ProgressBar x:Name="activityProgressIndeterminate" Height="5"
+                                                 Margin="0,7,0,0" IsIndeterminate="True"
+                                                 Visibility="{Binding ShowIndeterminateProgress,
+                                                     Converter={StaticResource BoolToVis}}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="{Binding PauseButtonText}" Style="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Click="Pause_Click"
+                                                Visibility="{Binding CanPause, Converter={StaticResource BoolToVis}}" />
+                                        <Button Content="Cancel" Style="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Margin="5,0,0,0" Click="Cancel_Click"
+                                                Visibility="{Binding CanCancel, Converter={StaticResource BoolToVis}}" />
+                                        <Button Content="View details" Style="{StaticResource GhostButton}"
+                                                MinWidth="0" Height="23" Padding="8,1" FontSize="10"
+                                                Margin="5,0,0,0" Click="Details_Click"
+                                                AutomationProperties.Name="View activity details"
+                                                Visibility="{Binding DetailedHistory, Source={x:Static svc:ActivityService.Instance},
+                                                    Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" Margin="10,0,0,0">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse x:Name="dot" Width="7" Height="7"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{StaticResource Warn}" />
+                                        <TextBlock x:Name="stext" Text="{Binding StatusText}"
+                                                   FontSize="11" Margin="6,0,0,0"
+                                                   Foreground="{StaticResource Warn}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="10" Foreground="{DynamicResource TextFaint}"
+                                               HorizontalAlignment="Right" Margin="0,3,0,0"
+                                               FontFamily="{StaticResource MonoFont}">
+                                        <!-- Run.Text binds TwoWay by default; these targets are
+                                             read-only computed props, so force OneWay or the
+                                             popup throws on realize and crashes the app. -->
+                                        <Run Text="{Binding DurationText, Mode=OneWay}" />
+                                        <Run Text="·" />
+                                        <Run Text="{Binding TimeText, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Status}" Value="Success">
+                                <Setter TargetName="dot" Property="Fill" Value="{StaticResource Ok}" />
+                                <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Ok}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                <Setter TargetName="dot" Property="Fill" Value="{StaticResource Danger}" />
+                                <Setter TargetName="stext" Property="Foreground" Value="{StaticResource Danger}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Canceled">
+                                <Setter TargetName="dot" Property="Fill" Value="{DynamicResource TextMuted}" />
+                                <Setter TargetName="stext" Property="Foreground" Value="{DynamicResource TextMuted}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                <Setter TargetName="activityCard" Property="BorderBrush" Value="{DynamicResource AccentLine}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

@@ -3,7 +3,7 @@ namespace RainArchives.Contracts;
 public static class ProtocolConstants
 {
     public const int MajorVersion = 1;
-    public const int MinorVersion = 24;
+    public const int MinorVersion = 25;
     public const int RequestCancellationMinorVersion = 2;
     public const int PersistentEntryKeysMinorVersion = 3;
     public const int VolumeSetIdentityMinorVersion = 4;
@@ -35,6 +35,7 @@ public static class ProtocolConstants
     public const int SupportDiagnosticsMinorVersion = 22;
     public const int RarCreationMinorVersion = 23;
     public const int ExpandedCreationTreeBudgetMinorVersion = 24;
+    public const int SevenZipXzCreationMinorVersion = 25;
     // Negotiated tree expansion only; explicit mappings, legacy capabilities and rebuild stay bounded separately.
     public const int MaximumExpandedCreationTreeEntries = 65_536;
     public const int MaximumControlFrameBytes = 1024 * 1024;
@@ -77,7 +78,7 @@ public static class ProtocolConstants
     public const long MaximumRarCreationSourceBytes = 8L * 1024 * 1024 * 1024;
     public const int MaximumRawCreationEntries = 1;
     public const long MaximumRawCreationSourceBytes = MaximumTarCreationSourceBytes;
-    public const int MaximumManagedWriteCapabilityFormats = 4;
+    public const int MaximumManagedWriteCapabilityFormats = 7;
     public const int MaximumArchiveCreationRecoveryRecords = 1024;
     public const int MaximumNestedWorkspaceRecoveryRecords = 1024;
     public const int MaximumExtractionRecoveryRecords = 1024;
@@ -120,6 +121,11 @@ public static class ProtocolMessageKinds
     public const string StartTarBZip2TreeCreation = "operation.tar-bzip2.tree.create.start";
     public const string StartGZipCreation = "operation.gzip.create.start";
     public const string StartBZip2Creation = "operation.bzip2.create.start";
+    public const string StartSevenZipCreation = "operation.7z.create.start";
+    public const string StartSevenZipTreeCreation = "operation.7z.tree.create.start";
+    public const string StartTarXzCreation = "operation.tar-xz.create.start";
+    public const string StartTarXzTreeCreation = "operation.tar-xz.tree.create.start";
+    public const string StartXzCreation = "operation.xz.create.start";
     public const string GetManagedWriteCapabilities = "archive.managed.write.capabilities";
     public const string GetOperationActivity = "operation.activity.get";
     public const string ListExtractionRecoveries = "operation.extract.recovery.list";
@@ -188,9 +194,21 @@ public static class ProtocolFeatures
     public const string RarDirectoryCreation = "rar-create-directories-v1";
     public const string RarWriteCapabilities = "rar-write-capabilities-v1";
     public const string ExpandedCreationTreeBudget = "creation-expanded-tree-budget-v1";
+    // 7z (files and folders), TAR.XZ (files and folders) and raw XZ, written by the bundled
+    // official 7-Zip engine and reported through managed write capabilities.
+    public const string SevenZipXzCreation = "sevenzip-xz-create-v1";
 
     public static IReadOnlyList<string> ExpandedCreationTreeBudgetDependencies { get; } =
         Array.AsReadOnly(new[] { RequestCancellation, SourceFingerprintValidation });
+
+    public static IReadOnlyList<string> SevenZipXzCreationDependencies { get; } = Array.AsReadOnly(
+    new[]
+    {
+        ManagedWriteCapabilities,
+        TarCreation,
+        TarDirectoryCreation,
+        RequestCancellation,
+    });
 
     public static IReadOnlyList<string> SupportDiagnosticsDependencies { get; } =
         Array.AsReadOnly(
@@ -429,8 +447,11 @@ public static class ProtocolFeatures
             ])
             .ToArray());
 
-    public static IReadOnlyList<string> SupportedVersion1 { get; } = Array.AsReadOnly(
+    private static IReadOnlyList<string> SupportedVersion1Minor24 { get; } = Array.AsReadOnly(
         SupportedVersion1Minor23.Append(ExpandedCreationTreeBudget).ToArray());
+
+    public static IReadOnlyList<string> SupportedVersion1 { get; } = Array.AsReadOnly(
+        SupportedVersion1Minor24.Append(SevenZipXzCreation).ToArray());
 
     private static IReadOnlyList<string> SupportedVersion1Minor15 { get; } = Array.AsReadOnly(
     new[]
@@ -695,7 +716,8 @@ public static class ProtocolFeatures
 
     public static IReadOnlyList<string> SupportedForMinorVersion(int minorVersion) => minorVersion switch
     {
-        >= ProtocolConstants.ExpandedCreationTreeBudgetMinorVersion => SupportedVersion1,
+        >= ProtocolConstants.SevenZipXzCreationMinorVersion => SupportedVersion1,
+        >= ProtocolConstants.ExpandedCreationTreeBudgetMinorVersion => SupportedVersion1Minor24,
         >= ProtocolConstants.RarCreationMinorVersion => SupportedVersion1Minor23,
         >= ProtocolConstants.SupportDiagnosticsMinorVersion => SupportedVersion1Minor22,
         >= ProtocolConstants.NestedWorkspaceIndependentReopenMinorVersion => SupportedVersion1Minor21,

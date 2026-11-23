@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:RainExplorer.Services"
              xmlns:vm="using:RainExplorer.ViewModels"
              xmlns:m="using:RainExplorer.Models"
              xmlns:c="using:RainExplorer.Controls"
@@ -164,7 +165,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
         <!-- ===== Tab strip ===== -->
         <Grid Grid.Row="0" Background="Transparent" x:Name="TabStrip">
             <Grid Margin="8,6,0,4" RowDefinitions="Auto,Auto">
@@ -195,7 +196,7 @@
                         </ListBox>
                         <Button x:Name="NewTabButton" Theme="{StaticResource IconButton}" Width="32" Height="32"
                                 HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0,0,0,2" ZIndex="30"
-                                Command="{Binding NewTabCommand}" ToolTip.Tip="New tab (Ctrl+T)"
+                                Command="{Binding NewTabCommand}" ToolTip.Tip="{ReflectionBinding [tab.new], Source={x:Static svc:ShortcutHints.Instance}}"
                                 AutomationProperties.Name="New tab">
                             <Button.RenderTransform><TranslateTransform /></Button.RenderTransform>
                             <c:Icon Kind="plus" Width="16" Height="16" />
@@ -235,19 +236,19 @@
             <Grid x:Name="NavigationGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                 <!-- nav buttons -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                    <Button Theme="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip.Tip="Back (Alt+Left)"
+                    <Button Theme="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip.Tip="{ReflectionBinding [nav.back], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Back">
                         <c:Icon Kind="arrow-left" Width="17" Height="17" />
                     </Button>
-                    <Button Theme="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip.Tip="Forward (Alt+Right)"
+                    <Button Theme="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip.Tip="{ReflectionBinding [nav.forward], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Forward">
                         <c:Icon Kind="arrow-right" Width="17" Height="17" />
                     </Button>
-                    <Button Theme="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip.Tip="Up (Alt+Up)"
+                    <Button Theme="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip.Tip="{ReflectionBinding [nav.up], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Up one folder">
                         <c:Icon Kind="arrow-up" Width="17" Height="17" />
                     </Button>
-                    <Button Theme="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh (F5)"
+                    <Button Theme="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip.Tip="{ReflectionBinding [nav.refresh], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Refresh folder">
                         <c:Icon Kind="refresh" Width="16" Height="16" />
                     </Button>
@@ -286,7 +287,7 @@
                             <c:Icon Kind="list" Width="16" Height="16" />
                         </Button>
                         <ToggleButton x:Name="PreviewToggle" Theme="{StaticResource ToggleChip}" Margin="2,0,0,0"
-                                      ToolTip.Tip="Preview pane (Space)" AutomationProperties.Name="Show preview pane"
+                                      ToolTip.Tip="{ReflectionBinding [view.preview], Source={x:Static svc:ShortcutHints.Instance}}" AutomationProperties.Name="Show preview pane"
                                       Click="PreviewToggle_Click">
                             <c:Icon Kind="eye" Width="16" Height="16" />
                         </ToggleButton>
@@ -362,8 +363,11 @@
             </Grid>
         </Grid>
 
+        <!-- ===== Command box (Ctrl+`) ===== -->
+        <c:CommandBoxView x:Name="CommandBox" Grid.Row="3" IsVisible="False" />
+
         <!-- ===== Status bar (toggleable via settings) ===== -->
-        <Border x:Name="StatusBar" Grid.Row="3" Height="28" Background="{DynamicResource Glass2}"
+        <Border x:Name="StatusBar" Grid.Row="4" Height="28" Background="{DynamicResource Glass2}"
                 BorderBrush="{DynamicResource Line1}" BorderThickness="0,1,0,0"
                 DataContext="{Binding DisplayedTab}" x:DataType="vm:TabViewModel">
             <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center"

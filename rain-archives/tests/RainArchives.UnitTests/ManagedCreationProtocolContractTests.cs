@@ -8,8 +8,10 @@ namespace RainArchives.UnitTests;
 public sealed class ManagedCreationProtocolContractTests
 {
     [TestMethod]
-    public void ManagedCreationFormatIsClosedToTheApprovedFourFormats()
+    public void ManagedCreationFormatIsClosedToTheApprovedFormats()
     {
+        // The original four, then the three protocol 1.25 formats written by the bundled 7-Zip
+        // engine. New values are only ever appended so stored numbers never shift.
         CollectionAssert.AreEqual(
             new[]
             {
@@ -17,8 +19,31 @@ public sealed class ManagedCreationProtocolContractTests
                 ManagedArchiveCreationFormat.TarBZip2,
                 ManagedArchiveCreationFormat.GZip,
                 ManagedArchiveCreationFormat.BZip2,
+                ManagedArchiveCreationFormat.SevenZip,
+                ManagedArchiveCreationFormat.TarXz,
+                ManagedArchiveCreationFormat.Xz,
             },
             Enum.GetValues<ManagedArchiveCreationFormat>());
+    }
+
+    [TestMethod]
+    public void MinorTwentyFiveAddsOnlyTheSevenZipXzFeature()
+    {
+        var minorTwentyFour = ProtocolFeatures
+            .SupportedForMinorVersion(ProtocolConstants.ExpandedCreationTreeBudgetMinorVersion)
+            .ToArray();
+        CollectionAssert.AreEqual(
+            minorTwentyFour.Append(ProtocolFeatures.SevenZipXzCreation).ToArray(),
+            ProtocolFeatures.SupportedForMinorVersion(ProtocolConstants.MinorVersion).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                ProtocolFeatures.ManagedWriteCapabilities,
+                ProtocolFeatures.TarCreation,
+                ProtocolFeatures.TarDirectoryCreation,
+                ProtocolFeatures.RequestCancellation,
+            },
+            ProtocolFeatures.SevenZipXzCreationDependencies.ToArray());
     }
 
     [TestMethod]

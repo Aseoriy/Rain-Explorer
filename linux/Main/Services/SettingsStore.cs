@@ -25,8 +25,21 @@ public sealed class SettingsStore
         ReadCommentHandling = JsonCommentHandling.Skip,
     };
 
+    /// <summary>The options settings.json is read and written with (shared with backups).</summary>
+    internal static JsonSerializerOptions JsonOptions => JsonOpts;
+
     private readonly string _path;
     private readonly object _saveGate = new();
+    private volatile bool _frozen;
+
+    /// <summary>The folder holding settings.json and Rain's other small data files.</summary>
+    public string ConfigDir => Path.GetDirectoryName(_path)!;
+
+    /// <summary>True after a restore wrote new files: nothing may save over them before Rain restarts.</summary>
+    public bool IsFrozen => _frozen;
+
+    /// <summary>Stop saving (a backup was just restored and Rain is about to restart).</summary>
+    public void Freeze() => _frozen = true;
     public AppSettings Settings { get; }
 
     private SettingsStore()
@@ -100,7 +113,7 @@ public sealed class SettingsStore
         // would overwrite a file we never successfully loaded — clobbering whatever pins
         // it holds with our empty in-memory defaults. Refuse: the user's data on disk
         // (and the .corrupt copy) stays intact until a clean run can read it.
-        if (LoadFailed) return;
+        if (LoadFailed || _frozen) return;
 
         lock (_saveGate)
         {
@@ -149,6 +162,8 @@ public sealed class SettingsStore
         settings.GitExecutablePath ??= string.Empty;
         settings.GitDefaultCloneFolder ??= string.Empty;
         settings.SkippedUpdateVersion ??= string.Empty;
+        settings.LastWhatsNewShown ??= string.Empty;
+        settings.ShortcutOverrides ??= new();
 
         foreach (var group in settings.CustomGroups)
         {

@@ -146,7 +146,7 @@ public sealed partial class UiTests
             Assert.False(box.IsChecked);
             Assert.Contains("Off", page.FindControl<TextBlock>("ShowInFolderStatus")!.Text);
             second.Close();
-            page.FindControl<ListBox>("SectionList")!.SelectedIndex = 3;
+            page.FindControl<ListBox>("SectionList")!.SelectedIndex = 4;   // Advanced
             await RenderFor(250);
             first.Width = 760; first.Height = 480;
             await RenderFor(80);

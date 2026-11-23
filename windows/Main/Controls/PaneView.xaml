@@ -14,7 +14,7 @@
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
                      Opened="TabContextMenu_Opened">
             <MenuItem Header="Duplicate tab" Click="TabDuplicate_Click" />
-            <MenuItem Header="Reload" InputGestureText="F5" Click="TabReload_Click" />
+            <MenuItem Header="Reload" svc:ShortcutHints.Action="nav.refresh" Click="TabReload_Click" />
             <MenuItem Tag="pin" Header="Pin tab" Click="TabPin_Click" />
             <Separator Tag="group-separator" />
             <MenuItem Tag="group-new" Header="New tab in group" Click="TabGroupNew_Click" />
@@ -23,7 +23,7 @@
             <MenuItem Tag="group-clear" Header="Ungroup tabs" Click="TabGroupClear_Click" />
             <MenuItem Tag="group-close" Header="Close tab group" Click="TabGroupClose_Click" />
             <Separator />
-            <MenuItem Header="Close tab" InputGestureText="Ctrl+W" Click="TabClose_Click" />
+            <MenuItem Header="Close tab" svc:ShortcutHints.Action="tab.close" Click="TabClose_Click" />
             <MenuItem Tag="close-other" Header="Close other tabs" Click="TabCloseOther_Click" />
             <MenuItem Tag="close-right" Header="Close tabs to the right" Click="TabCloseRight_Click" />
         </ContextMenu>
@@ -100,7 +100,7 @@
                                             PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                             Command="{Binding DataContext.CloseTabCommand,
                                                       RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)"
+                                            CommandParameter="{Binding}" ToolTip="{Binding [tab.close], Source={x:Static svc:ShortcutHints.Instance}}"
                                             AutomationProperties.Name="Close tab">
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
@@ -301,7 +301,7 @@
                                         PreviewMouseLeftButtonUp="TabClose_PreviewMouseLeftButtonUp"
                                         Command="{Binding DataContext.CloseTabCommand,
                                                   RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                        CommandParameter="{Binding}" ToolTip="Close tab (Ctrl+W)"
+                                        CommandParameter="{Binding}" ToolTip="{Binding [tab.close], Source={x:Static svc:ShortcutHints.Instance}}"
                                         AutomationProperties.Name="Close tab">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
@@ -570,13 +570,14 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Tab strip -->
         <Grid Grid.Row="0" Background="Transparent">
             <Grid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="New tab" InputGestureText="Ctrl+T" Click="TabStripNewTab_Click" />
+                    <MenuItem Header="New tab" svc:ShortcutHints.Action="tab.new" Click="TabStripNewTab_Click" />
                     <MenuItem Header="New tab in active group" Click="TabStripNewGroupTab_Click"
                               Visibility="{Binding HasActiveGroup, Converter={StaticResource BoolToVis}}" />
                     <Separator />
@@ -635,7 +636,7 @@
                     <Button x:Name="NewTabButton" Style="{StaticResource IconButton}"
                             Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                             Margin="0,0,0,2" Panel.ZIndex="30"
-                            Command="{Binding NewTabCommand}" ToolTip="New tab (Ctrl+T)"
+                            Command="{Binding NewTabCommand}" ToolTip="{Binding [tab.new], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="New tab">
                         <Button.RenderTransform>
                             <TranslateTransform x:Name="NewTabButtonTransform" />
@@ -700,22 +701,22 @@
 
                 <!-- nav buttons -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                    <Button Style="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip="Back (Alt+Left)"
+                    <Button Style="{StaticResource IconButton}" Command="{Binding BackCommand}" ToolTip="{Binding [nav.back], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Back">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-left}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip="Forward (Alt+Right)"
+                    <Button Style="{StaticResource IconButton}" Command="{Binding ForwardCommand}" ToolTip="{Binding [nav.forward], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Forward">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-right}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip="Up (Alt+Up)"
+                    <Button Style="{StaticResource IconButton}" Command="{Binding UpCommand}" ToolTip="{Binding [nav.up], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Up one folder">
                         <Path Style="{StaticResource IconPath}" Width="17" Height="17" Data="{StaticResource Ic.arrow-up}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip="Refresh (F5)"
+                    <Button Style="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip="{Binding [nav.refresh], Source={x:Static svc:ShortcutHints.Instance}}"
                             AutomationProperties.Name="Refresh folder">
                         <Path Style="{StaticResource IconPath}" Width="16" Height="16" Data="{StaticResource Ic.refresh}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -873,97 +874,117 @@
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuOpenTerminal" Header="Open in Terminal" Click="OpenTerminal_Click">
+                    <MenuItem x:Name="MenuOpenTerminal" Header="Open in Terminal" Click="OpenTerminal_Click"
+                              svc:ShortcutHints.Action="app.terminal">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.terminal}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <Separator x:Name="MenuArchiveOperationSeparator" Visibility="Collapsed" />
-                    <MenuItem x:Name="MenuArchiveIntegrity"
-                              Header="Test archive integrity"
-                              InputGestureText="Ctrl+Shift+I"
-                              Visibility="Collapsed"
-                              Click="ArchiveIntegrity_Click"
-                              AutomationProperties.Name="Test archive integrity"
-                              AutomationProperties.HelpText="Run a read-only integrity test through the current Rain Archives session.">
+                    <MenuItem x:Name="MenuCommandBox" Header="Run a command here" Click="MenuCommandBox_Click"
+                              svc:ShortcutHints.Action="app.commandBox">
                         <MenuItem.Icon>
-                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                  Data="{StaticResource Ic.shield}" Stroke="{StaticResource TextMuted}" />
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem x:Name="MenuArchiveExtract"
-                              Header="Extract selected to new folder…"
-                              InputGestureText="Ctrl+Shift+E"
-                              Visibility="Collapsed"
-                              Click="ArchiveExtract_Click"
-                              AutomationProperties.Name="Extract selected archive entries to a new folder"
-                              AutomationProperties.HelpText="Choose an absent destination folder and extract only the current archive selection without merging or overwriting.">
-                        <MenuItem.Icon>
-                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                  Data="{StaticResource Ic.archive}" Stroke="{StaticResource TextMuted}" />
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem x:Name="MenuArchiveRebuildCopy"
-                              Header="Rebuild ZIP to new copy…"
-                              Visibility="Collapsed"
-                              Click="ArchiveRebuildCopy_Click"
-                              AutomationProperties.Name="Rebuild current ZIP to a distinct new copy"
-                              AutomationProperties.HelpText="Query the connected worker for current-session rebuild eligibility, then review a distinct absent ZIP destination. The original remains untouched.">
-                        <MenuItem.Icon>
-                            <Path Style="{StaticResource IconPath}" Width="15" Height="15"
-                                  Data="{StaticResource Ic.package}" Stroke="{StaticResource TextMuted}" />
+                            <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.zap}"
+                                  Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuCut" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click">
+                    <MenuItem x:Name="MenuCut" Header="Cut" svc:ShortcutHints.Action="file.cut" Click="Cut_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.scissors}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuCopy" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click">
+                    <MenuItem x:Name="MenuCopy" Header="Copy" svc:ShortcutHints.Action="file.copy" Click="Copy_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.copy}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuCopyPath" Header="Copy as path" Click="CopyPath_Click">
+                    <MenuItem x:Name="MenuCopyPath" Header="Copy as path" Click="CopyPath_Click" svc:ShortcutHints.Action="file.copyPath">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.hash}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuPaste" Header="Paste" InputGestureText="Ctrl+V" Click="Paste_Click">
+                    <MenuItem x:Name="MenuPaste" Header="Paste" svc:ShortcutHints.Action="file.paste" Click="Paste_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.clipboard}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuCreateArchive" Header="Create archive…" Click="CreateArchive_Click"
-                              AutomationProperties.Name="Create managed archive from the newest physical selection"
-                              AutomationProperties.HelpText="Query the connected archive worker before reviewing supported formats, presets, source shape, and a distinct new destination.">
-                        <MenuItem.Icon>
-                            <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.package}"
-                                  Stroke="{StaticResource TextMuted}" />
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem x:Name="MenuExtract" Header="Extract here" Click="Extract_Click"
-                              AutomationProperties.Name="Extract selected physical archives here"
-                              AutomationProperties.HelpText="Content-check up to 16 selected files with the isolated archive worker, then extract each supported archive sequentially into a distinct new sibling folder.">
+                    <!-- Everything archive-related lives in one submenu, like the Rain Archives entry in
+                         Explorer's "Show more options". Only items that fit the selection are shown
+                         (FileContextMenu_Opened); the submenu hides when none do. -->
+                    <MenuItem x:Name="MenuRainArchives" Header="Rain Archives"
+                              SubmenuOpened="RainArchivesMenu_SubmenuOpened">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.archive}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem x:Name="MenuExtractTo" Header="Extract to…" Click="ExtractTo_Click"
-                              AutomationProperties.Name="Extract selected physical archives to a chosen folder"
-                              AutomationProperties.HelpText="Choose a parent folder, then extract each supported archive through the isolated worker into a distinct new child folder without merging or overwriting.">
-                        <MenuItem.Icon>
-                            <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.folder}"
-                                  Stroke="{StaticResource TextMuted}" />
-                        </MenuItem.Icon>
+                        <MenuItem x:Name="MenuExtractTo" Header="Extract files…" Click="ExtractTo_Click"
+                                  AutomationProperties.Name="Extract selected physical archives to a chosen folder"
+                                  AutomationProperties.HelpText="Choose a parent folder, then extract each supported archive through the isolated worker into a distinct new child folder without merging or overwriting.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.folder}"
+                                      Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <!-- Header is set per selection: Extract to "name\" for one archive. -->
+                        <MenuItem x:Name="MenuExtract" Header="Extract to new folder" Click="Extract_Click"
+                                  AutomationProperties.Name="Extract each selected archive into a new folder named after it"
+                                  AutomationProperties.HelpText="Content-check up to 16 selected files with the isolated archive worker, then extract each supported archive sequentially into a distinct new sibling folder named after the archive.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.archive}"
+                                      Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator x:Name="MenuArchiveAddSeparator" />
+                        <MenuItem x:Name="MenuCreateArchive" Header="Add to archive…" Click="CreateArchive_Click"
+                                  AutomationProperties.Name="Create managed archive from the newest physical selection"
+                                  AutomationProperties.HelpText="Query the connected archive worker before reviewing supported formats, presets, source shape, and a distinct new destination.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.package}"
+                                      Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator x:Name="MenuArchiveOperationSeparator" Visibility="Collapsed" />
+                        <MenuItem x:Name="MenuArchiveIntegrity"
+                                  Header="Test archive integrity"
+                                  InputGestureText="Ctrl+Shift+I"
+                                  Visibility="Collapsed"
+                                  Click="ArchiveIntegrity_Click"
+                                  AutomationProperties.Name="Test archive integrity"
+                                  AutomationProperties.HelpText="Run a read-only integrity test through the current Rain Archives session.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                      Data="{StaticResource Ic.shield}" Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem x:Name="MenuArchiveExtract"
+                                  Header="Extract selected to new folder…"
+                                  InputGestureText="Ctrl+Shift+E"
+                                  Visibility="Collapsed"
+                                  Click="ArchiveExtract_Click"
+                                  AutomationProperties.Name="Extract selected archive entries to a new folder"
+                                  AutomationProperties.HelpText="Choose an absent destination folder and extract only the current archive selection without merging or overwriting.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                      Data="{StaticResource Ic.archive}" Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem x:Name="MenuArchiveRebuildCopy"
+                                  Header="Rebuild ZIP to new copy…"
+                                  Visibility="Collapsed"
+                                  Click="ArchiveRebuildCopy_Click"
+                                  AutomationProperties.Name="Rebuild current ZIP to a distinct new copy"
+                                  AutomationProperties.HelpText="Query the connected worker for current-session rebuild eligibility, then review a distinct absent ZIP destination. The original remains untouched.">
+                            <MenuItem.Icon>
+                                <Path Style="{StaticResource IconPath}" Width="15" Height="15"
+                                      Data="{StaticResource Ic.package}" Stroke="{StaticResource TextMuted}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
                     </MenuItem>
                     <MenuItem x:Name="MenuShortcut" Header="Create shortcut" Click="CreateShortcut_Click">
                         <MenuItem.Icon>
@@ -978,20 +999,20 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuRename" Header="Rename" InputGestureText="F2" Click="Rename_Click">
+                    <MenuItem x:Name="MenuRename" Header="Rename" svc:ShortcutHints.Action="file.rename" Click="Rename_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.pencil}"
                                   Stroke="{StaticResource TextMuted}" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="MenuDelete" Header="Delete" InputGestureText="Del" Click="Delete_Click">
+                    <MenuItem x:Name="MenuDelete" Header="Delete" svc:ShortcutHints.Action="file.delete" Click="Delete_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.trash}"
                                   Stroke="{StaticResource Danger}" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuNewFolder" Header="New folder" Click="NewFolder_Click">
+                    <MenuItem x:Name="MenuNewFolder" Header="New folder" Click="NewFolder_Click" svc:ShortcutHints.Action="file.newFolder">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.folder-plus}"
                                   Stroke="{StaticResource AccentBright}" />
@@ -1004,7 +1025,7 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem x:Name="MenuProperties" Header="Properties" InputGestureText="Alt+Enter" Click="Properties_Click">
+                    <MenuItem x:Name="MenuProperties" Header="Properties" svc:ShortcutHints.Action="file.properties" Click="Properties_Click">
                         <MenuItem.Icon>
                             <Path Style="{StaticResource IconPath}" Width="15" Height="15" Data="{StaticResource Ic.info}"
                                   Stroke="{StaticResource TextMuted}" />
@@ -1119,8 +1140,11 @@
         </Grid>
         </Grid>
 
+        <!-- Command box (Ctrl+`): runs commands in this pane's folder -->
+        <ctrl:CommandBoxView x:Name="CommandBox" Grid.Row="3" Visibility="Collapsed" />
+
         <!-- Status bar (toggleable via settings) -->
-        <Border Grid.Row="3" Height="28" Background="{StaticResource Glass2}"
+        <Border Grid.Row="4" Height="28" Background="{StaticResource Glass2}"
                 DataContext="{Binding SelectedTab}"
                 BorderBrush="{StaticResource Line1}" BorderThickness="0,1,0,0"
                 Visibility="{Binding Source={x:Static svc:SettingsStore.Instance},
@@ -1132,63 +1156,66 @@
         <!-- Sort / Layout toolbar dropdowns: plain Popups (not ContextMenu — a ContextMenu's
              own mouse capture swallows the re-click on its own toggle button, see
              OpenButtonMenu_Click) so the open/close toggle is fully reliable. -->
-        <Border x:Name="SortPopup" Grid.RowSpan="4" Panel.ZIndex="110"
-                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,104,0"
-                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
-                BorderThickness="1" CornerRadius="10" Padding="5" MinWidth="180"
-                Visibility="Collapsed" Opacity="0">
-            <Border.RenderTransform>
+        <Grid x:Name="SortPopup" Grid.RowSpan="5" Panel.ZIndex="110" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,104,0" MinWidth="180" Visibility="Collapsed" Opacity="0">
+            <Grid.RenderTransform>
                 <TranslateTransform Y="-6" />
-            </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-            </Border.Effect>
-            <StackPanel>
-                <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
-                <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
-                <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
-                <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
-                <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
-                <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
-                <Separator />
-                <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
-            </StackPanel>
-        </Border>
+            </Grid.RenderTransform>
+            <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+            <Border IsHitTestVisible="False" Background="{StaticResource MenuBg}" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                </Border.Effect>
+            </Border>
+            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                <StackPanel>
+                    <MenuItem Header="Sort by" IsEnabled="False" FontWeight="SemiBold" />
+                    <MenuItem Header="Name" Tag="Name" Click="Sort_Click" />
+                    <MenuItem Header="Date modified" Tag="Modified" Click="Sort_Click" />
+                    <MenuItem Header="Date created" Tag="Created" Click="Sort_Click" />
+                    <MenuItem Header="Type" Tag="Type" Click="Sort_Click" />
+                    <MenuItem Header="Size" Tag="Size" Click="Sort_Click" />
+                    <Separator />
+                    <MenuItem Header="Reverse order" Click="ReverseSort_Click" />
+                </StackPanel>
+            </Border>
+        </Grid>
 
-        <Border x:Name="LayoutPopup" Grid.RowSpan="4" Panel.ZIndex="110"
-                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,64,0"
-                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
-                BorderThickness="1" CornerRadius="10" Padding="5" MinWidth="140"
-                Visibility="Collapsed" Opacity="0">
-            <Border.RenderTransform>
+        <Grid x:Name="LayoutPopup" Grid.RowSpan="5" Panel.ZIndex="110" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,84,64,0" MinWidth="140" Visibility="Collapsed" Opacity="0">
+            <Grid.RenderTransform>
                 <TranslateTransform Y="-6" />
-            </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-            </Border.Effect>
-            <StackPanel>
-                <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
-                <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
-                <MenuItem Header="List" Tag="List" Click="Layout_Click" />
-                <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
-                <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
-            </StackPanel>
-        </Border>
+            </Grid.RenderTransform>
+            <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+            <Border IsHitTestVisible="False" Background="{StaticResource MenuBg}" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                </Border.Effect>
+            </Border>
+            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                <StackPanel>
+                    <MenuItem Header="Layout" IsEnabled="False" FontWeight="SemiBold" />
+                    <MenuItem Header="Details" Tag="Details" Click="Layout_Click" />
+                    <MenuItem Header="List" Tag="List" Click="Layout_Click" />
+                    <MenuItem Header="Tiles" Tag="Tiles" Click="Layout_Click" />
+                    <MenuItem Header="Grid" Tag="Grid" Click="Layout_Click" />
+                </StackPanel>
+            </Border>
+        </Grid>
 
-        <Border x:Name="ProjectsFlyout" Grid.RowSpan="4" Panel.ZIndex="100"
-                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,42,0,0"
-                Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}"
-                BorderThickness="1" CornerRadius="10" Padding="5"
-                MinWidth="240" MaxHeight="520" Visibility="Collapsed" Opacity="0">
-            <Border.RenderTransform>
+        <Grid x:Name="ProjectsFlyout" Grid.RowSpan="5" Panel.ZIndex="100" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,42,0,0" MinWidth="240" MaxHeight="520" Visibility="Collapsed" Opacity="0">
+            <Grid.RenderTransform>
                 <TranslateTransform x:Name="ProjectsFlyoutTransform" Y="-6" />
-            </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
-            </Border.Effect>
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="ProjectsMenuItems" />
-            </ScrollViewer>
-        </Border>
+            </Grid.RenderTransform>
+            <!-- Shadow on its own layer: under an effect the text below would render soft. -->
+            <Border IsHitTestVisible="False" Background="{StaticResource MenuBg}" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="24" ShadowDepth="5" />
+                </Border.Effect>
+            </Border>
+            <Border Background="{StaticResource MenuBg}" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="10" Padding="5">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ProjectsMenuItems" />
+                </ScrollViewer>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
