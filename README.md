@@ -4,9 +4,9 @@ Rain Explorer is a file manager for Windows and Linux, built with C# and .NET 10
 
 The Windows app uses WPF. The Linux port uses Avalonia and follows Linux desktop conventions for the trash, application launching, icons and removable drives.
 
-![Rain Explorer on Windows](https://raw.githubusercontent.com/Aseoriy/Rain-Explorer/master/Preview.png)
+![Rain Explorer](https://raw.githubusercontent.com/Aseoriy/Rain-Explorer/master/Preview.png)
 
-*The screenshot above shows the Windows app.*
+*The screenshot above shows the Linux app.*
 
 ## Platform status
 
@@ -223,7 +223,7 @@ linux/
   packaging/     Build/install scripts, desktop entry and icons
   tools/         Icon conversion tool
 README.md        Repository overview
-Preview.png      Windows application preview
+Preview.png      Application preview (Linux)
 ```
 
 Each platform keeps its generated output in its own ignored `dist/` folder. Dependency directories, local notes and other generated files are also excluded from Git.
